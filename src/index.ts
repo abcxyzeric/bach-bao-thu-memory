@@ -16,7 +16,7 @@ import { ui } from '@/state/ui';
 import { guardEditableArrowKeys } from '@/st/keyboard';
 import { versionedAssetUrl } from '@/version';
 import { watch } from 'vue';
-// 这两行让 Vite 把全局样式打进 dist/index.css(随后注入 shadow root)
+// Hai dòng này để Vite đóng gói kiểu dáng toàn cục vào dist/index.css (sau đó tiêm vào shadow root)
 import '@/styles/base.css';
 import '@/styles/theme.css';
 import { createApp } from 'vue';
@@ -24,9 +24,9 @@ import { createApp } from 'vue';
 const HOST_ID = 'bbs-app-host';
 
 /**
- * 生成拦截器:ST 在每次生成前会 await 调用 manifest.generate_interceptor 指名的全局函数,
- * 签名 (chat, contextSize, abort, type),调 abort(true) 即中止本次生成。
- * 这里委托给引擎判断「积压楼层过多」并按需拦截 + 插提示楼。挂在 globalThis 上供 ST 找到。
+ * Bộ chặn tạo phản hồi: Trước mỗi lần tạo phản hồi, ST sẽ await gọi hàm toàn cục được chỉ định bởi manifest.generate_interceptor,
+ * chữ ký hàm (chat, contextSize, abort, type), gọi abort(true) sẽ hủy bỏ lần tạo này.
+ * Ở đây ủy quyền cho engine phán đoán "quá nhiều tầng tồn đọng" và chặn theo nhu cầu + chèn tầng nhắc nhở. Gắn trên globalThis để ST tìm thấy.
  */
 (globalThis as Record<string, unknown>).bbs_generateInterceptor = async (
   _chat: unknown,
@@ -35,21 +35,21 @@ const HOST_ID = 'bbs-app-host';
   type: string | undefined,
 ): Promise<void> => {
   try {
-    // 先走积压拦截:返回 true = 已 abort 本次生成,无需召回(生成不会发生)。
+    // Đi qua chặn tồn đọng trước: trả về true = đã abort lần tạo này, không cần truy xuất (việc tạo sẽ không diễn ra).
     const intercepted = await handleGenerationIntercept(type, abort);
-    // 放行且该类型需要召回 → 阻塞式向量召回(写注入槽后再放行生成)。
-    // 召回内部自带向量开关/可用性判断,失败静默降级,绝不影响生成。
+    // Cho phép đi qua và loại này cần truy xuất → truy xuất vector kiểu chặn (ghi vào khe tiêm rồi mới cho phép tạo).
+    // Bên trong truy xuất đã tự kèm phán đoán công tắc/tính khả dụng của vector, thất bại sẽ hạ cấp âm thầm, tuyệt đối không ảnh hưởng việc tạo.
     if (!intercepted && shouldRecallForType(type)) {
       await runVectorRecall();
     }
   } catch (e) {
-    console.error('[柏宝书] 生成拦截器异常(放行本次生成)', e);
+    console.error('[Bách Bảo Thư] Lỗi ngoại lệ ở bộ chặn tạo phản hồi (cho phép lần tạo này đi qua)', e);
   }
 };
 
 /**
- * 可继承的排版属性——shadow DOM 不隔离继承,这些会透过 host 从 ST 漏进来。
- * 在 host 上用内联 !important 钉死,从根上切断继承链。
+ * Các thuộc tính dàn trang có thể kế thừa —— shadow DOM không cô lập sự kế thừa, những thuộc tính này sẽ xuyên qua host rò rỉ từ ST vào.
+ * Dùng inline !important ghim chặt trên host, cắt đứt chuỗi kế thừa ngay từ gốc.
  */
 const INHERITED_RESET: Record<string, string> = {
   'font-family':
@@ -71,7 +71,7 @@ const INHERITED_RESET: Record<string, string> = {
 };
 
 function mount() {
-  // host 元素留在 ST 的 light DOM,Vue 应用整体活在它的 shadow root 里。
+  // Phần tử host nằm lại ở light DOM của ST, toàn bộ ứng dụng Vue sống trong shadow root của nó.
   let host = document.getElementById(HOST_ID);
   if (!host) {
     host = document.createElement('div');
@@ -79,7 +79,7 @@ function mount() {
     document.body.appendChild(host);
   }
 
-  // host 不参与布局(窗口内部用 fixed 定位),并切断继承
+  // host không tham gia bố cục (bên trong cửa sổ dùng định vị fixed), đồng thời cắt đứt kế thừa
   host.style.setProperty('display', 'contents', 'important');
   for (const [prop, value] of Object.entries(INHERITED_RESET)) {
     host.style.setProperty(prop, value, 'important');
@@ -89,11 +89,11 @@ function mount() {
   shadow.textContent = '';
   guardEditableArrowKeys(shadow);
 
-  // 把我们构建出的 dist/index.css 以 <link> 注入 shadow root——
-  // 这样样式只在这棵 shadow 树内生效,ST 全局样式进不来,我们的也出不去。
+  // Đưa dist/index.css đã build của chúng ta vào shadow root bằng thẻ <link> ——
+  // như vậy kiểu dáng chỉ có hiệu lực trong cây shadow này, kiểu dáng toàn cục của ST không vào được, và của chúng ta cũng không lọt ra ngoài.
   const link = document.createElement('link');
   link.rel = 'stylesheet';
-  // index.js 与 index.css 在 dist 同级,据当前模块 URL 推导,部署路径无关。
+  // index.js và index.css nằm cùng cấp trong dist, suy ra từ URL module hiện tại, không phụ thuộc đường dẫn triển khai.
   link.href = versionedAssetUrl('./index.css', import.meta.url);
   shadow.appendChild(link);
 
@@ -110,46 +110,46 @@ function mount() {
 $(() => {
   mount();
   injectMenuButton();
-  // 顶栏快速打开按钮:按开关注入/移除。watch 在开关变化(含 hydrate 回灌真值)时同步。
+  // Nút mở nhanh trên thanh đỉnh: tiêm/gỡ theo công tắc. watch đồng bộ khi công tắc thay đổi (bao gồm nạp lại giá trị thực khi hydrate).
   syncTopBarButton(ui.showTopBar);
   watch(
     () => ui.showTopBar,
     on => syncTopBarButton(on),
   );
-  // 聊天框快速回复式按钮:同上范式
+  // Nút kiểu trả lời nhanh ở khung trò chuyện: mô hình tương tự như trên
   syncQuickReplyButton(ui.showQuickReply);
   watch(
     () => ui.showQuickReply,
     on => syncQuickReplyButton(on),
   );
-  // 记忆系统:等 ST 的 getContext 就绪后再绑定(加载顺序不确定时轮询)
+  // Hệ thống trí nhớ: đợi getContext của ST sẵn sàng rồi mới gắn kết (polling khi thứ tự tải không xác định)
   bindMemoryWhenReady();
 });
 
 function bindMemoryWhenReady(attempt = 0) {
   if (window.SillyTavern?.getContext) {
     try {
-      console.log('[柏宝书] 启动链开始绑定(getContext 就绪)');
-      // 设置先 hydrate:从 extension_settings 载入(或从旧 localStorage 迁移),之后才跨设备同步
+      console.log('[Bách Bảo Thư] Chuỗi khởi động bắt đầu gắn kết (getContext đã sẵn sàng)');
+      // Hydrate cài đặt trước: tải từ extension_settings (hoặc di chuyển từ localStorage cũ), sau đó mới đồng bộ đa thiết bị
       hydrateSettings();
       bindChatLifecycle();
-      // 公共读取接口不依赖记忆引擎开关；聊天载入后立即暴露，供其它插件/脚本读取。
+      // Giao diện đọc công khai không phụ thuộc công tắc bộ máy trí nhớ; sau khi tải trò chuyện sẽ lập tức phơi bày để plugin/script khác đọc.
       void registerPublicInterface();
       bindEngine();
-      // 时间标签:按开关注册/移除 ST 隐藏正则(幂等;开关变化的后续同步在 bindEngine 的 watch 里)
+      // Thẻ thời gian: đăng ký/gỡ bỏ regex ẩn của ST theo công tắc (idempotent; đồng bộ tiếp theo khi công tắc thay đổi nằm trong watch của bindEngine)
       syncTimeTagRegex();
-      // 首屏:把当前聊天已有的记忆挂上注入
+      // Màn hình đầu tiên: gắn tiêm cho trí nhớ hiện có của cuộc trò chuyện hiện tại
       refreshInjection();
-      // 楼内摘要锚点:按设置开关注入(bindFloorPanel 内 watch 开关 + 主题,immediate 首次同步)
+      // Điểm neo tóm tắt trong tầng: tiêm theo công tắc cài đặt (bên trong bindFloorPanel có watch công tắc + giao diện, đồng bộ lần đầu ngay lập tức)
       bindFloorPanel();
-      // 后台检测更新(实时比对本地/远端 manifest 版本;失败静默,不阻断启动)
+      // Kiểm tra cập nhật chạy ngầm (đối chiếu thời gian thực phiên bản manifest cục bộ/từ xa; thất bại im lặng, không chặn khởi động)
       void checkForUpdate();
-      console.log('[柏宝书] 启动链绑定完成');
+      console.log('[Bách Bảo Thư] Hoàn tất gắn kết chuỗi khởi động');
     } catch (e) {
-      console.error('[柏宝书] 记忆系统绑定失败', e);
+      console.error('[Bách Bảo Thư] Gắn kết hệ thống trí nhớ thất bại', e);
     }
     return;
   }
-  if (attempt > 40) return; // 最多约 20s
+  if (attempt > 40) return; // Tối đa khoảng 20s
   setTimeout(() => bindMemoryWhenReady(attempt + 1), 500);
 }

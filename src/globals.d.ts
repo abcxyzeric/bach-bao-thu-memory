@@ -1,7 +1,7 @@
 import type { STBaiBaiBookApi } from '@/public/types';
 
 declare global {
-  // ST 在全局挂载了这些依赖,这里只声明插件实际使用到的最小类型。
+  // ST đã gắn kết các phụ thuộc này ở toàn cục, ở đây chỉ khai báo kiểu tối thiểu mà plugin thực tế sử dụng đến.
   const $: any;
   const _: any;
   const toastr: any;

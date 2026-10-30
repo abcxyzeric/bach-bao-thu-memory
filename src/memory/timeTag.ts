@@ -1,22 +1,22 @@
 /**
- * 时间标签(锚点)——让主对话模型在每条正文前后输出起止时间,把「时间」从事后推断变成正文事实。
+ * Thẻ thời gian (mốc neo) —— yêu cầu mô hình đối thoại chính xuất thời gian bắt đầu và kết thúc ở đầu và cuối mỗi chính văn, biến "thời gian" từ suy đoán hậu kỳ thành sự thật trong chính văn.
  *
- * 解决两个老问题:
- *  1. 一层楼时间跨度大,单一时间快照取不准 → 现在有起始 + 结束两个界。
- *  2. 摘要请求与新剧情生成并行,各自推断时间导致错乱 → 两边都读正文里同一个权威时间,自然同步。
+ * Giải quyết hai vấn đề cũ:
+ *  1. Một tầng lầu có khoảng thời gian kéo dài, một ảnh chụp thời gian đơn lẻ không lấy chuẩn được → Nay có cả hai mốc bắt đầu + kết thúc.
+ *  2. Yêu cầu tóm tắt và việc sinh cốt truyện mới chạy song song, tự suy đoán thời gian riêng dẫn đến loạn → Cả hai bên đều đọc cùng một thời gian có thẩm quyền trong chính văn, tự nhiên đồng bộ.
  *
- * 标签格式固定为 <bbs_start>…</bbs_start> / <bbs_end>…</bbs_end>(bbs_ 前缀避免与其它插件/世界书撞)。
- * 标签**留在正文里**(发副 API、发主模型续写都带着),只用 ST 正则在「显示层」隐藏 —— 真删会让时间再次失同步。
+ * Định dạng thẻ cố định là <bbs_start>…</bbs_start> / <bbs_end>…</bbs_end> (tiền tố bbs_ để tránh đụng độ với plugin/sách thế giới khác).
+ * Thẻ **giữ lại trong chính văn** (gửi API phụ hay gửi mô hình chính viết tiếp đều mang theo), chỉ dùng regex của ST để ẩn ở "tầng hiển thị" —— nếu xóa thật sẽ khiến thời gian mất đồng bộ trở lại.
  */
 
 import { apiSettings } from '@/api/settings';
 import { getContext, type STMessage } from '@/st/context';
 import { stripBaiBaiImageTags } from './imageTag';
 import type { LeafExtra } from './types';
-// 旁注协议:说明旁注标签只读。时间标签不需要 NVWA 核心。
+// Giao thức chú thích bên lề: giải thích thẻ chú thích bên lề chỉ đọc. Thẻ thời gian không cần lõi NVWA.
 import builtinProtocolsRaw from './prompts/builtin-protocols.txt?raw';
 
-/** 取 08 的 LEDGER_PROTOCOL 分节(旁注标签与正文分工)。 */
+/** Lấy phân đoạn LEDGER_PROTOCOL của mục 08 (phân công giữa thẻ chú thích bên lề và chính văn). */
 const LEDGER_PROTOCOL = (() => {
   const re = /^=====\s*LEDGER_PROTOCOL\s*=====\s*$/m;
   const m = builtinProtocolsRaw.match(re);
@@ -26,60 +26,60 @@ const LEDGER_PROTOCOL = (() => {
   return (next >= 0 ? rest.slice(0, next) : rest).trim();
 })();
 
-/** 标签固定标识(解析正则与隐藏正则都依赖它) */
+/** Định danh cố định của thẻ (cả regex phân tích lẫn regex ẩn đều phụ thuộc vào nó) */
 export const START_TAG = 'bbs_start';
 export const END_TAG = 'bbs_end';
-/** 物品变动旁注标签:摘要后把本楼物品净变动写进正文 </bbs_end> 之后,供窗口内全文楼层被主模型看到 */
+/** Thẻ chú thích biến động vật phẩm: sau khi tóm tắt sẽ ghi biến động ròng của vật phẩm tầng này vào sau </bbs_end> trong chính văn, để các tầng toàn văn trong cửa sổ được mô hình chính nhìn thấy */
 export const ITEMS_TAG = 'bbs_items';
-/** 变量变动旁注标签:与 bbs_items 同机制,写本楼自定义变量净变动,供主模型看到「已改过」防重复改 */
+/** Thẻ chú thích biến động biến số: cùng cơ chế với bbs_items, ghi biến động ròng của biến tùy chỉnh tầng này, để mô hình chính thấy "đã sửa rồi" tránh sửa lặp lại */
 export const VARS_TAG = 'bbs_vars';
 
 /**
- * 所有「时间锚点生产提示词」共用的完整格式协议。
- * 数字日期缺年份时虽能勉强解析月日,但跨年相对时间与周几都不可靠,故从源头禁止省略。
+ * Giao thức định dạng đầy đủ dùng chung cho mọi "prompt sản sinh mốc thời gian".
+ * Khi ngày tháng dạng số thiếu năm thì dù miễn cưỡng phân tích được tháng ngày, nhưng thời gian tương đối qua năm và thứ trong tuần đều không đáng tin cậy, nên cấm lược bỏ ngay từ nguồn.
  */
-export const RULE_COMPLETE_TIME_ANCHOR = `【完整时间锚点格式(系统强制)】
-- 现代、公历或其它使用数字日期的题材,每一个时间点都必须写成包含完整年份的“YYYY/M/D HH:mm”格式(如 1988/9/29 21:30),年份不得省略。
-- 严禁只写“9/29 21:30”“9月29日 21:30”“21:30”“同日 21:30”等省略年份或日期的短格式。
-- 起始时间与结束时间必须各自重复写完整日期和年份;即使两者同年、同月、同日,也不得在任意一端省略。
-- 已有时间基准包含年份或纪年时,后续必须原样继承并保留该年份或纪年,不得自行缩写或丢失。
-- 故事开篇没有任何时间基准时,必须一次性建立包含完整年份的起始时间,之后持续沿用。
-- 古风、奇幻等非公历题材不强制使用公历数字,但每个时间点都必须保留完整纪年与年份(如“庆历四年暮春·辰时三刻”),不得只写月、日、季节或时辰。`;
+export const RULE_COMPLETE_TIME_ANCHOR = `【Định dạng mốc thời gian đầy đủ (Hệ thống bắt buộc)】
+- Với đề tài hiện đại, dương lịch hoặc các đề tài khác dùng ngày tháng bằng số, mỗi một mốc thời gian đều bắt buộc phải viết thành định dạng “YYYY/M/D HH:mm” có bao gồm đầy đủ năm (ví dụ 1988/9/29 21:30), không được lược bỏ năm.
+- Nghiêm cấm chỉ viết các định dạng rút gọn lược bỏ năm hoặc ngày tháng như “9/29 21:30”, “ngày 29 tháng 9 21:30”, “21:30”, “cùng ngày 21:30”, v.v.
+- Thời gian bắt đầu và thời gian kết thúc bắt buộc phải tự lặp lại đầy đủ ngày tháng và năm ở mỗi đầu; cho dù cả hai cùng năm, cùng tháng, cùng ngày cũng không được lược bỏ ở bất kỳ đầu nào.
+- Khi mốc chuẩn thời gian đã có bao gồm năm hoặc kỷ nguyên, phần tiếp theo bắt buộc phải kế thừa nguyên vẹn và giữ lại năm hoặc kỷ nguyên đó, không được tự ý viết tắt hoặc làm mất.
+- Khi mở đầu câu chuyện chưa có bất kỳ mốc chuẩn thời gian nào, bắt buộc phải thiết lập ngay một lần thời gian bắt đầu có bao gồm đầy đủ năm, sau đó tiếp tục dùng xuyên suốt.
+- Đề tài cổ phong, kỳ ảo và các đề tài phi dương lịch khác không bắt buộc dùng số dương lịch, nhưng mỗi mốc thời gian đều phải giữ đầy đủ kỷ nguyên và năm (ví dụ “Khánh Lịch năm thứ tư cuối xuân · giờ Thìn ba khắc”), không được chỉ viết tháng, ngày, mùa hoặc canh giờ.`;
 
-/** 注入主对话的固定提示词默认值(可在设置里覆盖)。 */
-export const TIME_TAG_PROMPT = `【时间锚点要求(系统强制)】
-在你每次输出正文的最前面和最后面,各放一个时间标签,标明这段剧情的开始时刻与结束时刻:
+/** Giá trị mặc định của prompt cố định tiêm vào đối thoại chính (có thể ghi đè trong phần cài đặt). */
+export const TIME_TAG_PROMPT = `【Yêu cầu mốc thời gian (Hệ thống bắt buộc)】
+Ở ngay đầu tiên và ngay cuối cùng của chính văn mỗi lần bạn xuất ra, hãy đặt một thẻ thời gian, ghi rõ thời điểm bắt đầu và thời điểm kết thúc của đoạn cốt truyện này:
 
 <${START_TAG}>1988/9/29 21:30</${START_TAG}>
-（正文……）
+(Chính văn……)
 <${END_TAG}>1988/9/29 21:45</${END_TAG}>
 
-规则:
-- 时间要具体、可明确定位,风格与正文世界观一致:现代题材用数字日期时间(如 1988/9/29 21:30);古风/奇幻题材用相应的纪年与时辰(如 庆历四年暮春·辰时三刻)。重点是「能定位到某一刻」,不强求阿拉伯数字。
-- 禁止"稍后""不久""某天""同一天"等无法定位到具体时刻的模糊说法。
-- 以上一段的结束时间为基准,结合本段剧情合理推进(对话约几分钟、用餐约一小时、过夜跨到次日等)。
-- 若这是故事开篇、此前没有任何已知时间,请你自行设定一个符合本世界观的具体起始时刻,之后以此为基准推进——这是为记忆系统建立时间锚点所必需的合理设定,不算编造;但绝不能用"某天"这类无法定位的占位词敷衍。
-- 标签只各出现一次,分别紧贴正文最前与最后;标签内只有时间,不要写别的。
-- 这两个标签是给记忆系统读取的锚点,请务必每次都输出。
+Quy tắc:
+- Thời gian phải cụ thể, định vị rõ ràng được, phong cách nhất quán với thế giới quan của chính văn: đề tài hiện đại dùng ngày giờ bằng số (ví dụ 1988/9/29 21:30); đề tài cổ phong/kỳ ảo dùng kỷ nguyên và canh giờ tương ứng (ví dụ Khánh Lịch năm thứ tư cuối xuân · giờ Thìn ba khắc). Trọng tâm là "định vị được đến một thời khắc cụ thể", không ép buộc dùng chữ số Ả Rập.
+- Cấm các cách nói mơ hồ không thể định vị đến thời khắc cụ thể như "lát sau", "không lâu sau", "một ngày nọ", "cùng ngày", v.v.
+- Lấy thời gian kết thúc của đoạn trước làm chuẩn, kết hợp với cốt truyện đoạn này để đẩy thời gian tiến lên hợp lý (trò chuyện khoảng vài phút, dùng bữa khoảng một tiếng, qua đêm bước sang ngày hôm sau, v.v.).
+- Nếu đây là mở đầu câu chuyện, trước đó chưa có bất kỳ thời gian đã biết nào, xin bạn tự thiết lập một thời khắc bắt đầu cụ thể phù hợp với thế giới quan này, sau đó lấy đó làm chuẩn để đẩy tiếp —— đây là thiết lập hợp lý cần thiết để xây dựng mốc thời gian cho hệ thống trí nhớ, không tính là bịa đặt; nhưng tuyệt đối không được dùng từ giữ chỗ không thể định vị như "một ngày nọ" để làm qua loa.
+- Mỗi thẻ chỉ xuất hiện một lần, lần lượt bám sát ngay đầu tiên và ngay cuối cùng của chính văn; bên trong thẻ chỉ có thời gian, đừng viết gì khác.
+- Hai thẻ này là mốc neo để hệ thống trí nhớ đọc, xin nhất định phải xuất ra mỗi lần.
 
 ${RULE_COMPLETE_TIME_ANCHOR}
 
-【不需要输出的格式】
-私密简报里面的当前状态是记忆插件给你辅助了解前文的内容，而不是要求你在正文末尾输出的格式，在无论何时都不要在正文末尾输出私密简报
+【Định dạng không cần xuất ra】
+Trạng thái hiện tại bên trong bản tin mật là nội dung plugin trí nhớ cung cấp để hỗ trợ bạn nắm bắt văn cảnh phía trước, chứ không phải định dạng yêu cầu bạn xuất ra ở cuối chính văn, dù bất cứ lúc nào cũng tuyệt đối không được xuất bản tin mật ở cuối chính văn.
 
 ${LEDGER_PROTOCOL}`;
 
-/** 当前生效的固定提示词(用户自定义优先,空则用内置默认)。 */
+/** Prompt cố định đang có hiệu lực (ưu tiên tùy chỉnh của người dùng, nếu trống thì dùng mặc định tích hợp sẵn). */
 export function timeTagPrompt(): string {
   const custom = apiSettings.prompts.timeTag.trim();
   return custom || TIME_TAG_PROMPT;
 }
 
-// 解析用正则:容忍标签名大小写与首尾空白;非贪婪取内部文本。
+// Regex dùng để phân tích: chấp nhận chữ hoa/thường ở tên thẻ và khoảng trắng đầu cuối; lấy văn bản bên trongแบบ non-greedy.
 const RE_START = new RegExp(`<${START_TAG}\\b[^>]*>([\\s\\S]*?)</${START_TAG}>`, 'i');
 const RE_END = new RegExp(`<${END_TAG}\\b[^>]*>([\\s\\S]*?)</${END_TAG}>`, 'i');
 
-/** 从一段正文里解析起止时间;取不到的为 undefined(降级:调用方各自兜底)。 */
+/** Phân tích thời gian bắt đầu và kết thúc từ một đoạn chính văn; không lấy được thì là undefined (hạ cấp: bên gọi tự xử lý dự phòng). */
 export function parseTimeRange(mes: string): { start?: string; end?: string } {
   const s = String(mes ?? '');
   const start = s.match(RE_START)?.[1]?.trim() || undefined;
@@ -88,17 +88,17 @@ export function parseTimeRange(mes: string): { start?: string; end?: string } {
 }
 
 /**
- * 当前「故事内最新时间」:从 chat 末尾往前扫,取第一条解析得到的时间(end 优先,缺则 start)。
+ * "Thời gian mới nhất trong câu chuyện" hiện tại: quét từ cuối chat ngược lên trước, lấy thời gian phân tích được đầu tiên (ưu tiên end, thiếu thì lấy start).
  *
- * 为什么不直接用派生的 memory.state.time:那个只重放「已生成叶子」的楼层,最新几层没摘时就停在旧值。
- * 而最新 AI 楼正文里本就带 <bbs_end>,这里直接读它,无论摘没摘都拿到真实最新时间。
+ * Tại sao không dùng trực tiếp memory.state.time dẫn xuất: cái đó chỉ phát lại các tầng "đã sinh lá", khi vài tầng mới nhất chưa tóm tắt thì nó dừng ở giá trị cũ.
+ * Trong khi chính văn tầng AI mới nhất vốn đã mang <bbs_end>, ở đây đọc trực tiếp nó, bất kể đã tóm tắt hay chưa đều lấy được thời gian mới nhất thực sự.
  *
- * 取值优先级(每条消息):① 正文 <bbs_start>/<bbs_end> 标签(最权威,不受是否已摘影响);
- *   ② 标签缺失时回退到该楼叶子的 timeEnd/timeStart —— 覆盖「旧聊天补摘」场景:那些楼正文里
- *   没有时间标签(用插件前生成的),但补摘已把时间写进叶子。少了这个兜底,整页相对时间会因
- *   参照点(now)为空而全部不显示。
- * 用途:① 摘要页「当前时间」展示;② 历史摘要注入时相对时间的参照点(「现在」)。
- * 全部解析不到(纯架空/无标签且无叶子)→ 返回空串,调用方各自回退。
+ * Thứ tự ưu tiên lấy giá trị (mỗi tin nhắn): ① Thẻ <bbs_start>/<bbs_end> trong chính văn (có thẩm quyền nhất, không bị ảnh hưởng bởi việc đã tóm tắt hay chưa);
+ *   ② Khi thiếu thẻ thì lùi về timeEnd/timeStart của lá tầng đó —— bao phủ kịch bản "tóm tắt bù đoạn chat cũ": chính văn những tầng đó
+ *   không có thẻ thời gian (sinh ra trước khi dùng plugin), nhưng việc tóm tắt bù đã ghi thời gian vào lá. Thiếu lớp dự phòng này, toàn bộ thời gian tương đối trên trang sẽ vì
+ *   điểm tham chiếu (now) trống mà không hiển thị gì cả.
+ * Công dụng: ① Hiển thị "Thời gian hiện tại" ở trang tóm tắt; ② Điểm tham chiếu ("hiện tại") của thời gian tương đối khi tiêm tóm tắt lịch sử.
+ * Hoàn toàn không phân tích được (thuần hư cấu / không thẻ và không lá) → trả về chuỗi rỗng, bên gọi tự lùi về phương án dự phòng.
  */
 export function latestStoryTime(chat: STMessage[] | null): string {
   if (!chat) return '';
@@ -106,11 +106,11 @@ export function latestStoryTime(chat: STMessage[] | null): string {
     const m = chat[i];
     if (m?.extra?.bbs_omit) continue;
     if (typeof m?.mes !== 'string' || !m.mes) continue;
-    // ① 正文标签优先
+    // ① Ưu tiên thẻ trong chính văn
     const { start, end } = parseTimeRange(clampToTimeTags(m.mes));
     const tagTime = end || start;
     if (tagTime) return tagTime;
-    // ② 标签缺失 → 回退该楼有效叶子的时间(旧聊天补摘:正文无标签但叶子有时间)
+    // ② Thiếu thẻ → lùi về thời gian của lá hợp lệ tại tầng đó (tóm tắt bù chat cũ: chính văn không thẻ nhưng lá có thời gian)
     const leaf = m.extra?.bbs_leaf as LeafExtra | undefined;
     if (leaf?.id && leaf.delta && leafSwipeMatches(leaf, m)) {
       const leafTime = leaf.timeEnd?.trim() || leaf.timeStart?.trim();
@@ -120,7 +120,7 @@ export function latestStoryTime(chat: STMessage[] | null): string {
   return '';
 }
 
-/** 叶子页码是否匹配当前 swipe(与 apply.leafValid 同口径;内联避免 timeTag↔apply 循环依赖)。 */
+/** Số trang của lá có khớp với swipe hiện tại hay không (cùng chuẩn với apply.leafValid; viết nội tuyến để tránh phụ thuộc vòng timeTag↔apply). */
 function leafSwipeMatches(leaf: LeafExtra, m: STMessage): boolean {
   const leafSwipe = typeof leaf.swipe === 'number' ? leaf.swipe : 0;
   const msgSwipe = typeof m.swipe_id === 'number' ? m.swipe_id : 0;
@@ -128,19 +128,19 @@ function leafSwipeMatches(leaf: LeafExtra, m: STMessage): boolean {
 }
 
 /**
- * 按标签名生成「整块删除」正则(含标签本身与内部内容)。tag 已由 sanitizeTagName 剔除正则元字符,
- * 拼进 RegExp 安全。边界用前瞻 (?=[\s/>]) 而非 \b —— \b 只认 ASCII 词字符,中文标签(如 <雪>)
- * 在 `雪` 与 `>` 之间无词边界会匹配失败;前瞻「标签名后须紧跟空白/斜杠/右括号」对中英文都成立,
- * 且同样防止 <snow> 误吃 <snowball> 前缀。同时删配对块与落单的自闭/单标签。
+ * Tạo regex "xóa nguyên khối" theo tên thẻ (bao gồm bản thân thẻ và nội dung bên trong). tag đã được sanitizeTagName loại bỏ siêu ký tự regex,
+ * ghép vào RegExp an toàn. Ranh giới dùng lookahead (?=[\s/>]) thay vì \b —— \b chỉ nhận ký tự từ ASCII, thẻ chữ tượng hình/Unicode
+ * không có ranh giới từ giữa tên thẻ và `>` sẽ khớp thất bại; lookahead "sau tên thẻ phải theo sát bởi khoảng trắng / dấu gạch chéo / ngoặc nhọn đóng" đúng cho mọi ngôn ngữ,
+ * và cũng ngăn <snow> ăn nhầm tiền tố của <snowball>. Đồng thời xóa cả khối có cặp lẫn thẻ đơn / thẻ tự đóng lẻ loi.
  */
 function blockStripRegexes(tag: string): RegExp[] {
   return [
-    new RegExp(`<${tag}(?=[\\s/>])[^>]*>[\\s\\S]*?</${tag}>`, 'gi'), // 配对块
-    new RegExp(`<\\/?${tag}(?=[\\s/>])[^>]*\\/?>`, 'gi'), // 落单的开/闭/自闭标签
+    new RegExp(`<${tag}(?=[\\s/>])[^>]*>[\\s\\S]*?</${tag}>`, 'gi'), // Khối có cặp đóng mở
+    new RegExp(`<\\/?${tag}(?=[\\s/>])[^>]*\\/?>`, 'gi'), // Thẻ mở / đóng / tự đóng lẻ loi
   ];
 }
 
-/** 删掉用户在设置里配置的自定义标签(整块:标签 + 内部内容)。空名单则原样返回。 */
+/** Xóa bỏ các thẻ tùy chỉnh do người dùng cấu hình trong phần cài đặt (nguyên khối: thẻ + nội dung bên trong). Danh sách trống thì trả về nguyên bản. */
 function stripCustomTags(s: string): string {
   let out = s;
   for (const tag of apiSettings.customStripTags) {
@@ -151,33 +151,33 @@ function stripCustomTags(s: string): string {
 }
 
 /**
- * 把一段正文清洗成「干净正文段」:剔除正文之外的格式与噪声,但**不做「裸删标签留内容」**——
- * 只整块删除明确的非正文标签(思维链/注释/旧 horae/物品旁注/用户自定义标签),其余原样保留。
+ * Làm sạch một đoạn chính văn thành "đoạn chính văn sạch": loại bỏ định dạng và nhiễu bên ngoài chính văn, nhưng **không làm kiểu "xóa trần thẻ giữ lại nội dung"** ——
+ * chỉ xóa nguyên khối các thẻ phi chính văn rõ ràng (chuỗi suy nghĩ / chú thích / horae cũ / chú thích vật phẩm / thẻ tùy chỉnh của người dùng), phần còn lại giữ nguyên.
  *
- * 两步:
- *  ① 整块删除噪声标签(含内部内容);
- *  ② 裁剪到时间标签区间:取「最后一个 <bbs_start>」+「第一个 </bbs_end>」之间(标签保留)——
- *     思维链/状态栏可能混入同名标签,开始标签取末次、结束标签取首次,精准框出真正的正文段;
- *     仅在对应标签存在时才裁剪,缺标签的一侧保持原样(两侧都没有则不裁,覆盖「旧聊天无标签」场景)。
- *     `<content>` 等其它容器标签不参与边界判断,避免时间标签位于容器外时被提前截掉。
- *  ③ 规范空白。
+ * Hai bước:
+ *  ① Xóa nguyên khối các thẻ nhiễu (bao gồm nội dung bên trong);
+ *  ② Cắt gọn vào khoảng thẻ thời gian: lấy giữa "thẻ <bbs_start> cuối cùng" + "thẻ </bbs_end> đầu tiên" (giữ lại thẻ) ——
+ *     chuỗi suy nghĩ / thanh trạng thái có thể lẫn thẻ cùng tên, thẻ bắt đầu lấy lần cuối, thẻ kết thúc lấy lần đầu, đóng khung chính xác đoạn chính văn thực sự;
+ *     chỉ cắt khi thẻ tương ứng tồn tại, phía thiếu thẻ giữ nguyên (cả hai phía đều không có thì không cắt, bao phủ kịch bản "chat cũ không có thẻ").
+ *     Các thẻ chứa khác như `<content>` không tham gia phán đoán ranh giới, tránh việc thẻ thời gian nằm ngoài thẻ chứa bị cắt mất sớm.
+ *  ③ Chuẩn hóa khoảng trắng.
  *
- * 注:历史上这里之后还跟一道 stripHtml 做「删所有标签留内容」,反而把自定义标签删没、令整块清洗失效;
- * 现已废弃 stripHtml,改为只整块删、保留其余标签原文(主/副模型都能消化残留标签)。
+ * Lưu ý: Trong lịch sử sau bước này còn nối thêm một bước stripHtml làm việc "xóa mọi thẻ giữ nội dung", ngược lại làm mất thẻ tùy chỉnh, khiến việc làm sạch nguyên khối mất tác dụng;
+ * nay đã bỏ stripHtml, đổi sang chỉ xóa nguyên khối, giữ nguyên văn các thẻ còn lại (mô hình chính/phụ đều tiêu hóa được thẻ còn sót).
  */
-// 思维链块正则(配对块,含内部内容)。供 clampToTimeTags 与入库前预清洗共用,避免两处漂移。
+// Regex khối chuỗi suy nghĩ (khối có cặp, gồm nội dung bên trong). Dùng chung cho clampToTimeTags và tiền làm sạch trước khi đưa vào kho vector, tránh lệch nhau ở hai nơi.
 const RE_THINK_BLOCK = /<think(?:ing)?\b[\s\S]*?<\/think(?:ing)?>/gi;
 
 /**
- * 只剥思维链 <think>/<thinking> 块(含内部内容)。
- * 用于向量库**入库前**预清洗:思维链是确定性噪声(不依赖任何用户配置),
- * 入库时删掉既省空间又零风险;而自定义标签等「可变配置」的清洗仍留到召回时做(才能让改设置即时生效)。
+ * Chỉ bóc tách khối chuỗi suy nghĩ <think>/<thinking> (bao gồm nội dung bên trong).
+ * Dùng để tiền làm sạch **trước khi đưa vào kho vector**: chuỗi suy nghĩ là nhiễu tất định (không phụ thuộc cấu hình người dùng),
+ * xóa lúc đưa vào kho vừa tiết kiệm dung lượng vừa không có rủi ro; còn việc làm sạch "cấu hình biến đổi" như thẻ tùy chỉnh vẫn để đến lúc truy xuất mới làm (để sửa cài đặt có hiệu lực tức thì).
  */
 export function stripThinkBlocks(mes: string): string {
   return String(mes ?? '').replace(RE_THINK_BLOCK, '');
 }
 
-/** 末次匹配结束位置;找不到返回 -1。 */
+/** Vị trí kết thúc của lần khớp cuối cùng; không tìm thấy trả về -1. */
 function lastRegexEnd(s: string, re: RegExp): number {
   let last = -1;
   re.lastIndex = 0;
@@ -186,9 +186,9 @@ function lastRegexEnd(s: string, re: RegExp): number {
 }
 
 /**
- * 插件托管旁注块的安全形态:开/闭标签都独占一行。
- * 闭合标签配最近的独占行开标签,且块内容必须像本插件写出的旁注行。
- * 这样不会把模型在思维链/正文里写出的 `<bbs_vars>` 格式说明误当旁注开头。
+ * Hình thái an toàn của khối chú thích bên lề do plugin quản lý: thẻ mở / đóng đều đứng riêng một dòng.
+ * Thẻ đóng ghép với thẻ mở đứng riêng dòng gần nhất, và nội dung khối bắt buộc phải giống dòng chú thích do plugin này viết ra.
+ * Như vậy sẽ không nhận nhầm phần giải thích định dạng `<bbs_vars>` mà mô hình viết trong chuỗi suy nghĩ / chính văn thành đầu khối chú thích.
  */
 interface LineSpan {
   start: number;
@@ -227,7 +227,9 @@ function isManagedCloseLine(line: string, tag: string): boolean {
 function managedBlockLooksOwned(tag: string, inner: string): boolean {
   const lines = inner.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
   if (!lines.length) return false;
-  const re = tag === ITEMS_TAG ? /^(获得|消耗|失去)\s+/ : /^(设定|变更|新增|删除)\s+/;
+  const re = tag === ITEMS_TAG
+    ? /^(Nhận|Tiêu hao|Mất|\u83b7\u5f97|\u6d88\u8017|\u5931\u53bb)\s+/
+    : /^(Thiết lập|Thay đổi|Thêm mới|Xóa|\u8bbe\u5b9a|\u53d8\u66f4|\u65b0\u589e|\u5220\u9664)\s+/;
   return lines.every(line => re.test(line));
 }
 
@@ -255,7 +257,7 @@ function stripManagedLineBlocks(region: string, tag: string): string {
   return out;
 }
 
-/** 无时间标签旧消息兜底:只把末尾连续的插件旁注组视作托管块。 */
+/** Dự phòng cho tin nhắn cũ không có thẻ thời gian: chỉ coi nhóm chú thích plugin liên tiếp ở cuối là khối được quản lý. */
 function tailManagedGroupStart(s: string): number {
   const matches = [...managedBlocks(s, ITEMS_TAG), ...managedBlocks(s, VARS_TAG)]
     .sort((a, b) => a.start - b.start || a.end - b.end);
@@ -278,7 +280,7 @@ function managedRegionStart(s: string): number {
   return tailManagedGroupStart(s);
 }
 
-/** 只删除插件真正托管的尾部旁注块,不碰正文/思维链里的同名标签文字。 */
+/** Chỉ xóa khối chú thích ở đuôi thực sự do plugin quản lý, không đụng đến văn bản thẻ cùng tên trong chính văn / chuỗi suy nghĩ. */
 function stripManagedTag(mes: string, tag: string): string {
   const s = String(mes ?? '');
   const start = managedRegionStart(s);
@@ -309,24 +311,24 @@ function readManagedTagText(mes: string, tag: string): string | null {
 
 export function clampToTimeTags(mes: string): string {
   let s = String(mes ?? '')
-    .replace(RE_THINK_BLOCK, '') // 思维链
-    .replace(/<!--[\s\S]+?-->/g, '') // HTML 注释
-    .replace(/<horae[\s\S]*?>[\s\S]*?<\/horae[\s\S]*?>/gi, ''); // 旧 horae 格式
-  s = stripBaiBaiImageTags(s); // 柏宝绘标签(含跨行提示词);独占行时恢复插入前换行
-  s = stripCustomTags(s); // 用户自定义标签
-  s = stripManagedTags(s); // 仅清理插件托管的尾部旁注
+    .replace(RE_THINK_BLOCK, '') // Chuỗi suy nghĩ
+    .replace(/<!--[\s\S]+?-->/g, '') // Chú thích HTML
+    .replace(/<horae[\s\S]*?>[\s\S]*?<\/horae[\s\S]*?>/gi, ''); // Định dạng horae cũ
+  s = stripBaiBaiImageTags(s); // Thẻ Bách Bảo Hội (gồm prompt nhiều dòng); khi đứng riêng dòng thì khôi phục xuống dòng trước lúc chèn
+  s = stripCustomTags(s); // Thẻ tùy chỉnh của người dùng
+  s = stripManagedTags(s); // Chỉ dọn dẹp chú thích ở đuôi do plugin quản lý
 
-  // 最后一个 <bbs_start> 的位置:全局扫一遍取末次
+  // Vị trí <bbs_start> cuối cùng: quét toàn cục một lượt lấy lần cuối
   const startRe = new RegExp(`<${START_TAG}\\b`, 'gi');
   let lastStart = -1;
   for (let m = startRe.exec(s); m; m = startRe.exec(s)) lastStart = m.index;
   if (lastStart >= 0) s = s.slice(lastStart);
-  // 第一个 </bbs_end>(在已裁过前缀的串里找)
+  // </bbs_end> đầu tiên (tìm trong chuỗi đã cắt tiền tố)
   const endMatch = s.match(new RegExp(`</${END_TAG}>`, 'i'));
   if (endMatch && endMatch.index !== undefined) {
     s = s.slice(0, endMatch.index + endMatch[0].length);
   }
-  // 规范空白(原由 stripHtml 负责,现内置)
+  // Chuẩn hóa khoảng trắng (vốn do stripHtml phụ trách, nay tích hợp sẵn)
   return s
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
@@ -334,45 +336,45 @@ export function clampToTimeTags(mes: string): string {
 }
 
 /**
- * 统一正文清洗入口(替代旧的 stripHtml 链路):裁剪正文段 → 把时间标签转可读文本。
- * 摘要生成、世界书扫描、向量召回注入全部走它,保证口径一致;不再「裸删标签」,残留标签原样保留。
+ * Cổng làm sạch chính văn thống nhất (thay thế chuỗi stripHtml cũ): cắt gọn đoạn chính văn → chuyển thẻ thời gian thành văn bản dễ đọc.
+ * Tạo tóm tắt, quét sách thế giới, tiêm truy xuất vector đều đi qua hàm này, đảm bảo thống nhất tiêu chuẩn; không còn "xóa trần thẻ", thẻ còn sót giữ nguyên văn.
  */
 export function cleanBody(mes: string): string {
   return inlineTimeTags(clampToTimeTags(mes));
 }
 
 /**
- * 把正文里的时间标签转成可读内联文本(cleanBody 的最后一步)。
- * 时间标签 <bbs_start>…</bbs_start> 不在「整块删除」之列,但其尖括号形态对模型不友好,
- * 故转成「(起始时间:X)/(结束时间:X)」纯文本,保留时间信息又去掉标签外形。
+ * Chuyển thẻ thời gian trong chính văn thành văn bản nội tuyến dễ đọc (bước cuối cùng của cleanBody).
+ * Thẻ thời gian <bbs_start>…</bbs_start> không nằm trong diện "xóa nguyên khối", nhưng hình thái ngoặc nhọn của nó không thân thiện với mô hình,
+ * nên chuyển thành văn bản thuần "(Thời gian bắt đầu:X)/(Thời gian kết thúc:X)", giữ lại thông tin thời gian mà bỏ đi vỏ thẻ.
  */
 export function inlineTimeTags(mes: string): string {
   return String(mes ?? '')
-    .replace(RE_START, (_, t) => `(起始时间:${String(t).trim()})`)
-    .replace(RE_END, (_, t) => `(结束时间:${String(t).trim()})`);
+    .replace(RE_START, (_, t) => `(Thời gian bắt đầu:${String(t).trim()})`)
+    .replace(RE_END, (_, t) => `(Thời gian kết thúc:${String(t).trim()})`);
 }
 
-// 时间段压缩用的「分隔边界」:回退公共前缀到这些字符之后,避免切到 token 中间。
-// 只含「日期段/时刻段」之间的分隔符(空格 / － 与中文日期单位 年月日),
-// 故意不含 : 与 时/点 —— 那会把 06:45 的时分也切碎(切成 55),只想压掉重复的日期前缀。
-const RANGE_BOUNDARY = /[\s/／\-－年月日]/;
+// "Ranh giới phân cách" dùng để nén khoảng thời gian: lùi tiền tố chung về sau các ký tự này, tránh cắt vào giữa token.
+// Chỉ gồm dấu phân cách giữa "đoạn ngày / đoạn giờ" (khoảng trắng / - và đơn vị ngày tháng năm),
+// cố ý không gồm : và giờ/khắc —— vì sẽ cắt vụn cả giờ phút như 06:45 (cắt thành 55), ở đây chỉ muốn nén bỏ tiền tố ngày tháng bị lặp.
+const RANGE_BOUNDARY = /[\s/／\-－\u5e74\u6708\u65e5]/;
 
 /**
- * 压缩「起 - 止」时间段:删掉结束时间里与开始时间重复的前缀(多为日期),
- * 让 "2023/9/10 06:45 - 2023/9/10 06:55" 显示成 "2023/9/10 06:45 - 06:55"。
+ * Nén khoảng thời gian "bắt đầu - kết thúc": xóa bỏ tiền tố bị lặp lại với thời gian bắt đầu ở trong thời gian kết thúc (đa phần là ngày tháng),
+ * giúp "2023/9/10 06:45 - 2023/9/10 06:55" hiển thị thành "2023/9/10 06:45 - 06:55".
  *
- * 通用做法(不解析具体日期格式):取首尾最长公共前缀,回退到最近的分隔边界(含),
- * 把这段前缀从结束时间里删掉。标准格式与古风("庆历四年春 辰时")都适用;
- * 两串前缀不重合时压不动,原样保留全串——零误伤,无需判断「能否解析」。
+ * Cách làm tổng quát (không phân tích định dạng ngày cụ thể): lấy tiền tố chung dài nhất giữa đầu và cuối, lùi về ranh giới phân cách gần nhất (bao gồm cả ranh giới),
+ * xóa đoạn tiền tố này khỏi thời gian kết thúc. Định dạng chuẩn lẫn cổ phong ("Khánh Lịch năm thứ tư mùa xuân giờ Thìn") đều áp dụng được;
+ * khi tiền tố hai chuỗi không trùng nhau thì không nén được, giữ nguyên toàn chuỗi —— không làm hỏng nhầm, không cần phán đoán "có phân tích được hay không".
  */
 function compactPair(a: string, b: string): string {
   if (!a || !b) return a || b || '';
   if (a === b) return a;
-  if (a.startsWith(b)) return a; // 结束时间是开始时间的前缀(无新信息)→ 只显示开始
+  if (a.startsWith(b)) return a; // Thời gian kết thúc là tiền tố của thời gian bắt đầu (không có thông tin mới) → chỉ hiển thị bắt đầu
   let n = 0;
   const max = Math.min(a.length, b.length);
   while (n < max && a[n] === b[n]) n++;
-  // 回退到公共前缀内最后一个边界字符之后
+  // Lùi về sau ký tự ranh giới cuối cùng bên trong tiền tố chung
   let cut = 0;
   for (let i = 0; i < n; i++) if (RANGE_BOUNDARY.test(a[i])) cut = i + 1;
   const tail = b.slice(cut).trim();
@@ -380,8 +382,8 @@ function compactPair(a: string, b: string): string {
 }
 
 /**
- * 把起止时间格式化成展示用的时间段串:
- *  - 都有且不同 → 压缩后的 "start - end";都有且相同 → "start";只有一个 → 那一个;都无 → ''。
+ * Định dạng thời gian bắt đầu và kết thúc thành chuỗi khoảng thời gian để hiển thị:
+ *  - Có cả hai và khác nhau → "start - end" đã nén; có cả hai và giống nhau → "start"; chỉ có một → cái đó; không có cả hai → ''.
  */
 export function formatRange(start?: string, end?: string): string {
   const a = start?.trim();
@@ -391,9 +393,9 @@ export function formatRange(start?: string, end?: string): string {
 }
 
 /**
- * 把已存为完整串的展示标签("起 - 止")再压缩一次,供列表显示用。
- * 用于历史数据:旧摘要的 timeLabel 已固化成完整串,展示时即时压缩,无需迁移。
- * 对已压缩的标签幂等(再切再压结果不变)。无 " - " 分隔的单点串原样返回。
+ * Nén lại một lần nữa nhãn hiển thị đã lưu thành chuỗi đầy đủ ("bắt đầu - kết thúc"), dùng cho hiển thị danh sách.
+ * Dùng cho dữ liệu lịch sử: timeLabel của tóm tắt cũ đã cố định thành chuỗi đầy đủ, khi hiển thị thì nén tức thì, không cần di chuyển dữ liệu.
+ * Bất biến (idempotent) với nhãn đã nén (cắt rồi nén lại kết quả không đổi). Chuỗi đơn điểm không có phân cách " - " trả về nguyên bản.
  */
 export function compactTimeLabel(label: string): string {
   const s = String(label ?? '').trim();
@@ -403,8 +405,8 @@ export function compactTimeLabel(label: string): string {
 }
 
 /**
- * 把旧数据里固化成单字段的 timeLabel 拆回 {start,end},供迁移到 timeStart/timeEnd。
- * 无 " - " 分隔的单点串 → start=end=该串。空串 → 两者皆 undefined。
+ * Tách timeLabel đã cố định thành một trường đơn trong dữ liệu cũ về lại {start,end}, phục vụ di chuyển sang timeStart/timeEnd.
+ * Chuỗi đơn điểm không có phân cách " - " → start=end=chuỗi đó. Chuỗi rỗng → cả hai đều undefined.
  */
 export function splitTimeLabel(label?: string): { start?: string; end?: string } {
   const s = String(label ?? '').trim();
@@ -414,24 +416,24 @@ export function splitTimeLabel(label?: string): { start?: string; end?: string }
   return { start: s.slice(0, i).trim() || undefined, end: s.slice(i + 3).trim() || undefined };
 }
 
-// 定位「最后一个 </bbs_end>」用(全局扫,取末次):正文末尾的时间标签才是真正的剧情结束,
-// 思维链/状态栏可能在前面混入同名标签,故不能用第一个(见 clampToTimeTags 同款考量)。
+// Dùng để định vị "</bbs_end> cuối cùng" (quét toàn cục, lấy lần cuối): thẻ thời gian ở cuối chính văn mới là kết thúc cốt truyện thực sự,
+// chuỗi suy nghĩ / thanh trạng thái có thể trộn thẻ cùng tên ở phía trước, nên không thể dùng cái đầu tiên (xem cân nhắc tương tự ở clampToTimeTags).
 const RE_END_CLOSE_G = new RegExp(`</${END_TAG}>`, 'gi');
 
 /**
- * 把物品变动旁注写进正文:先删掉旧的 <bbs_items> 块(幂等,重摘/重生成不叠加),
- * 再把新块插到**最后一个** </bbs_end> 之后(无 end 标签则追加到末尾)。
- * inline 为空 → 只清除旧块、不写新块(本楼无物品变动时)。
- * 返回处理后的正文(调用方负责写回 mes)。
+ * Ghi chú thích biến động vật phẩm vào chính văn: trước tiên xóa khối <bbs_items> cũ (bất biến, tóm tắt lại / tạo lại không bị chồng lớp),
+ * sau đó chèn khối mới vào sau thẻ </bbs_end> **cuối cùng** (không có thẻ end thì nối vào cuối).
+ * inline trống → chỉ xóa khối cũ, không ghi khối mới (khi tầng này không có biến động vật phẩm).
+ * Trả về chính văn sau khi xử lý (bên gọi chịu trách nhiệm ghi trả lại vào mes).
  */
 export function writeItemLogTag(mes: string, inline: string): string {
-  // 仅摘要模式不碰正文:既不新增旁注,也不主动清理已有楼层中的旧旁注。
+  // Chế độ chỉ tóm tắt không đụng vào chính văn: vừa không thêm chú thích mới, vừa không chủ động dọn chú thích cũ trong các tầng đã có.
   if (apiSettings.summaryOnlyMode) return mes;
 
   let s = stripManagedTag(mes, ITEMS_TAG);
   const text = inline.trim();
   if (!text) return s;
-  // 标签与内容各自独占行,块前留空行,排版清爽且不与时间标签粘连
+  // Thẻ và nội dung mỗi thứ đứng riêng một dòng, trước khối để dòng trống, trình bày gọn gàng và không dính liền với thẻ thời gian
   const block = `<${ITEMS_TAG}>\n${text}\n</${ITEMS_TAG}>`;
   const lastEnd = lastRegexEnd(s, RE_END_CLOSE_G);
   if (lastEnd >= 0) {
@@ -441,73 +443,73 @@ export function writeItemLogTag(mes: string, inline: string): string {
 }
 
 /**
- * 读取正文里的 <bbs_items> 块内文本(去首尾空白)。
- * 无块返回 null(区别于「有块但空」——后者返回 ''),供反解析判断用户是否删了整块。
+ * Đọc văn bản bên trong khối <bbs_items> của chính văn (bỏ khoảng trắng đầu cuối).
+ * Không có khối trả về null (phân biệt với "có khối nhưng trống" —— trường hợp sau trả về ''), để khi phân tích ngược biết được người dùng có xóa cả khối hay không.
  */
 export function readItemsTagText(mes: string): string | null {
   return readManagedTagText(mes, ITEMS_TAG);
 }
 
 /**
- * 把变量变动旁注写进正文:先删旧 <bbs_vars> 块(幂等),再插到**物品块之后**(无物品块则最后一个 </bbs_end> 之后,
- * 再无则追加末尾)。与 writeItemLogTag 同款,只是插入锚点优先物品块,让 items/vars 两块相邻、排版稳定。
- * inline 为空 → 只清旧块不写新块。返回处理后的正文。
+ * Ghi chú thích biến động biến số vào chính văn: trước tiên xóa khối <bbs_vars> cũ (bất biến), sau đó chèn vào **sau khối vật phẩm** (không có khối vật phẩm thì sau </bbs_end> cuối cùng,
+ * vẫn không có nữa thì nối vào cuối). Cùng kiểu với writeItemLogTag, chỉ khác là mốc chèn ưu tiên khối vật phẩm, để hai khối items/vars nằm cạnh nhau, bố cục ổn định.
+ * inline trống → chỉ xóa khối cũ không ghi khối mới. Trả về chính văn sau khi xử lý.
  */
 export function writeVarLogTag(mes: string, inline: string): string {
-  // 与物品旁注同口径,所有自动摘要、重摘和楼内编辑路径统一停止写回。
+  // Cùng tiêu chuẩn với chú thích vật phẩm, mọi đường dẫn tự động tóm tắt, tóm tắt lại và chỉnh sửa trong tầng đều thống nhất ngừng ghi trả lại.
   if (apiSettings.summaryOnlyMode) return mes;
 
   const s = stripManagedTag(mes, VARS_TAG);
   const text = inline.trim();
   if (!text) return s;
   const block = `<${VARS_TAG}>\n${text}\n</${VARS_TAG}>`;
-  // 锚点优先:最后一个 </bbs_items> 结束位置;否则最后一个 </bbs_end>;都无则追加末尾
+  // Ưu tiên mốc neo: vị trí kết thúc </bbs_items> cuối cùng; nếu không thì </bbs_end> cuối cùng; cả hai đều không có thì nối vào cuối
   const anchor = lastManagedBlockEnd(s, ITEMS_TAG);
   const pos = anchor >= 0 ? anchor : lastRegexEnd(s, RE_END_CLOSE_G);
   if (pos >= 0) return `${s.slice(0, pos)}\n${block}${s.slice(pos)}`;
   return `${s.trimEnd()}\n${block}`;
 }
 
-/** 读取正文里的 <bbs_vars> 块内文本(去首尾空白);无块返回 null(供反解析判断用户是否删了整块)。 */
+/** Đọc văn bản bên trong khối <bbs_vars> của chính văn (bỏ khoảng trắng đầu cuối); không có khối trả về null (phục vụ phân tích ngược phán đoán xem người dùng có xóa cả khối hay không). */
 export function readVarsTagText(mes: string): string | null {
   return readManagedTagText(mes, VARS_TAG);
 }
 
-/* ============ 自动注册「仅显示层隐藏」正则到 ST ============ */
+/* ============ Tự động đăng ký regex "chỉ ẩn ở tầng hiển thị" vào ST ============ */
 
-// ST 全局正则脚本存在 extension_settings.regex(数组)。每类标签使用独立固定 id,做到幂等。
-// 时间脚本保留历史 id 'bbs-time-tag-hide':升级时原来的合并规则会原位收窄为时间规则,
-// 不会留下旧规则再额外创建一条重复规则。
+// Kịch bản regex toàn cục của ST lưu tại extension_settings.regex (mảng). Mỗi loại thẻ dùng id cố định độc lập, đảm bảo tính bất biến (idempotent).
+// Kịch bản thời gian giữ lại id lịch sử 'bbs-time-tag-hide': khi nâng cấp, quy tắc gộp ban đầu sẽ thu hẹp tại chỗ thành quy tắc thời gian,
+// không để sót lại quy tắc cũ rồi tạo thêm một quy tắc trùng lặp.
 const HIDE_TIME_SCRIPT_ID = 'bbs-time-tag-hide';
 const HIDE_ITEMS_SCRIPT_ID = 'bbs-items-tag-hide';
 const HIDE_VARS_SCRIPT_ID = 'bbs-vars-tag-hide';
-// regex_placement(见 ST regex/engine.js):0=MD_DISPLAY 1=USER_INPUT 2=AI_OUTPUT
+// regex_placement (xem ST regex/engine.js): 0=MD_DISPLAY 1=USER_INPUT 2=AI_OUTPUT
 const PLACEMENT_MD_DISPLAY = 0;
 const PLACEMENT_USER_INPUT = 1;
 const PLACEMENT_AI_OUTPUT = 2;
 
-/** 时间标签只允许在同一行内闭合;两个标签写成完整分支,不会交叉配对。 */
+/** Thẻ thời gian chỉ cho phép đóng trong cùng một dòng; hai thẻ viết thành nhánh hoàn chỉnh, không ghép chéo nhau. */
 function hideTimeFindRegex(): string {
   const start = `<${START_TAG}\\b[^>\\r\\n]*>[^<\\r\\n]*<\\/${START_TAG}>`;
   const end = `<${END_TAG}\\b[^>\\r\\n]*>[^<\\r\\n]*<\\/${END_TAG}>`;
   return `/${start}|${end}/gi`;
 }
 
-/** 物品旁注允许跨行,但只隐藏「独占行 + 插件物品动词格式」的完整块。 */
+/** Chú thích vật phẩm cho phép qua nhiều dòng, nhưng chỉ ẩn khối hoàn chỉnh "đứng riêng dòng + định dạng động từ vật phẩm của plugin". */
 function hideItemsFindRegex(): string {
-  const items = `(^|\\r?\\n)[ \\t]*<${ITEMS_TAG}\\b[^>]*>[ \\t]*\\r?\\n(?:[ \\t]*(?:获得|消耗|失去)\\s+[^\\r\\n]*(?:\\r?\\n))+[ \\t]*<\\/${ITEMS_TAG}>[ \\t]*(?=\\r?\\n|$)`;
+  const items = `(^|\\r?\\n)[ \\t]*<${ITEMS_TAG}\\b[^>]*>[ \\t]*\\r?\\n(?:[ \\t]*(?:Nhận|Tiêu hao|Mất|\\u83b7\\u5f97|\\u6d88\\u8017|\\u5931\\u53bb)\\s+[^\\r\\n]*(?:\\r?\\n))+[ \\t]*<\\/${ITEMS_TAG}>[ \\t]*(?=\\r?\\n|$)`;
   return `/${items}/gi`;
 }
 
-/** 变量旁注允许跨行,但只隐藏「独占行 + 插件变量动词格式」的完整块。 */
+/** Chú thích biến số cho phép qua nhiều dòng, nhưng chỉ ẩn khối hoàn chỉnh "đứng riêng dòng + định dạng động từ biến số của plugin". */
 function hideVarsFindRegex(): string {
-  const vars = `(^|\\r?\\n)[ \\t]*<${VARS_TAG}\\b[^>]*>[ \\t]*\\r?\\n(?:[ \\t]*(?:设定|变更|新增|删除)\\s+[^\\r\\n]*(?:\\r?\\n))+[ \\t]*<\\/${VARS_TAG}>[ \\t]*(?=\\r?\\n|$)`;
+  const vars = `(^|\\r?\\n)[ \\t]*<${VARS_TAG}\\b[^>]*>[ \\t]*\\r?\\n(?:[ \\t]*(?:Thiết lập|Thay đổi|Thêm mới|Xóa|\\u8bbe\\u5b9a|\\u53d8\\u66f4|\\u65b0\\u589e|\\u5220\\u9664)\\s+[^\\r\\n]*(?:\\r?\\n))+[ \\t]*<\\/${VARS_TAG}>[ \\t]*(?=\\r?\\n|$)`;
   return `/${vars}/gi`;
 }
 
 /**
- * 确保 ST 里存在三条仅影响显示的隐藏正则。
- * 幂等:逐条按固定 id 查,缺则补、已存在则更新内容(防止旧版本格式残留)。用户手动删了下次启动会再加回。
+ * Đảm bảo trong ST tồn tại ba regex ẩn chỉ ảnh hưởng đến việc hiển thị.
+ * Bất biến (idempotent): tra cứu từng mục theo id cố định, thiếu thì bù, đã có thì cập nhật nội dung (tránh sót định dạng bản cũ). Người dùng xóa thủ công thì lần khởi động sau sẽ tự thêm lại.
  */
 export function ensureHideRegexRegistered(): void {
   const ctx = getContext();
@@ -519,10 +521,10 @@ export function ensureHideRegexRegistered(): void {
   const common = {
     replaceString: '',
     trimStrings: [] as string[],
-    // 只作用于「显示」:MD_DISPLAY;同时清掉用户输入/AI 输出显示里的残留标签,但不进提示词。
+    // Chỉ tác dụng lên "hiển thị": MD_DISPLAY; đồng thời dọn sạch thẻ sót lại trong hiển thị đầu vào người dùng / đầu ra AI, nhưng không đi vào prompt.
     placement: [PLACEMENT_MD_DISPLAY, PLACEMENT_USER_INPUT, PLACEMENT_AI_OUTPUT],
     disabled: false,
-    markdownOnly: true, // = 仅格式化显示,不改写发给模型的提示词(关键:标签必须留在提示词里)
+    markdownOnly: true, // = Chỉ định dạng hiển thị, không viết lại prompt gửi cho mô hình (then chốt: thẻ bắt buộc phải nằm lại trong prompt)
     promptOnly: false,
     runOnEdit: true,
     substituteRegex: 0,
@@ -534,19 +536,19 @@ export function ensureHideRegexRegistered(): void {
     {
       ...common,
       id: HIDE_TIME_SCRIPT_ID,
-      scriptName: '柏宝书 · 隐藏时间标签',
+      scriptName: 'Bách Bảo Thư · Ẩn thẻ thời gian',
       findRegex: hideTimeFindRegex(),
     },
     {
       ...common,
       id: HIDE_ITEMS_SCRIPT_ID,
-      scriptName: '柏宝书 · 隐藏物品标签',
+      scriptName: 'Bách Bảo Thư · Ẩn thẻ vật phẩm',
       findRegex: hideItemsFindRegex(),
     },
     {
       ...common,
       id: HIDE_VARS_SCRIPT_ID,
-      scriptName: '柏宝书 · 隐藏变量标签',
+      scriptName: 'Bách Bảo Thư · Ẩn thẻ biến số',
       findRegex: hideVarsFindRegex(),
     },
   ];
@@ -559,7 +561,7 @@ export function ensureHideRegexRegistered(): void {
   ctx?.saveSettingsDebounced?.();
 }
 
-/** 移除我们注册的全部隐藏正则(关闭时间标签功能时调用)。 */
+/** Gỡ bỏ toàn bộ regex ẩn mà chúng ta đã đăng ký (gọi khi tắt tính năng thẻ thời gian). */
 export function removeHideRegex(): void {
   const ctx = getContext();
   const es = ctx?.extensionSettings as Record<string, unknown> | undefined;
@@ -574,9 +576,9 @@ export function removeHideRegex(): void {
 }
 
 /**
- * 同步时间标签功能的副作用(开关变化或启动时调用):
- *  - 开:注册隐藏正则;关:移除。提示词注入由 inject.ts 的 refreshInjection 负责。
- * 跟随「自动摘要」开关(时间标签不再独立)。
+ * Đồng bộ tác dụng phụ của tính năng thẻ thời gian (gọi khi công tắc thay đổi hoặc lúc khởi động):
+ *  - Bật: đăng ký regex ẩn; Tắt: gỡ bỏ. Việc tiêm prompt do refreshInjection của inject.ts phụ trách.
+ * Đi theo công tắc "Tự động tóm tắt" (thẻ thời gian không còn tách riêng).
  */
 export function syncTimeTagRegex(): void {
   if (apiSettings.autoSummaryEnabled) ensureHideRegexRegistered();

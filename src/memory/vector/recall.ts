@@ -1,16 +1,16 @@
 /**
- * 阻塞式向量召回:生成主回复前,按用户输入 + 近期上下文检索相关旧记忆,注入主对话。
+ * Truy xuất vector kiểu chặn (blocking): trước khi sinh câu trả lời chính, tìm kiếm các ký ức cũ liên quan theo đầu vào người dùng + ngữ cảnh gần đây, tiêm vào đối thoại chính.
  *
- * 管线(全程阻塞,对齐既定方案,不做预取/异步):
- *  1. 查询重写(开关开 + 配了 Query 重写模型时):小模型把当前剧情重写成 INTENT + 多条检索 Q;
- *     失败/未启用则降级为「最近上下文当单条 query」。
- *  2. 各 query 各自 embed → vec/search(scopes = 当前 chat + 各 bundle,后端多路 RRF 融合),
- *     纯按 embedding 得分取前 rerankCandidates 条(不套阈值)。
- *  3. rerank 候选(用 INTENT 作 query;渠道未配则降级:跳过 rerank,用 embedding 序)。
- *  4. 分档:全文档(rerank≥阈值,取前 fullTextCount,发原文 mes_full)/ 摘要档(embedding≥阈值,发 document)。
- *  5. 按 leaf_id 去重 + 排除当前窗口内已全文的叶子 → 拼注入文本 → setExtensionPrompt。
+ * Đường ống (chặn toàn trình, khớp với phương án đã định, không tìm nạp trước / bất đồng bộ):
+ *  1. Viết lại truy vấn (khi bật công tắc + đã cấu hình mô hình viết lại Query): mô hình nhỏ viết lại cốt truyện hiện tại thành INTENT + nhiều Q tìm kiếm;
+ *     thất bại / chưa bật sẽ kết thúc lần truy xuất này.
+ *  2. Mỗi query tự embed → vec/search (scopes = chat hiện tại + các bundle, backend dung hợp đa luồng),
+ *     thuần túy lấy rerankCandidates mục đầu tiên theo điểm embedding (không áp ngưỡng).
+ *  3. rerank ứng viên (dùng INTENT làm query; kênh chưa cấu hình thì hạ cấp: bỏ qua rerank, dùng thứ tự embedding).
+ *  4. Phân mức: mức toàn văn (rerank≥ngưỡng, lấy fullTextCount mục đầu, gửi nguyên văn mes_full) / mức tóm tắt (embedding≥ngưỡng, gửi document).
+ *  5. Khử trùng theo leaf_id + loại trừ các lá đã gửi toàn văn trong cửa sổ hiện tại → ghép văn bản tiêm → setExtensionPrompt.
  *
- * 失败/未配置全程静默降级(清空注入槽),向量是增强项,绝不阻断生成。
+ * Thất bại / chưa cấu hình toàn trình âm thầm hạ cấp (xóa trống khe tiêm), vector là hạng mục tăng cường, tuyệt đối không chặn việc tạo nội dung.
  */
 
 import { getContext, type STMessage } from '@/st/context';
@@ -42,30 +42,30 @@ import {
   type RecallDebugRerankHit,
 } from './debug';
 
-// 注入槽位:贴近历史摘要层(顶部附近),与 inject.ts 的历史摘要同一区域但独立 key。
+// Khe tiêm: bám sát tầng tóm tắt lịch sử (gần đỉnh), cùng khu vực với tóm tắt lịch sử của inject.ts nhưng có key độc lập.
 const RECALL_INJECT_KEY = 'baibai_book_vector_recall';
 const IN_CHAT = 1;
 const ROLE_SYSTEM = 0;
 
-/** 当前召回注入深度;运行时再归一化,兼容用户正在编辑输入框时产生的临时非法值。 */
+/** Độ sâu tiêm truy xuất hiện tại; chuẩn hóa lại lúc chạy, tương thích với giá trị tạm thời không hợp lệ phát sinh khi người dùng đang gõ trong ô nhập. */
 function recallInjectionDepth(): number {
   return normalizeRecallInjectionDepth(apiSettings.vector.recall.injectionDepth);
 }
 
 /**
- * 命中来源标记:
- *  - scope 等于当前聊天 → 本聊天命中,显示楼层号「#5」(msgIndex 即当前楼层号);
- *  - 否则(bundle:<hash>)→ 来自「带数据建新对话」冻结的旧聊天快照,显示「旧档」。
- * 旧聊天的真实名字/楼层号未追踪(bundle 只存 hash),故统一标「旧档」让用户知道非本聊天。
+ * Nhãn nguồn trúng kết quả:
+ *  - scope bằng cuộc trò chuyện hiện tại → trúng tại cuộc trò chuyện này, hiển thị số tầng "#5" (msgIndex chính là số tầng hiện tại);
+ *  - Ngược lại (bundle:<hash>) → đến từ ảnh chụp cuộc trò chuyện cũ đóng băng lúc "Tạo cuộc trò chuyện mới kèm dữ liệu", hiển thị "Bản lưu cũ".
+ * Tên thật / số tầng của cuộc trò chuyện cũ không được theo dõi (bundle chỉ lưu mã băm), nên thống nhất gắn nhãn "Bản lưu cũ" để người dùng biết không phải cuộc trò chuyện này.
  */
 function sourceLabel(hit: VecHit, selfScope: string | null): string {
   if (selfScope && hit.scope === selfScope) {
-    return typeof hit.msgIndex === 'number' && hit.msgIndex >= 0 ? `#${hit.msgIndex}` : '本聊天';
+    return typeof hit.msgIndex === 'number' && hit.msgIndex >= 0 ? `#${hit.msgIndex}` : 'Trò chuyện này';
   }
-  return '旧档';
+  return 'Bản lưu cũ';
 }
 
-/** 当前保留窗口内、已发全文的叶子 id(召回要排除它们,避免与全文重复)。 */
+/** Các id lá đã gửi toàn văn bên trong cửa sổ giữ lại hiện tại (truy xuất cần loại trừ chúng, tránh lặp lại với toàn văn). */
 function windowLeafIds(chat: STMessage[]): string[] {
   const keepStart = resolveKeepStart(chat);
   const ids: string[] = [];
@@ -76,7 +76,7 @@ function windowLeafIds(chat: STMessage[]): string[] {
   return ids;
 }
 
-/** 当前聊天 AI 楼数(与 keepRecent/minAiFloors 同口径:只数 AI 消息)。 */
+/** Số lượng tầng AI của cuộc trò chuyện hiện tại (cùng tiêu chuẩn với keepRecent/minAiFloors: chỉ đếm tin nhắn AI). */
 function aiFloorCount(chat: STMessage[]): number {
   let n = 0;
   for (const m of chat) if (isAiFloor(m)) n++;
@@ -84,22 +84,22 @@ function aiFloorCount(chat: STMessage[]): number {
 }
 
 /**
- * 本回合是否值得跑召回。带数据建新对话的旧档(bundle)始终值得召回——里面是当前聊天没有的旧记忆,
- * 不受任何阈值限制,直接放行。无 bundle 时才看本聊天是否有「窗口外」可召的旧楼:
- *  - resolveKeepStart===0:没有任何 AI 楼被推出滑动窗口,全在窗口内全文发送,
- *    召回的旧楼都会被 windowLeafIds 排除掉,纯属浪费(重写+embed+search+rerank 的额度与延迟)→ 跳过。
- *  - AI 楼数 < minAiFloors(用户设的起召门槛):早期剧情旧记忆少,用户嫌没必要 → 跳过。
- * 任一跳过条件命中即返回 false;否则 true。
+ * Lượt này có đáng chạy truy xuất hay không. Bản lưu cũ (bundle) của việc tạo cuộc trò chuyện mới kèm dữ liệu luôn đáng truy xuất —— bên trong là ký ức cũ mà cuộc trò chuyện hiện tại không có,
+ * không chịu bất kỳ giới hạn ngưỡng nào, cho qua thẳng. Khi không có bundle mới xét xem cuộc trò chuyện này có tầng cũ "ngoài cửa sổ" để truy xuất hay không:
+ *  - resolveKeepStart===0: chưa có bất kỳ tầng AI nào bị đẩy ra khỏi cửa sổ trượt, tất cả đều gửi toàn văn trong cửa sổ,
+ *    các tầng cũ truy xuất được đều sẽ bị windowLeafIds loại trừ hết, thuần túy gây lãng phí (hạn mức và độ trễ của viết lại+embed+search+rerank) → bỏ qua.
+ *  - Số tầng AI < minAiFloors (ngưỡng bắt đầu truy xuất do người dùng đặt): cốt truyện giai đoạn đầu có ít ký ức cũ, người dùng thấy chưa cần thiết → bỏ qua.
+ * Trúng bất kỳ điều kiện bỏ qua nào là trả về false ngay; ngược lại trả về true.
  */
 function recallWorthRunning(chat: STMessage[]): boolean {
-  if (currentBundleHashes().length > 0) return true; // 旧档无条件召回
-  if (resolveKeepStart(chat) === 0) return false; // 全在窗口内,无窗口外旧楼可召
+  if (currentBundleHashes().length > 0) return true; // Bản lưu cũ truy xuất vô điều kiện
+  if (resolveKeepStart(chat) === 0) return false; // Tất cả đều nằm trong cửa sổ, không có tầng cũ ngoài cửa sổ để truy xuất
   const min = Math.max(0, apiSettings.vector.recall.minAiFloors);
-  if (min > 0 && aiFloorCount(chat) < min) return false; // 未达用户起召门槛
+  if (min > 0 && aiFloorCount(chat) < min) return false; // Chưa đạt ngưỡng bắt đầu truy xuất của người dùng
   return true;
 }
 
-/** 轻量稳定 hash(FNV-1a,16 进制),与 index.ts 同口径。用于缓存 key 的内容指纹。 */
+/** Mã băm ổn định gọn nhẹ (FNV-1a, hệ thập lục phân), cùng tiêu chuẩn với index.ts. Dùng làm dấu vân tay nội dung của key bộ nhớ đệm. */
 function fnv1a(text: string): string {
   let h = 0x811c9dc5;
   for (let i = 0; i < text.length; i++) {
@@ -110,14 +110,14 @@ function fnv1a(text: string): string {
 }
 
 /**
- * 召回结果缓存:重新生成 / 翻页(swipe)时召回输入一字不变,直接复用上次结果,
- * 省掉重写+embed+search+rerank 的额度与时间。只存「最近一次」一条,key 不匹配即覆盖。
+ * Bộ nhớ đệm kết quả truy xuất: khi tạo lại / lật trang (swipe) đầu vào truy xuất không đổi một chữ, trực tiếp tái sử dụng kết quả lần trước,
+ * tiết kiệm hạn mức và thời gian của viết lại+embed+search+rerank. Chỉ lưu một mục "lần gần nhất", key không khớp là ghi đè ngay.
  *
- * key = chatId | 最新user楼层号 | hash(最新user文本) | hash(上一条AI文本) | 召回参数指纹
- *  - 带 user 文本 hash:编辑最新输入后重生成,楼层号没变但内容变了,靠它失效(否则错误复用)。
- *  - 带 AI 文本 hash:编辑上一条 AI 楼后重生成,靠它失效。
- *  - 带召回参数指纹:rerank/embedding 阈值、条数等任一改动则失效;只改别的设置(渠道/开关)不失效。
- *  - 带 chatId:换聊天后楼层号/哈希偶然相同也不跨聊天误命中。
+ * key = chatId | số tầng user mới nhất | hash(văn bản user mới nhất) | hash(văn bản AI ngay trước) | dấu vân tay tham số truy xuất
+ *  - Kèm hash văn bản user: sau khi chỉnh sửa đầu vào mới nhất rồi tạo lại, số tầng không đổi nhưng nội dung đã đổi, dựa vào nó để vô hiệu hóa (nếu không sẽ tái sử dụng sai).
+ *  - Kèm hash văn bản AI: sau khi chỉnh sửa tầng AI ngay trước rồi tạo lại, dựa vào nó để vô hiệu hóa.
+ *  - Kèm dấu vân tay tham số truy xuất: bất kỳ thay đổi nào về ngưỡng rerank/embedding, số lượng mục v.v. đều làm mất hiệu lực; chỉ sửa cài đặt khác (kênh/công tắc) thì không mất hiệu lực.
+ *  - Kèm chatId: sau khi đổi cuộc trò chuyện dù số tầng / mã băm tình cờ giống nhau cũng không trúng nhầm xuyên cuộc trò chuyện.
  */
 interface RecallCache {
   key: string;
@@ -125,10 +125,10 @@ interface RecallCache {
   debug: RecallDebug;
 }
 
-// 暂存到 localStorage:切后台被浏览器丢弃、刷新、开新标签页后召回缓存仍在,免得白白重召回。
-// 跨天/跨标签的残留无副作用:key 已含 chatId+楼层+内容哈希+参数指纹,对不上只会重算,绝不误命中。
-// (不违反「设置别用 localStorage」那条——那是设置要跨设备同步必走服务器;召回缓存是本机临时结果,无需同步。)
-// 失败全静默(隐私模式/配额满):退化为无缓存,绝不影响召回主流程。
+// Lưu tạm vào localStorage: sau khi chuyển sang chạy nền bị trình duyệt hủy, làm mới trang, mở tab mới thì bộ nhớ đệm truy xuất vẫn còn, đỡ phải truy xuất lại vô ích.
+// Phần còn sót qua ngày / qua tab không có tác dụng phụ: key đã chứa chatId+tầng lầu+mã băm nội dung+dấu vân tay tham số, không khớp chỉ tính lại chứ tuyệt đối không trúng nhầm.
+// (Không vi phạm nguyên tắc "cài đặt đừng dùng localStorage" —— đó là vì cài đặt cần đồng bộ xuyên thiết bị nên bắt buộc đi qua máy chủ; bộ nhớ đệm truy xuất là kết quả tạm trên máy, không cần đồng bộ.)
+// Thất bại hoàn toàn âm thầm (chế độ ẩn danh / đầy hạn ngạch): thoái hóa thành không có bộ nhớ đệm, tuyệt đối không ảnh hưởng quy trình truy xuất chính.
 function loadRecallCache(): RecallCache | null {
   try {
     const raw = localStorage.getItem(RECALL_CACHE_STORAGE_KEY);
@@ -142,13 +142,13 @@ function saveRecallCache(cache: RecallCache): void {
   try {
     localStorage.setItem(RECALL_CACHE_STORAGE_KEY, JSON.stringify(cache));
   } catch {
-    /* 配额满/不可用:放弃持久化,本次仅本进程内有效 */
+    /* Đầy hạn ngạch / không khả dụng: từ bỏ lưu bền vững, lần này chỉ có hiệu lực trong tiến trình hiện tại */
   }
 }
 
 /**
- * 召回参数指纹:覆盖全部影响最终注入文本的档位参数。
- * 注入深度只改变同一文本的位置,不改变检索结果,故不计入并可直接复用缓存。
+ * Dấu vân tay tham số truy xuất: bao phủ toàn bộ các tham số phân mức ảnh hưởng tới văn bản tiêm cuối cùng.
+ * Độ sâu tiêm chỉ làm thay đổi vị trí của cùng một văn bản, không làm thay đổi kết quả tìm kiếm, nên không tính vào và có thể tái sử dụng trực tiếp bộ nhớ đệm.
  */
 function recallParamFingerprint(cfg: typeof apiSettings.vector.recall): string {
   return [
@@ -161,12 +161,12 @@ function recallParamFingerprint(cfg: typeof apiSettings.vector.recall): string {
 }
 
 /**
- * 构造当前轮的缓存 key。取「最新 user 楼层」需从后往前扫第一条 is_user——
- * 重生成时末尾可能是待替换的 AI 楼/系统楼,直接取 chat[length-1] 会取错。
- * 上一条 AI 文本 = 该 user 楼**之前**第一条非 user 楼(没有则空)。
- * ⚠️ 不能取 user 之后那条:swipe 时那正是被重生成、内容每次都变的当前 AI 楼,
- *    取了它缓存永不命中、白做。取 user 之前的稳定 AI 楼才对。
- * 缺 chatId 或无 user 楼 → 返回 null,本轮不走缓存(照常实算)。
+ * Xây dựng key bộ nhớ đệm của lượt hiện tại. Lấy "tầng lầu user mới nhất" cần quét từ sau ra trước tìm is_user đầu tiên ——
+ * khi tạo lại ở cuối có thể là tầng AI / tầng hệ thống chờ thay thế, lấy trực tiếp chat[length-1] sẽ lấy sai.
+ * Văn bản AI ngay trước = tầng phi user đầu tiên nằm **trước** tầng user đó (không có thì trống).
+ * ⚠️ Không được lấy tầng nằm sau user: khi swipe đó chính là tầng AI hiện tại đang bị tạo lại và nội dung mỗi lần đều đổi,
+ *    lấy nó thì bộ nhớ đệm không bao giờ trúng, công cốc. Lấy tầng AI ổn định trước user mới đúng.
+ * Thiếu chatId hoặc không có tầng user → trả về null, lượt này không đi qua bộ nhớ đệm (tính thực tế như thường).
  */
 function buildRecallCacheKey(chat: STMessage[], cfg: typeof apiSettings.vector.recall): string | null {
   const chatId = currentChatId();
@@ -195,27 +195,27 @@ function buildRecallCacheKey(chat: STMessage[], cfg: typeof apiSettings.vector.r
 
 let recalling = false;
 
-/** 召回是否在当前聊天生效。 */
+/** Truy xuất có hiệu lực ở cuộc trò chuyện hiện tại hay không. */
 function recallActiveHere(): boolean {
-  if (!engineActiveHere()) return false; // 插件总开关关 / 当前角色被排除 → 不召回
+  if (!engineActiveHere()) return false; // Tắt công tắc tổng của plugin / nhân vật hiện tại bị loại trừ → không truy xuất
   if (!apiSettings.vector.enabled) return false;
   return !!currentVectorDb() && recallScopes().length > 0;
 }
 
-/** 这种生成类型是否该触发召回:只在产出新正文的生成前召回。 */
+/** Loại tạo nội dung này có nên kích hoạt truy xuất hay không: chỉ truy xuất trước những lần tạo sản sinh chính văn mới. */
 export function shouldRecallForType(type: string | undefined): boolean {
-  // 续写/安静/扮演不需要召回旧记忆(continue 接着写、quiet/impersonate 非剧情推进)
+  // Viết tiếp / im lặng / nhập vai không cần truy xuất ký ức cũ (continue viết nối tiếp, quiet/impersonate không phải đẩy cốt truyện tiến lên)
   return type !== 'continue' && type !== 'quiet' && type !== 'impersonate';
 }
 
-/** 清空召回注入槽(降级/未命中/切聊天时)。 */
+/** Xóa trống khe tiêm truy xuất (khi hạ cấp / không trúng / chuyển cuộc trò chuyện). */
 export function clearRecallInjection(): void {
   getContext()?.setExtensionPrompt?.(RECALL_INJECT_KEY, '', IN_CHAT, recallInjectionDepth(), false, ROLE_SYSTEM, null);
 }
 
 /**
- * 执行一次阻塞召回并写注入槽。在生成拦截器放行路径里 await。
- * 任何失败都清空槽并返回(静默降级)。
+ * Thực thi một lần truy xuất chặn và ghi vào khe tiêm. Được await trong đường dẫn cho qua của bộ chặn tạo nội dung.
+ * Bất kỳ thất bại nào cũng xóa trống khe và quay về (âm thầm hạ cấp).
  */
 export async function runVectorRecall(signal?: AbortSignal): Promise<void> {
   if (!recallActiveHere()) {
@@ -231,9 +231,9 @@ export async function runVectorRecall(signal?: AbortSignal): Promise<void> {
   const fn = ctx?.setExtensionPrompt;
   if (typeof fn !== 'function' || !chat.length) return;
 
-  // 楼层还少 / 全在窗口内且无旧档:本回合无召回价值,跳过整条管线(清空注入槽,避免残留上次召回)。
+  // Số tầng còn ít / tất cả đều trong cửa sổ và không có bản lưu cũ: lượt này không có giá trị truy xuất, bỏ qua toàn bộ đường ống (xóa trống khe tiêm, tránh sót lại lần truy xuất trước).
   if (!recallWorthRunning(chat)) {
-    setRecallStatus('未召回:楼层未达起召门槛或全在窗口内');
+    setRecallStatus('Chưa truy xuất:Số tầng chưa đạt ngưỡng bắt đầu truy xuất hoặc đều nằm trong cửa sổ');
     clearRecallInjection();
     return;
   }
@@ -241,35 +241,35 @@ export async function runVectorRecall(signal?: AbortSignal): Promise<void> {
   const cfg = apiSettings.vector.recall;
   const scopes = recallScopes();
 
-  // 缓存命中(重生成/翻页且召回输入未变):直接复用上次注入文本 + 调试快照,跳过整条管线。
+  // Trúng bộ nhớ đệm (tạo lại / lật trang và đầu vào truy xuất không đổi): tái sử dụng trực tiếp văn bản tiêm + ảnh chụp gỡ lỗi lần trước, bỏ qua toàn bộ đường ống.
   const cacheKey = buildRecallCacheKey(chat, cfg);
   const cached = cacheKey ? loadRecallCache() : null;
   if (cacheKey && cached && cached.key === cacheKey) {
     fn(RECALL_INJECT_KEY, cached.text, IN_CHAT, recallInjectionDepth(), false, ROLE_SYSTEM, null);
     restoreRecallDebug(cached.debug);
-    setRecallStatus(`${cached.debug.status}(复用缓存)`);
+    setRecallStatus(`${cached.debug.status}(Tái sử dụng bộ nhớ đệm)`);
     return;
   }
 
   recalling = true;
   try {
-    // 开一次新调试快照(进入有效召回路径才记录,避免「功能未启用」时反复清空上次结果)
+    // Mở một ảnh chụp gỡ lỗi mới (đi vào đường dẫn truy xuất hợp lệ mới ghi lại, tránh khi "tính năng chưa bật" lại xóa trống liên tục kết quả lần trước)
     resetRecallDebug();
 
-    // 召回前先补齐窗口外缺失的向量索引(载入老聊天/向量后开 → 旧叶子可能从未索引),
-    // 否则这些旧剧情会直接漏召回。只阻塞窗口外,窗口内交给防抖增量。
+    // Trước khi truy xuất bù đủ chỉ mục vector còn thiếu ngoài cửa sổ (tải cuộc trò chuyện cũ / bật vector muộn → các lá cũ có thể chưa từng lập chỉ mục),
+    // nếu không những cốt truyện cũ này sẽ bị bỏ sót không truy xuất được. Chỉ chặn phần ngoài cửa sổ, trong cửa sổ giao cho tăng thêm chống rung.
     await ensureRecallIndex(signal);
 
-    // 1) 查询重写(强制启用,无降级):得多条 query 向量 + rerank 用的 query 文本。
-    // 重写失败/无 query 会抛错 → 落到外层 catch,清空注入槽、结束本次召回。
+    // 1) Viết lại truy vấn (bắt buộc bật, không hạ cấp): thu được nhiều vector query + văn bản query dùng cho rerank.
+    // Viết lại thất bại / không có query sẽ ném lỗi → rơi vào catch tầng ngoài, xóa trống khe tiêm, kết thúc lần truy xuất này.
     const { queryVectors, rerankQuery } = await resolveQueryVectors(signal);
     if (!queryVectors.length) {
-      setRecallStatus('未召回:查询重写未产出 query');
+      setRecallStatus('Chưa truy xuất:Viết lại truy vấn không tạo ra query');
       clearRecallInjection();
       return;
     }
 
-    // 2) 后端检索:多路在范围内纯按 embedding 得分取前 rerankCandidates(后端 max 融合,不套阈值),排除窗口内叶子
+    // 2) Tìm kiếm backend: đa luồng trong phạm vi thuần túy lấy rerankCandidates mục đầu theo điểm embedding (backend dung hợp max, không áp ngưỡng), loại trừ các lá trong cửa sổ
     const exclude = windowLeafIds(chat);
     const selfScope = currentChatScope();
     const { results } = await vecSearch(database, scopes, queryVectors, {
@@ -287,33 +287,33 @@ export async function runVectorRecall(signal?: AbortSignal): Promise<void> {
       })),
     );
     if (!results.length) {
-      setRecallStatus('未召回:检索无候选');
+      setRecallStatus('Chưa truy xuất:Tìm kiếm không có ứng viên');
       clearRecallInjection();
       return;
     }
 
-    // 3) rerank(用 INTENT/重写 query;渠道未配 → 降级:用 embedding 序,score 复用 similarity)
+    // 3) rerank (dùng INTENT / query viết lại; kênh chưa cấu hình → hạ cấp: dùng thứ tự embedding, score tái sử dụng similarity)
     const ranked = await rerankCandidates(rerankQuery, results, signal);
 
-    // 4) 分档 + 上限(now = 故事内最新时间,作相对时间参照点,对齐历史摘要注入)
+    // 4) Phân mức + trần giới hạn (now = thời gian mới nhất trong truyện, làm điểm tham chiếu thời gian tương đối, khớp với tiêm tóm tắt lịch sử)
     const now = latestStoryTime(chat);
     const { text, tiers } = buildRecallText(ranked, cfg, selfScope, now);
     recordRerankDebug(ranked, tiers, selfScope);
     fn(RECALL_INJECT_KEY, text, IN_CHAT, recallInjectionDepth(), false, ROLE_SYSTEM, null);
     setRecallInjected(text);
-    setRecallStatus(text ? '召回完成' : '召回完成:无内容达标,本回合未注入');
-    // 实算成功才落缓存(失败/降级路径不缓存,下次重试)。存调试快照供命中时还原面板。
+    setRecallStatus(text ? 'Truy xuất hoàn tất' : 'Truy xuất hoàn tất:Không có nội dung đạt chuẩn, lượt này chưa chèn');
+    // Tính thực tế thành công mới lưu bộ nhớ đệm (đường dẫn thất bại / hạ cấp không lưu đệm, lần sau thử lại). Lưu ảnh chụp gỡ lỗi để khi trúng khôi phục lại bảng.
     if (cacheKey) saveRecallCache({ key: cacheKey, text, debug: snapshotRecallDebug() });
   } catch (e) {
-    console.warn('[柏宝书向量] 召回失败(降级为不召回):', e);
-    setRecallStatus(`失败:${e instanceof Error ? e.message : String(e)}`);
+    console.warn('[Vector Bách Bảo Thư] Truy xuất thất bại (hạ cấp thành không truy xuất):', e);
+    setRecallStatus(`Thất bại:${e instanceof Error ? e.message : String(e)}`);
     clearRecallInjection();
   } finally {
     recalling = false;
   }
 }
 
-/** 把分档结果写入调试快照:按 leaf_id 去重(保留首条),tier 取 buildRecallText 标记,缺省 drop。 */
+/** Ghi kết quả phân mức vào ảnh chụp gỡ lỗi: khử trùng theo leaf_id (giữ mục đầu tiên), tier lấy nhãn của buildRecallText, mặc định là drop. */
 function recordRerankDebug(
   ranked: RankedHit[],
   tiers: Map<string, 'full' | 'brief'>,
@@ -338,36 +338,36 @@ function recordRerankDebug(
 }
 
 /**
- * 解析检索用的多条 query 向量 + rerank 用的 query 文本。
- * 查询重写**强制启用、无降级**:rewrite 得 INTENT + 多条 Q,各自 embed;rerank query 用 INTENT(无则首条 Q)。
- * 重写失败 / 无 query → 直接抛错,由 runVectorRecall 结束本次召回(不再降级为单 query)。
+ * Phân giải nhiều vector query dùng để tìm kiếm + văn bản query dùng cho rerank.
+ * Viết lại truy vấn **bắt buộc bật, không hạ cấp**: rewrite thu được INTENT + nhiều Q, mỗi cái tự embed; rerank query dùng INTENT (không có thì dùng Q đầu tiên).
+ * Viết lại thất bại / không có query → ném lỗi trực tiếp, do runVectorRecall kết thúc lần truy xuất này (không còn hạ cấp thành query đơn lẻ nữa).
  */
 async function resolveQueryVectors(
   signal?: AbortSignal,
 ): Promise<{ queryVectors: string[]; rerankQuery: string }> {
   const { intent, queries } = await rewriteQuery(signal);
   setRecallRewrite(intent, queries);
-  if (!queries.length) throw new Error('查询重写未产出任何 query');
-  // 检索向量:多条 Q(INTENT 偏长偏全文,留给 rerank,不进检索向量以免稀释)
+  if (!queries.length) throw new Error('Viết lại truy vấn không tạo ra bất kỳ query nào');
+  // Vector tìm kiếm: nhiều Q (INTENT thiên về dài và toàn văn, để dành cho rerank, không đưa vào vector tìm kiếm để tránh làm loãng)
   const vecs = await embedTexts(queries, signal);
   const queryVectors = vecs.map(v => encodeFloat32Base64(v));
   return { queryVectors, rerankQuery: intent || queries[0] };
 }
 
 interface RankedHit extends VecHit {
-  rerankScore: number; // 无 rerank 时 = similarity
+  rerankScore: number; // Khi không có rerank = similarity
 }
 
-/** 对候选做 rerank;失败/未配置则用 embedding 相似度序降级。 */
+/** Thực hiện rerank cho các ứng viên; thất bại / chưa cấu hình thì hạ cấp bằng thứ tự độ tương đồng embedding. */
 async function rerankCandidates(query: string, hits: VecHit[], signal?: AbortSignal): Promise<RankedHit[]> {
-  // rerank 渠道未配置 → 直接降级(embedTexts/resolveVectorModel 在 rerank 缺渠道时会抛错)
+  // Kênh rerank chưa cấu hình → hạ cấp trực tiếp (embedTexts/resolveVectorModel khi rerank thiếu kênh sẽ ném lỗi)
   try {
-    // 全文精排:发楼层原文(mesFull,已含内嵌起止时间)给 rerank,语义比摘要更全;
-    // 无原文(如种子叶子)退摘要 document,此时补 【故事时间】头给时间上下文。
-    // (超长由 rerankDocuments 内部按 token 截断/分批)
+    // Xếp hạng tinh toàn văn: gửi nguyên văn tầng lầu (mesFull, đã chứa thời gian bắt đầu-kết thúc nhúng sẵn) cho rerank, ngữ nghĩa đầy đủ hơn tóm tắt;
+    // không có nguyên văn (như lá hạt giống) thì lùi về document tóm tắt, lúc này bù thêm phần đầu 【Thời gian câu chuyện】 để cung cấp ngữ cảnh thời gian.
+    // (Quá dài sẽ do bên trong rerankDocuments cắt cụt / chia đợt theo token)
     const docs = hits.map(h => {
-      // mesFull 现存原文,发给 rerank 前过 cleanBody(剔除状态栏/思维链/自定义标签等,
-      // 保留内嵌起止时间);老索引存的是已清洗文本,再洗幂等无副作用。
+      // mesFull hiện lưu nguyên văn, trước khi gửi cho rerank thì đi qua cleanBody (loại bỏ thanh trạng thái / chuỗi suy nghĩ / thẻ tùy chỉnh v.v.,
+      // giữ lại thời gian bắt đầu-kết thúc nhúng sẵn); chỉ mục cũ lưu văn bản đã làm sạch, rửa thêm lần nữa vẫn bất biến không gây tác dụng phụ.
       const full = h.mesFull ? cleanBody(h.mesFull).trim() : '';
       if (full) return full;
       const body = (h.document || '').trim();
@@ -375,23 +375,23 @@ async function rerankCandidates(query: string, hits: VecHit[], signal?: AbortSig
       return t ? `【${t}】\n${body}` : body;
     });
     const order = await rerankDocuments(query, docs, hits.length, signal);
-    // order 是 {index, score} 降序;映射回 hit
+    // order là {index, score} giảm dần; ánh xạ ngược về hit
     return order
       .filter(o => hits[o.index])
       .map(o => ({ ...hits[o.index], rerankScore: o.score }));
   } catch {
-    // 降级:保持 embedding 序,rerankScore 复用 similarity
+    // Hạ cấp: giữ nguyên thứ tự embedding, rerankScore tái sử dụng similarity
     return hits.map(h => ({ ...h, rerankScore: h.similarity }));
   }
 }
 
 /**
- * 按分档规则拼注入文本:
- *  - 全文档:rerankScore ≥ rerankThreshold,取前 fullTextCount,发 mes_full(无则退 document)。
- *  - 摘要档:rerankScore < rerankThreshold 但 similarity ≥ embeddingThreshold,发 document。
- *  - 总数 ≤ finalRecallCount;按 leaf_id 去重(已在后端跨 scope 合并,这里再兜底)。
+ * Ghép văn bản tiêm theo quy tắc phân mức:
+ *  - Mức toàn văn: rerankScore ≥ rerankThreshold, lấy fullTextCount mục đầu, gửi mes_full (không có thì lùi về document).
+ *  - Mức tóm tắt: rerankScore < rerankThreshold nhưng similarity ≥ embeddingThreshold, gửi document.
+ *  - Tổng số ≤ finalRecallCount; khử trùng theo leaf_id (đã gộp xuyên scope ở backend, ở đây dự phòng thêm một lớp).
  *
- * 返回拼好的注入文本 + 每条被采纳叶子的分档(full/brief),供调试面板标注 tier。
+ * Trả về văn bản tiêm đã ghép xong + phân mức (full/brief) của từng lá được chấp nhận, phục vụ bảng gỡ lỗi gắn nhãn tier.
  */
 function buildRecallText(
   ranked: RankedHit[],
@@ -411,7 +411,7 @@ function buildRecallText(
 
     const isFull = h.rerankScore >= cfg.rerankThreshold && fullUsed < cfg.fullTextCount;
     if (isFull) {
-      // 全文档优先发 mesFull(原文,过 cleanBody 清洗后已含内嵌起止时间),无则退 document
+      // Mức toàn văn ưu tiên gửi mesFull (nguyên văn, sau khi làm sạch qua cleanBody đã chứa thời gian bắt đầu-kết thúc nhúng sẵn), không có thì lùi về document
       const cleanFull = h.mesFull ? cleanBody(h.mesFull).trim() : '';
       const useMesFull = !!cleanFull;
       const body = cleanFull || (h.document || '').trim();
@@ -419,29 +419,29 @@ function buildRecallText(
       seen.add(h.leafId);
       tiers.set(h.leafId, 'full');
       fullUsed++;
-      // mesFull 自带 (起始时间…)/(结束时间…),不再加 【】头避免时间重复;退到 document 时才补头
+      // mesFull tự mang (Thời gian bắt đầu…)/(Thời gian kết thúc…), không thêm đầu 【】 nữa để tránh lặp thời gian; khi lùi về document mới bù phần đầu
       fullChunks.push(fmtChunk(h, body, useMesFull, selfScope, now));
     } else if (h.similarity >= cfg.embeddingThreshold) {
       const body = (h.document || '').trim();
       if (!body) continue;
       seen.add(h.leafId);
       tiers.set(h.leafId, 'brief');
-      briefChunks.push(fmtChunk(h, body, false, selfScope, now)); // 摘要档无内嵌时间,补 【(相对) 区间】头
+      briefChunks.push(fmtChunk(h, body, false, selfScope, now)); // Mức tóm tắt không có thời gian nhúng sẵn, bù phần đầu 【(tương đối) khoảng thời gian】
     }
-    // 两档都不达标:丢弃
+    // Cả hai mức đều không đạt chuẩn: hủy bỏ
   }
 
   const chunks = [...fullChunks, ...briefChunks];
   if (!chunks.length) return { text: '', tiers };
-  // 首尾私密简报框定,避免主模型把召回回忆当成要复述/输出的模板
-  return { text: `${MEMORY_BRIEFING_NOTE}\n[相关回忆]\n${chunks.join('\n\n')}\n${MEMORY_BRIEFING_END}`, tiers };
+  // Đầu cuối đóng khung bằng bản tin mật, tránh mô hình chính coi ký ức truy xuất là khuôn mẫu cần thuật lại / xuất ra
+  return { text: `${MEMORY_BRIEFING_NOTE}\n[Ký ức liên quan]\n${chunks.join('\n\n')}\n${MEMORY_BRIEFING_END}`, tiers };
 }
 
 /**
- * 把索引时存的「未压缩起止段」格式化成展示用时间头:【(相对) 起 - 止】。
- *  - 压缩成区间显示(compactTimeLabel:删结束端重复日期);
- *  - 用结束时间相对「现在」(故事内最新时间 now)算相对前缀(对齐历史摘要的 inject.ts)。
- * 无时间 → 空串。
+ * Định dạng "đoạn bắt đầu-kết thúc chưa nén" lưu lúc lập chỉ mục thành phần đầu thời gian để hiển thị: 【(tương đối) bắt đầu - kết thúc】.
+ *  - Nén thành hiển thị khoảng (compactTimeLabel: xóa ngày tháng bị lặp ở đầu kết thúc);
+ *  - Dùng thời gian kết thúc so với "hiện tại" (thời gian mới nhất trong truyện now) để tính tiền tố tương đối (khớp với inject.ts của tóm tắt lịch sử).
+ * Không có thời gian → chuỗi rỗng.
  */
 function fmtStoryTimeHead(storyTime: string, now: string): string {
   const t = storyTime.trim();
@@ -453,14 +453,14 @@ function fmtStoryTimeHead(storyTime: string, now: string): string {
 }
 
 /**
- * 单条召回片段:行首加来源标记(本聊天「#5」/ 旧档),让主模型知道这段回忆出处;
- * body 未自带内嵌时间时再补一个故事时间头【(相对) 起 - 止】(若有)。
+ * Một đoạn mảnh truy xuất đơn lẻ: đầu dòng thêm nhãn nguồn (cuộc trò chuyện này "#5" / Bản lưu cũ), để mô hình chính biết xuất xứ của đoạn ký ức này;
+ * khi body chưa tự mang thời gian nhúng sẵn thì bù thêm một phần đầu thời gian câu chuyện 【(tương đối) bắt đầu - kết thúc】 (nếu có).
  */
 function fmtChunk(h: RankedHit, body: string, bodyHasInlineTime: boolean, selfScope: string | null, now: string): string {
   const src = `[${sourceLabel(h, selfScope)}]`;
   if (bodyHasInlineTime) {
-    // 全文自身保留原始起止时间标签，但仍需在全文前补充相对时间，
-    // 避免全文档与摘要档在时间感知上表现不一致。
+    // Bản thân toàn văn giữ lại thẻ thời gian bắt đầu-kết thúc gốc, nhưng vẫn cần bổ sung thời gian tương đối ở trước toàn văn,
+    // tránh việc mức toàn văn và mức tóm tắt biểu hiện không nhất quán về cảm nhận thời gian.
     const end = splitTimeLabel((h.storyTime || '').trim()).end ?? '';
     const rel = relativeTimeLabel(end, now);
     return rel ? `${src}【${rel}】 ${body}` : `${src} ${body}`;

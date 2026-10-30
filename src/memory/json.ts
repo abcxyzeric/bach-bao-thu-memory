@@ -1,20 +1,20 @@
 /**
- * 从 LLM 文本输出里健壮地提取 JSON 对象。
- * 应对:```json 围栏、思维链前后缀、智能引号、尾随逗号。
+ * Trích xuất đối tượng JSON một cách bền vững từ đầu ra văn bản của LLM.
+ * Xử lý: hàng rào ```json, tiền tố/hậu tố chuỗi suy nghĩ, dấu ngoặc kép thông minh, dấu phẩy thừa ở cuối.
  */
 export function extractJsonObject<T = unknown>(raw: string): T | null {
   if (!raw || typeof raw !== 'string') return null;
 
   let s = raw.trim();
 
-  // 去掉 <think>…</think> / <thinking>…</thinking> 思维链(大小写不敏感)
+  // Bỏ chuỗi suy nghĩ <think>…</think> / <thinking>…</thinking> (không phân biệt hoa thường)
   s = s.replace(/<think(?:ing)?\b[\s\S]*?<\/think(?:ing)?>/gi, '').trim();
 
-  // 未闭合的检查块可能只是被截断的草稿,不能把其中的 JSON 当成最终结果。
+  // Khối kiểm tra chưa đóng có thể chỉ là bản nháp bị cắt cụt, không thể coi JSON bên trong đó là kết quả cuối cùng.
   if (/^<think(?:ing)?\b/i.test(s)) return null;
 
-  // 容错:返回可能只含思维链正文 + </thinking> + JSON 而缺开头的 <thinking>,
-  // 此时丢弃最后一个闭合标签及其之前的全部文本。
+  // Chịu lỗi: kết quả trả về có thể chỉ chứa chính văn chuỗi suy nghĩ + </thinking> + JSON mà thiếu <thinking> ở đầu,
+  // lúc này hủy bỏ thẻ đóng cuối cùng và toàn bộ văn bản phía trước nó.
   const danglingThinkClose = s.match(/<\/think(?:ing)?>/gi);
   if (danglingThinkClose) {
     const lastClose = Math.max(
@@ -27,21 +27,21 @@ export function extractJsonObject<T = unknown>(raw: string): T | null {
     }
   }
 
-  // 去掉 ```json ... ``` / ``` ... ``` 围栏
+  // Bỏ hàng rào ```json ... ``` / ``` ... ```
   const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/i);
   if (fence) s = fence[1].trim();
 
-  // 截取第一个 { 到最后一个 } 之间(去掉前后说明文字)
+  // Cắt từ dấu { đầu tiên đến dấu } cuối cùng (bỏ văn bản giải thích trước sau)
   const first = s.indexOf('{');
   const last = s.lastIndexOf('}');
   if (first === -1 || last === -1 || last <= first) return null;
   let body = s.slice(first, last + 1);
 
-  // 直接尝试
+  // Thử trực tiếp
   const direct = tryParse<T>(body);
   if (direct !== null) return direct;
 
-  // 容错清洗:智能引号 -> 直引号,去尾随逗号
+  // Làm sạch chịu lỗi: ngoặc kép thông minh -> ngoặc kép thẳng, bỏ dấu phẩy thừa ở cuối
   const cleaned = body
     .replace(/[“”]/g, '"')
     .replace(/[‘’]/g, "'")
@@ -49,19 +49,19 @@ export function extractJsonObject<T = unknown>(raw: string): T | null {
   const cleanedParsed = tryParse<T>(cleaned);
   if (cleanedParsed !== null) return cleanedParsed;
 
-  // 仍失败:多半是正文里有未转义的英文双引号(如英文对白 He said "hi")。补转义后再试。
-  // 原串与清洗串各补一次(清洗把智能引号变直引号后可能新增野引号,故也要补)。
+  // Vẫn thất bại: đa phần là trong chính văn có dấu ngoặc kép chưa thoát (như lời thoại He said "hi"). Bù ký tự thoát rồi thử lại.
+  // Bù một lần cho cả chuỗi gốc lẫn chuỗi đã làm sạch (sau khi làm sạch biến ngoặc kép thông minh thành ngoặc kép thẳng có thể phát sinh thêm ngoặc kép hoang, nên cũng phải bù).
   const repaired = tryParse<T>(escapeStrayQuotes(body));
   if (repaired !== null) return repaired;
   return tryParse<T>(escapeStrayQuotes(cleaned));
 }
 
 /**
- * 补转义:把「字符串值内部未转义的双引号」补成 \"。仅在直接/清洗解析都失败后作兜底。
- * 逐字符扫描并跟踪是否在字符串内:字符串内遇到 " 时,向后看第一个非空白字符——只有它是
- * 结构符(: , } ] 或结尾)时才当作结束引号,否则判为正文里的野引号并补成 \"。
- * 对本就合法的 JSON 是恒等变换(合法 JSON 的字符串内不存在未转义的 "),故绝不会把能解析的弄坏;
- * 遇到真正歧义(野引号紧贴 ASCII 逗号)时会解析失败落到重试,不会静默截断成错数据。
+ * Bù ký tự thoát: đổi "dấu ngoặc kép chưa thoát bên trong giá trị chuỗi" thành \". Chỉ làm phương án dự phòng sau khi phân tích trực tiếp / làm sạch đều thất bại.
+ * Quét từng ký tự và theo dõi xem có đang ở trong chuỗi hay không: khi đang trong chuỗi mà gặp ", nhìn về sau tìm ký tự phi khoảng trắng đầu tiên —— chỉ khi nó là
+ * ký tự cấu trúc (: , } ] hoặc kết thúc chuỗi) thì mới coi là dấu ngoặc kép đóng, nếu không thì phán đoán là ngoặc kép hoang trong chính văn và bù thành \".
+ * Đối với JSON vốn đã hợp lệ thì đây là phép biến đổi đồng nhất (bên trong chuỗi của JSON hợp lệ không tồn tại " chưa thoát), nên tuyệt đối không làm hỏng chuỗi vốn phân tích được;
+ * khi gặp sự nhập nhằng thực sự (ngoặc kép hoang dán sát dấu phẩy ASCII) sẽ phân tích thất bại và rơi vào thử lại, không âm thầm cắt cụt thành dữ liệu sai.
  */
 function escapeStrayQuotes(s: string): string {
   let out = '';
@@ -74,7 +74,7 @@ function escapeStrayQuotes(s: string): string {
       continue;
     }
     if (c === '\\') {
-      // 保留转义对(\" \\ \n 等)整体原样搬过去,不误判其中的引号
+      // Giữ nguyên cả cặp thoát (\" \\ \n v.v.) chuyển thẳng sang, không phán đoán nhầm dấu ngoặc kép bên trong đó
       out += c;
       if (i + 1 < s.length) { out += s[i + 1]; i++; }
       continue;
@@ -84,10 +84,10 @@ function escapeStrayQuotes(s: string): string {
       while (j < s.length && /\s/.test(s[j])) j++;
       const next = j < s.length ? s[j] : '';
       if (next === '' || next === ':' || next === ',' || next === '}' || next === ']') {
-        out += c;        // 结束引号
+        out += c;        // Dấu ngoặc kép đóng
         inString = false;
       } else {
-        out += '\\"';    // 正文野引号 -> 补转义
+        out += '\\"';    // Ngoặc kép hoang trong chính văn -> bù ký tự thoát
       }
       continue;
     }

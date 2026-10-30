@@ -1,11 +1,11 @@
 import type { ProtagonistDelta } from './types';
 
 /**
- * 把主角档案补丁合并进同一叶子的既有补丁。
+ * Gộp bản vá hồ sơ nhân vật chính vào bản vá hiện có của cùng một lá.
  *
- * 年龄是一个二字段原子值(age + ageTime):调用方明确写 age、却没写 ageTime，
- * 表示这是「此刻的新年龄」，旧锚点必须一起移除，之后由重放层用本叶子的故事时间补上。
- * 普通对象展开无法表达删除，曾因此让新年龄继续套用旧锚点。
+ * Tuổi tác là một giá trị nguyên tử hai trường (age + ageTime): bên gọi viết rõ age, nhưng không viết ageTime,
+ * biểu thị đây là "tuổi mới ngay thời khắc này", mốc neo cũ bắt buộc phải gỡ bỏ cùng lúc, sau đó do tầng phát lại bù vào bằng thời gian câu chuyện của lá này.
+ * Phép trải đối tượng (object spread) thông thường không thể biểu đạt việc xóa, từng vì thế mà làm tuổi mới tiếp tục áp mốc neo cũ.
  */
 export function mergeProtagonistDelta(
   current: ProtagonistDelta | undefined,
@@ -15,10 +15,10 @@ export function mergeProtagonistDelta(
   if (Object.prototype.hasOwnProperty.call(patch, 'age') && !Object.prototype.hasOwnProperty.call(patch, 'ageTime')) {
     delete merged.ageTime;
   }
-  // condition 是覆盖型文本。本次补丁一旦给出 condition(含空串=清空),同叶子残留的片段补丁
-  // 就必须一并作废——否则重放会先写入新文本、再按旧编号施加一遍补丁,手动保存看着「没生效」
-  // 且旧片段总被 add/replace 回来(越长越长)。补丁在前、condition 在后的合并顺序无法解决,
-  // 只能在这里显式删除。
+  // condition là văn bản kiểu ghi đè. Bản vá lần này một khi đã đưa ra condition (gồm cả chuỗi rỗng = xóa trống), bản vá phân đoạn còn sót trong cùng lá
+  // bắt buộc phải hủy bỏ cùng lúc —— nếu không khi phát lại sẽ ghi văn bản mới trước, rồi lại áp một lượt bản vá theo đánh số cũ, lưu thủ công nhìn như "không có hiệu lực"
+  // mà phân đoạn cũ cứ bị add/replace quay trở lại (ngày càng dài). Thứ tự gộp bản vá ở trước, condition ở sau không giải quyết được,
+  // chỉ có thể xóa tường minh tại đây.
   if (Object.prototype.hasOwnProperty.call(patch, 'condition')) {
     delete merged.conditionPatch;
   }

@@ -5,7 +5,7 @@ import { ref } from 'vue';
 const props = withDefaults(
   defineProps<{
     title: string;
-    /** 初始是否展开 */
+    /** Ban đầu có mở rộng hay không */
     open?: boolean;
   }>(),
   { open: true },
@@ -13,7 +13,7 @@ const props = withDefaults(
 
 const expanded = ref(props.open);
 
-// 用 grid-template-rows 0fr<->1fr 做高度过渡,无需测量 scrollHeight,内容自适应。
+// Dùng grid-template-rows 0fr<->1fr làm chuyển tiếp chiều cao, không cần đo scrollHeight, nội dung tự thích ứng.
 </script>
 
 <template>
@@ -69,13 +69,13 @@ const expanded = ref(props.open);
   color: var(--bbs-ink-muted);
   transition: transform var(--bbs-dur) var(--bbs-ease);
 }
-/* 用直接子代 > 限定:嵌套 Collapsible 时,外层 .is-open 不得波及内层的 outer/chevron,
-   否则内层会被外层钉死在展开态、永远收不起来。 */
+/* Dùng con trực tiếp > để giới hạn: khi lồng Collapsible, .is-open tầng ngoài không được lan tới outer/chevron tầng trong,
+   nếu không tầng trong sẽ bị tầng ngoài ghim cứng ở trạng thái mở rộng, không bao giờ thu gọn lại được. */
 .bbs-collapsible.is-open > .bbs-collapsible-head .bbs-collapsible-chevron {
   transform: rotate(180deg);
 }
 
-/* 高度过渡:grid 0fr -> 1fr */
+/* Chuyển tiếp chiều cao: grid 0fr -> 1fr */
 .bbs-collapsible-outer {
   display: grid;
   grid-template-rows: 0fr;
@@ -93,7 +93,7 @@ const expanded = ref(props.open);
   border-top: 1px solid var(--bbs-line);
 }
 
-/* 移动端:折叠区标题略小一号,与窄屏整体节奏更协调 */
+/* Di động: tiêu đề vùng thu gọn nhỏ hơn một cỡ, hài hòa hơn với nhịp điệu tổng thể của màn hình hẹp */
 @media (max-width: 640px) {
   .bbs-collapsible-head {
     font-size: 13px;

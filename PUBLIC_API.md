@@ -1,24 +1,24 @@
-# 柏宝书公开读取接口（API v1）
+# Giao diện Đọc Công khai của Bách Bảo Thư (API v1)
 
-本文面向 SillyTavern 插件、脚本和预设作者。柏宝书提供三种只读入口：
+Tài liệu này dành cho các tác giả viết plugin, kịch bản (script) và preset trên SillyTavern. Bách Bảo Thư cung cấp ba lối vào chỉ đọc:
 
-1. JavaScript 全局 API：`globalThis.STBaiBaiBook`
-2. STscript 斜杠命令：`/bbs-get`
-3. ST 宏：`{{bbsVars}}`、`{{bbsVar::路径}}` 等
+1. API toàn cục JavaScript: `globalThis.STBaiBaiBook`
+2. Lệnh gạch chéo STscript: `/bbs-get`
+3. Macro ST: `{{bbsVars}}`, `{{bbsVar::Đường_dẫn}}`, v.v.
 
-公开接口只返回深拷贝 DTO，不暴露 Vue 响应式对象、聊天消息引用或写入方法。外部代码修改返回值不会改动柏宝书数据。
+Giao diện công khai chỉ trả về DTO sao chép sâu (deep clone), không phơi bày đối tượng phản ứng Vue, tham chiếu tin nhắn trò chuyện hay phương thức ghi. Mã bên ngoài sửa đổi giá trị trả về sẽ không làm thay đổi dữ liệu của Bách Bảo Thư.
 
-## 兼容约定
+## Quy ước tương thích
 
-- `apiVersion` 当前固定为 `1`，它是公开数据结构版本，与插件自身的 `pluginVersion` 分开。
-- 楼层编号统一使用 SillyTavern 的零基 `mesid`。
-- `at: "before"`：状态不包含目标楼，即只重放 `mesid < floor` 的摘要增量。
-- `at: "after"`：状态包含目标楼，即重放 `mesid <= floor` 的摘要增量；这是默认值。
-- 标记为番外的 `bbs_omit` 楼层始终被忽略。
-- 无效、串页或缺失的叶子摘要不会参与状态重放。
-- 接口读取能力不依赖“柏宝书 · 记忆引擎”总开关是否开启。
+- `apiVersion` hiện tại cố định là `1`, đây là phiên bản cấu trúc dữ liệu công khai, tách biệt với `pluginVersion` của bản thân plugin.
+- Số thứ tự tầng thống nhất sử dụng `mesid` tính từ 0 của SillyTavern.
+- `at: "before"`: trạng thái không bao gồm tầng mục tiêu, tức là chỉ phát lại phần tăng thêm tóm tắt của `mesid < floor`.
+- `at: "after"`: trạng thái bao gồm tầng mục tiêu, tức là phát lại phần tăng thêm tóm tắt của `mesid <= floor`; đây là giá trị mặc định.
+- Các tầng được đánh dấu là ngoại truyện `bbs_omit` luôn bị bỏ qua.
+- Các lá tóm tắt không hợp lệ, lệch trang (swipe) hoặc bị thiếu sẽ không tham gia phát lại trạng thái.
+- Khả năng đọc của giao diện không phụ thuộc vào việc công tắc tổng "Bách Bảo Thư · Bộ máy trí nhớ" có bật hay không.
 
-完整快照、历史和楼层上下文 DTO 会返回覆盖信息：
+DTO của ảnh chụp nhanh đầy đủ, lịch sử và ngữ cảnh tầng sẽ trả về thông tin độ bao phủ:
 
 ```js
 coverage: {
@@ -27,13 +27,13 @@ coverage: {
 }
 ```
 
-消费方不应在 `complete === false` 时把结果当作无缺口的完整记忆。`missingAiFloors` 只统计当前查询截止点之前、应有摘要但没有有效摘要的 AI 楼；番外楼不计入。
+Phía tiêu thụ không nên coi kết quả là trí nhớ đầy đủ không có lỗ hổng khi `complete === false`. `missingAiFloors` chỉ thống kê các tầng AI trước điểm kết thúc truy vấn hiện tại mà lẽ ra phải có tóm tắt nhưng lại chưa có tóm tắt hợp lệ; tầng ngoại truyện không được tính vào.
 
-`getVar()` 以及 `query({ resource: "state" })` 等快捷资源只返回目标值，不附带覆盖信息。需要判断完整性时，应同时读取 `getSnapshot()`，或直接从快照中取对应字段。
+Các tài nguyên truy cập nhanh như `getVar()` và `query({ resource: "state" })` chỉ trả về giá trị mục tiêu, không đính kèm thông tin độ bao phủ. Khi cần phán đoán tính toàn vẹn, nên đọc đồng thời `getSnapshot()`, hoặc lấy trực tiếp trường tương ứng từ ảnh chụp nhanh.
 
-## 等待接口就绪
+## Đợi giao diện sẵn sàng
 
-插件加载顺序不固定。推荐先检查全局对象，未就绪时再监听事件：
+Thứ tự tải plugin không cố định. Khuyên dùng kiểm tra đối tượng toàn cục trước, khi chưa sẵn sàng mới lắng nghe sự kiện:
 
 ```js
 function useBaiBaiBook(callback) {
@@ -50,17 +50,17 @@ function useBaiBaiBook(callback) {
 }
 ```
 
-接口就绪后可检查能力：
+Sau khi giao diện sẵn sàng có thể kiểm tra các khả năng hỗ trợ:
 
 ```js
 const api = globalThis.STBaiBaiBook;
 
 console.log(api.apiVersion);     // 1
-console.log(api.pluginVersion);  // 柏宝书插件版本
+console.log(api.pluginVersion);  // Phiên bản plugin Bách Bảo Thư
 console.log(api.capabilities);
 ```
 
-`capabilities` 的结构：
+Cấu trúc của `capabilities`:
 
 ```js
 {
@@ -72,11 +72,11 @@ console.log(api.capabilities);
 }
 ```
 
-若宿主版本不支持某个注册入口，对应字段会是 `false`。旧宏引擎支持固定无参数宏，但不支持参数化宏，因此通常是 `macros: true`、`parameterizedMacros: false`。
+Nếu phiên bản ST chủ không hỗ trợ một lối vào đăng ký nào đó, trường tương ứng sẽ là `false`. Bộ máy macro cũ hỗ trợ macro cố định không tham số nhưng không hỗ trợ macro có tham số, do đó thường là `macros: true`, `parameterizedMacros: false`.
 
 ## JavaScript API
 
-### 读取当前快照
+### Đọc ảnh chụp nhanh hiện tại
 
 ```js
 const snapshot = globalThis.STBaiBaiBook.getSnapshot();
@@ -92,7 +92,7 @@ console.log(snapshot.itemLog);
 console.log(snapshot.lifeDetails);
 ```
 
-主要返回结构：
+Cấu trúc trả về chính:
 
 ```js
 {
@@ -100,8 +100,8 @@ console.log(snapshot.lifeDetails);
   pluginVersion: "1.0",
   revision: 12,
   chat: {
-    id: "聊天文件标识",
-    characterName: "角色名",
+    id: "Định danh tệp trò chuyện",
+    characterName: "Tên nhân vật",
     groupId: null,
     length: 86,
   },
@@ -116,11 +116,11 @@ console.log(snapshot.lifeDetails);
   },
   state: { time: "...", location: "...", locationPath: [] },
   protagonist: {
-    gender: "女",
-    identity: "调查员",
-    appearance: "黑色短发，左眉有疤",
-    outfit: "深色风衣",
-    condition: "左臂轻伤",
+    gender: "Nữ",
+    identity: "Điều tra viên",
+    appearance: "Tóc ngắn màu đen, lông mày trái có sẹo",
+    outfit: "Áo khoác măng tô tối màu",
+    condition: "Cánh tay trái bị thương nhẹ",
   },
   vars: {},
   items: [],
@@ -132,26 +132,26 @@ console.log(snapshot.lifeDetails);
 }
 ```
 
-`snapshot.npcs` 中每个角色可带独立的内心好感与外在态度估计（不是自定义变量，也不是可加减的分数）：
+Mỗi nhân vật trong `snapshot.npcs` có thể kèm theo đánh giá hảo cảm nội tâm và thái độ bên ngoài độc lập (không phải biến số tùy chỉnh, cũng không phải điểm số có thể cộng trừ):
 
-| 字段 | 含义 |
+| Trường | Ý nghĩa |
 | --- | --- |
-| `affinityInner` | 内心好感（对 user）：`-2` 强烈反感、`-1` 不喜欢、`0` 无明显好恶、`1` 有好感、`2` 感情深厚 |
-| `affinityOuter` | 外在态度（对 user）：`-2` 明显敌对、`-1` 冷淡疏远、`0` 不明显亲近或排斥、`1` 友善亲近、`2` 明显亲近、积极表达 |
-| `affinityNote` | 一句依据、表现或矛盾说明 |
+| `affinityInner` | Hảo cảm nội tâm (đối với user): `-2` Phản cảm mãnh liệt, `-1` Không thích, `0` Không rõ yêu ghét, `1` Có thiện cảm, `2` Tình cảm sâu đậm |
+| `affinityOuter` | Thái độ bên ngoài (đối với user): `-2` Thù địch rõ rệt, `-1` Lạnh nhạt xa cách, `0` Không rõ thân sơ, `1` Thân thiện gần gũi, `2` Gần gũi rõ rệt, thể hiện tích cực |
+| `affinityNote` | Một câu giải thích căn cứ, biểu hiện hoặc mâu thuẫn |
 
-两侧都可能缺失或为 `null`，表示未知，不能按 `0` 处理。楼层 delta 中省略字段表示保持，`null` 表示撤回该侧估计，`affinityNote: ""` 表示清空说明。估计不等于已证实的心理事实，也不代表爱情、信任、服从或同意。
+Cả hai phía đều có thể khuyết hoặc là `null`, biểu thị chưa rõ, không được xử lý như `0`. Trong delta tầng, lược bỏ trường biểu thị giữ nguyên, `null` biểu thị rút lại đánh giá phía đó, `affinityNote: ""` biểu thị xóa trống ghi chú giải thích. Đánh giá không đồng nghĩa với sự thật tâm lý đã được chứng thực, cũng không đại diện cho tình yêu, sự tin tưởng, phục tùng hay đồng thuận.
 
-`snapshot.lifeDetails` 为按人物记录的生活小档案。`subject: "user"` 表示主角，其他字符串为角色在 NPC 名册中的名字；旧叶子缺少 `subject` 时按原有主角专用语义处理，不从正文猜人物。`text` 是该人物的细节正文，显示或注入时会加上姓名。相同内容按人物分别去重，不能跨人合并。
+`snapshot.lifeDetails` là hồ sơ nhỏ đời sống được ghi nhận theo nhân vật. `subject: "user"` biểu thị nhân vật chính, các chuỗi khác là tên của nhân vật trong danh sách NPC; khi lá cũ thiếu `subject` sẽ xử lý theo ngữ nghĩa dành riêng cho nhân vật chính vốn có, không đoán nhân vật từ chính văn. `text` là nội dung chi tiết của nhân vật đó, khi hiển thị hoặc tiêm sẽ cộng thêm họ tên. Nội dung giống nhau được khử trùng lặp riêng theo từng nhân vật, không gộp xuyên nhân vật.
 
 ```js
-{ subject: "user", text: "认为煎饼果子不加脆饼就没有灵魂", topics: ["饮食"], anchors: ["煎饼果子"], tier: "active" }
-{ subject: "艾琳", text: "喝茶不加糖", topics: ["饮食"], anchors: ["茶"], tier: "active" }
+{ subject: "user", text: "Cho rằng bánh kếp không thêm bánh giòn thì mất hết linh hồn", topics: ["Ăn uống"], anchors: ["Bánh kếp"], tier: "active" }
+{ subject: "Eileen", text: "Uống trà không bỏ đường", topics: ["Ăn uống"], anchors: ["Trà"], tier: "active" }
 ```
 
-楼层 `lifeDetails.update` 省略 `subject` 保持原人物，显式写 `"user"` 可纠正回主角；自动记录限主角与主要角色的明确事实。手动 NPC 改名同步生活条目的归属，删除角色不会删除其历史生活档案。置顶/关键词触发/时效及沉降规则不变，换对话也会保留归属。
+Trong `lifeDetails.update` của tầng, lược bỏ `subject` sẽ giữ nguyên nhân vật gốc, viết tường minh `"user"` có thể chỉnh sửa quay về nhân vật chính; việc ghi nhận tự động giới hạn ở các sự thật rõ ràng của nhân vật chính và nhân vật chính yếu. Đổi tên NPC thủ công sẽ đồng bộ quy thuộc của các mục đời sống, xóa nhân vật sẽ không xóa hồ sơ đời sống lịch sử của họ. Quy tắc ghim đầu / kích hoạt từ khóa / thời hạn và lắng đọng không đổi, đổi cuộc trò chuyện cũng sẽ giữ lại quy thuộc.
 
-读取某楼之前或之后的状态：
+Đọc trạng thái trước hoặc sau một tầng nào đó:
 
 ```js
 const before = globalThis.STBaiBaiBook.getSnapshot({
@@ -165,21 +165,21 @@ const after = globalThis.STBaiBaiBook.getSnapshot({
 });
 ```
 
-### 读取变量
+### Đọc biến số
 
-变量路径与柏宝书内部一致，支持点号和数字数组下标：
+Đường dẫn biến số đồng nhất với bên trong Bách Bảo Thư, hỗ trợ dấu chấm và chỉ số mảng dạng chữ số:
 
 ```js
-const favor = globalThis.STBaiBaiBook.getVar('关系.爱丽丝.好感度');
-const hp = globalThis.STBaiBaiBook.getVar('队伍[0].hp', {
+const favor = globalThis.STBaiBaiBook.getVar('Quan hệ.Alice.Hảo cảm');
+const hp = globalThis.STBaiBaiBook.getVar('Đội hình[0].hp', {
   floor: 42,
   at: 'after',
 });
 ```
 
-路径不存在时返回 `undefined`。传入空路径 `""` 会返回整棵变量树。
+Khi đường dẫn không tồn tại sẽ trả về `undefined`. Truyền vào đường dẫn rỗng `""` sẽ trả về toàn bộ cây biến số.
 
-### 读取历史剧情
+### Đọc cốt truyện lịch sử
 
 ```js
 const history = globalThis.STBaiBaiBook.getHistory({
@@ -192,11 +192,11 @@ console.log(history.nodes);
 console.log(history.coverage);
 ```
 
-`before: 42` 只包含 `mesid < 42` 的剧情。`text` 是只带绝对时间、按时间顺序拼好的压缩历史文本；`relativeText` 会额外加入“昨天”“三天前”和周几等相对时间，参照点是本次查询截止位置之前的最新故事时间。`nodes` 同时提供每个被选中摘要/总结节点的层级、时间和覆盖楼层范围。
+`before: 42` chỉ bao gồm cốt truyện của `mesid < 42`. `text` là văn bản lịch sử nén chỉ kèm thời gian tuyệt đối, được ghép theo trình tự thời gian; `relativeText` sẽ cộng thêm các thời gian tương đối như "Hôm qua", "3 ngày trước" và thứ mấy trong tuần, điểm tham chiếu là thời gian trong truyện mới nhất trước vị trí kết thúc truy vấn lần này. `nodes` đồng thời cung cấp cấp độ, thời gian và phạm vi tầng bao phủ của mỗi nút tóm tắt / đại tóm tắt được chọn.
 
-柏宝书会优先使用可完整代表一段历史的最高层总结；若总结节点存在失效后代，则自动拆回仍然有效的下层节点。
+Bách Bảo Thư sẽ ưu tiên sử dụng bản đại tóm tắt tầng cao nhất có thể đại diện trọn vẹn cho một đoạn lịch sử; nếu nút đại tóm tắt có hậu duệ mất hiệu lực thì sẽ tự động tách về các nút tầng dưới vẫn còn hợp lệ.
 
-### 读取正常注入口径的历史剧情
+### Đọc cốt truyện lịch sử theo tiêu chuẩn tiêm thông thường
 
 ```js
 const injectedHistory = globalThis.STBaiBaiBook.getInjectedHistory();
@@ -206,27 +206,27 @@ console.log(injectedHistory.nodes);
 console.log(injectedHistory.coverage);
 ```
 
-`getInjectedHistory()` 与柏宝书正常记忆注入共用同一套节点选择规则：只返回正文已经隐藏、已离开滑动窗口的有效摘要，并使用当前最新故事时间生成相对时间。`relativeText` 是宏和正常注入使用的历史正文；`text` 是相同节点的纯绝对时间版本。
+`getInjectedHistory()` dùng chung cùng một bộ quy tắc chọn nút với phần tiêm trí nhớ thông thường của Bách Bảo Thư: chỉ trả về các bản tóm tắt hợp lệ có chính văn đã ẩn và đã rời khỏi cửa sổ trượt, đồng thời sử dụng thời gian trong truyện mới nhất hiện tại để tạo thời gian tương đối. `relativeText` là nội dung lịch sử được macro và phần tiêm thông thường sử dụng; `text` là phiên bản thời gian thuần tuyệt đối của cùng các nút đó.
 
-返回值不包含柏宝书内部注入槽使用的外围提示语，只包含历史剧情正文。
+Giá trị trả về không bao gồm lời nhắc bao ngoài được dùng bởi khe tiêm nội bộ của Bách Bảo Thư, mà chỉ bao gồm nội dung chính của cốt truyện lịch sử.
 
-### 读取单楼
+### Đọc tầng đơn
 
 ```js
 const floor = globalThis.STBaiBaiBook.getFloor(42);
 
-console.log(floor.body);             // 按柏宝书规则清洗后的楼层正文
-console.log(floor.omitted);          // 是否番外
-console.log(floor.memory.valid);     // 是否有当前页可用摘要
+console.log(floor.body);             // Chính văn tầng sau khi đã làm sạch theo quy tắc Bách Bảo Thư
+console.log(floor.omitted);          // Có phải ngoại truyện hay không
+console.log(floor.memory.valid);     // Có tóm tắt khả dụng ở trang (swipe) hiện tại hay không
 console.log(floor.memory.summary);
 console.log(floor.memory.delta);
 ```
 
-`memory.stored` 表示消息上物理存在叶子数据；`memory.valid` 才表示该叶子属于当前 swipe、未被番外规则排除并可用于查询。无效叶子的旧摘要和增量不会公开为有效结果。
+`memory.stored` biểu thị trên tin nhắn có tồn tại dữ liệu lá về mặt vật lý; `memory.valid` mới biểu thị lá đó thuộc về swipe hiện tại, không bị quy tắc ngoại truyện loại trừ và có thể dùng để truy vấn. Tóm tắt cũ và phần tăng thêm của lá không hợp lệ sẽ không được phơi bày làm kết quả hợp lệ.
 
-### 一次读取某楼完整上下文
+### Đọc ngữ cảnh đầy đủ của một tầng trong một lần
 
-这是“某楼状态快照 + 之前历史剧情”的推荐入口：
+Đây là lối vào được khuyên dùng cho "ảnh chụp nhanh trạng thái của một tầng + cốt truyện lịch sử trước đó":
 
 ```js
 const context = globalThis.STBaiBaiBook.getContextAtFloor({
@@ -242,33 +242,33 @@ console.log(context.historyBefore.text);
 console.log(context.coverage);
 ```
 
-### 通用 query
+### Truy vấn chung (query)
 
 ```js
 const result = globalThis.STBaiBaiBook.query({
   resource: 'var',
-  path: '关系.爱丽丝.好感度',
+  path: 'Quan hệ.Alice.Hảo cảm',
   floor: 42,
   at: 'after',
 });
 ```
 
-支持的 `resource`：
+Các `resource` được hỗ trợ:
 
 ```text
 var, vars, state, protagonist, items, plans, scenes, npcs, itemLog,
 snapshot, history, injectedHistory, floor, context
 ```
 
-- `var` 需要 `path`。
-- `floor`、`context` 需要 `floor`。
-- `history` 使用 `before`；也接受 `floor` 作为截止点别名。
-- `injectedHistory` 无需额外参数，使用正常记忆注入的滑动窗口过滤规则。
-- 其余状态资源可选 `floor` 和 `at`。
+- `var` cần `path`.
+- `floor`, `context` cần `floor`.
+- `history` sử dụng `before`; cũng chấp nhận `floor` làm bí danh điểm kết thúc.
+- `injectedHistory` không cần tham số bổ sung, sử dụng quy tắc lọc cửa sổ trượt của phần tiêm trí nhớ thông thường.
+- Các tài nguyên trạng thái còn lại có thể tùy chọn `floor` và `at`.
 
-## 变更通知
+## Thông báo thay đổi
 
-通过 API 订阅：
+Đăng ký qua API:
 
 ```js
 const unsubscribe = globalThis.STBaiBaiBook.subscribe(notice => {
@@ -276,11 +276,11 @@ const unsubscribe = globalThis.STBaiBaiBook.subscribe(notice => {
   const latest = globalThis.STBaiBaiBook.getSnapshot();
 });
 
-// 插件卸载时
+// Khi gỡ plugin
 unsubscribe();
 ```
 
-也可监听 DOM 事件：
+Cũng có thể lắng nghe sự kiện DOM:
 
 ```js
 window.addEventListener('st-baibai-book:changed', event => {
@@ -288,12 +288,12 @@ window.addEventListener('st-baibai-book:changed', event => {
 });
 ```
 
-事件名：
+Tên sự kiện:
 
 - `st-baibai-book:ready`
 - `st-baibai-book:changed`
 
-事件 `detail` 与订阅通知均包含：
+Cả `detail` của sự kiện và thông báo đăng ký đều bao gồm:
 
 ```js
 {
@@ -306,22 +306,22 @@ window.addEventListener('st-baibai-book:changed', event => {
 }
 ```
 
-连续发生的内部更新可能合并为一次 `changed` 通知。消费方应把通知理解为“数据可能已变化”，收到后重新调用查询方法，不要自行猜测增量。
+Các cập nhật nội bộ diễn ra liên tiếp có thể được gộp thành một thông báo `changed`. Phía tiêu thụ nên hiểu thông báo là "dữ liệu có thể đã thay đổi", sau khi nhận được hãy gọi lại phương thức truy vấn, đừng tự đoán phần tăng thêm.
 
-## `/bbs-get` 斜杠命令
+## Lệnh gạch chéo `/bbs-get`
 
-默认输出紧凑 JSON，可直接进入 STscript 管道：
+Mặc định xuất JSON nhỏ gọn, có thể đi thẳng vào đường ống (pipe) STscript:
 
 ```text
 /bbs-get resource=snapshot
-/bbs-get resource=var path="关系.爱丽丝.好感度" floor=42 at=after format=raw
+/bbs-get resource=var path="Quan hệ.Alice.Hảo cảm" floor=42 at=after format=raw
 /bbs-get resource=history before=42 format=text
 /bbs-get resource=injectedHistory format=text
 /bbs-get resource=floor floor=42 format=json
 /bbs-get resource=context floor=42 format=json
 ```
 
-也可以把资源名作为第一个无名参数：
+Cũng có thể đặt tên tài nguyên làm tham số không tên đầu tiên:
 
 ```text
 /bbs-get snapshot
@@ -329,66 +329,66 @@ window.addEventListener('st-baibai-book:changed', event => {
 /bbs-get injectedHistory format=text
 ```
 
-参数：
+Tham số:
 
-| 参数 | 含义 |
+| Tham số | Ý nghĩa |
 | --- | --- |
-| `resource` | 与 JavaScript `query()` 相同的资源名，默认 `snapshot` |
-| `path` | `var` 使用的变量路径 |
-| `floor` | 零基 ST `mesid` |
-| `at` | `before` 或 `after`，默认 `after` |
-| `before` | 历史截止楼层，不包含该楼 |
-| `format` | `json`、`raw` 或 `text` |
+| `resource` | Tên tài nguyên giống với `query()` trong JavaScript, mặc định là `snapshot` |
+| `path` | Đường dẫn biến số được `var` sử dụng |
+| `floor` | `mesid` tính từ 0 của ST |
+| `at` | `before` hoặc `after`, mặc định là `after` |
+| `before` | Tầng kết thúc lịch sử, không bao gồm tầng đó |
+| `format` | `json`, `raw` hoặc `text` |
 
-格式规则：
+Quy tắc định dạng:
 
-- `json`：默认；始终输出合法紧凑 JSON，缺失变量为 `null`。
-- `raw`：字符串/数字/布尔值不带 JSON 引号；对象和数组仍输出紧凑 JSON。
-- `text`：普通历史返回绝对时间正文；注入口径历史返回与正常注入相同的相对时间正文；单楼返回摘要（无摘要则返回清洗后的正文）；楼层上下文返回“此前历史 + 本楼摘要”。
+- `json`: Mặc định; luôn xuất JSON nhỏ gọn hợp lệ, biến số bị thiếu là `null`.
+- `raw`: Chuỗi / số / giá trị boolean không kèm dấu ngoặc kép JSON; đối tượng và mảng vẫn xuất JSON nhỏ gọn.
+- `text`: Lịch sử thường trả về chính văn thời gian tuyệt đối; lịch sử theo tiêu chuẩn tiêm trả về chính văn thời gian tương đối giống với tiêm thông thường; tầng đơn trả về tóm tắt (không có tóm tắt thì trả về chính văn sau khi làm sạch); ngữ cảnh tầng trả về "lịch sử trước đó + tóm tắt tầng này".
 
-## ST 宏
+## Macro ST
 
-### 新旧宏引擎都支持
+### Cả bộ máy macro mới và cũ đều hỗ trợ
 
 ```text
-{{bbsVars}}       当前变量树，紧凑 JSON
-{{bbsState}}      当前时间/地点状态，紧凑 JSON
-{{bbsSnapshot}}   当前完整快照，紧凑 JSON
-{{bbsHistory}}    当前全部压缩历史，带相对时间的纯文本
-{{bbsInjectedHistory}} 与正常记忆注入相同，跳过滑动窗口内摘要
+{{bbsVars}}       Cây biến số hiện tại, JSON nhỏ gọn
+{{bbsState}}      Trạng thái thời gian/địa điểm hiện tại, JSON nhỏ gọn
+{{bbsSnapshot}}   Ảnh chụp nhanh đầy đủ hiện tại, JSON nhỏ gọn
+{{bbsHistory}}    Toàn bộ lịch sử nén hiện tại, văn bản thuần kèm thời gian tương đối
+{{bbsInjectedHistory}} Giống với tiêm trí nhớ thông thường, bỏ qua tóm tắt trong cửa sổ trượt
 ```
 
-### 新宏引擎支持参数
+### Bộ máy macro mới hỗ trợ tham số
 
 ```text
-{{bbsVar::关系.爱丽丝.好感度}}
-{{bbsVar::队伍[0].hp::42::after}}
+{{bbsVar::Quan hệ.Alice.Hảo cảm}}
+{{bbsVar::Đội hình[0].hp::42::after}}
 {{bbsSnapshot::42::before}}
 {{bbsSnapshot::42::after}}
 {{bbsHistory::42}}
 {{bbsFloor::42}}
 ```
 
-`{{bbsHistory}}` 和 `{{bbsHistory::42}}` 返回 `getHistory(...).relativeText`。后者只包含 `mesid < 42` 的剧情，并以第 42 楼之前的最新故事时间计算“昨天”“三天前”和周几等标记。
+`{{bbsHistory}}` và `{{bbsHistory::42}}` trả về `getHistory(...).relativeText`. Cái sau chỉ bao gồm cốt truyện của `mesid < 42`, và lấy thời gian trong truyện mới nhất trước tầng 42 để tính các nhãn như "Hôm qua", "3 ngày trước" và thứ mấy trong tuần.
 
-`{{bbsInjectedHistory}}` 返回 `getInjectedHistory().relativeText`，与正常记忆注入使用相同的节点选择和相对时间规则，因此会自动跳过滑动窗口内仍发送全文的摘要。
+`{{bbsInjectedHistory}}` trả về `getInjectedHistory().relativeText`, sử dụng cùng quy tắc chọn nút và thời gian tương đối với phần tiêm trí nhớ thông thường, do đó sẽ tự động bỏ qua các bản tóm tắt trong cửa sổ trượt vốn vẫn đang gửi toàn văn.
 
-宏中的字符串值原样返回；数字和布尔值转为字符串；对象和数组使用紧凑 JSON；`null`、不存在的变量或查询错误返回空字符串。
+Giá trị chuỗi trong macro được trả về nguyên mẫu; số và giá trị boolean chuyển thành chuỗi; đối tượng và mảng sử dụng JSON nhỏ gọn; `null`, biến số không tồn tại hoặc lỗi truy vấn trả về chuỗi rỗng.
 
-旧版宏引擎只能使用五个无参数宏。需要参数化读取时，应检查：
+Bộ máy macro phiên bản cũ chỉ có thể sử dụng năm macro không tham số. Khi cần đọc có tham số, nên kiểm tra:
 
 ```js
 globalThis.STBaiBaiBook.capabilities.parameterizedMacros
 ```
 
-若为 `false`，改用 `/bbs-get` 或 JavaScript API。
+Nếu là `false`, hãy chuyển sang dùng `/bbs-get` hoặc JavaScript API.
 
-## 错误与边界
+## Lỗi và ranh giới
 
-- `floor` 必须是当前聊天内有效的整数 `mesid`，否则 JavaScript API 会抛出 `TypeError` 或 `RangeError`。
-- `before` 可取 `0` 到 `chat.length`；它表示排他的截止索引。
-- 当前没有打开聊天时，末尾快照和历史返回空结果；需要具体楼层的方法会因无有效楼层而抛错。
-- API DTO 可自由缓存和修改，但它是读取时刻的副本；需要最新值时重新查询并比较 `revision`。
-- 不要读取柏宝书内部的 `memory` 响应式对象或直接解析 `chatMetadata`。这些属于内部实现，不受 API v1 兼容承诺保护。
+- `floor` bắt buộc phải là số nguyên `mesid` hợp lệ trong cuộc trò chuyện hiện tại, nếu không JavaScript API sẽ ném ra `TypeError` hoặc `RangeError`.
+- `before` có thể nhận giá trị từ `0` đến `chat.length`; nó biểu thị chỉ số kết thúc loại trừ (exclusive).
+- Khi hiện tại không mở cuộc trò chuyện nào, ảnh chụp nhanh cuối và lịch sử sẽ trả về kết quả rỗng; các phương thức cần tầng cụ thể sẽ ném lỗi do không có tầng hợp lệ.
+- DTO của API có thể tự do lưu đệm và sửa đổi, nhưng nó là bản sao tại thời điểm đọc; khi cần giá trị mới nhất hãy truy vấn lại và so sánh `revision`.
+- Đừng đọc đối tượng phản ứng `memory` nội bộ của Bách Bảo Thư hoặc phân tích trực tiếp `chatMetadata`. Những thứ đó thuộc về triển khai nội bộ, không được bảo vệ bởi cam kết tương thích API v1.
 
-公开 TypeScript 类型定义位于 `src/public/types.ts`。
+Định nghĩa kiểu TypeScript công khai nằm tại `src/public/types.ts`.

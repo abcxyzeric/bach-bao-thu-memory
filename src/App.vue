@@ -6,14 +6,14 @@ import { getPage } from '@/pages/registry';
 import { closeBook, cycleTheme, lastOpenedAt, modalHost, THEMES, ui } from '@/state/ui';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 
-// 题首主题按钮:显示「下一个」主题的图标与名,点击即切换到它
+// Nút giao diện ở đầu trang: hiển thị biểu tượng và tên của giao diện "tiếp theo", nhấn vào sẽ chuyển sang giao diện đó
 const nextTheme = computed(() => {
   const i = THEMES.findIndex(t => t.value === ui.theme);
   return THEMES[(i + 1) % THEMES.length];
 });
 
-// 是否窄屏(移动端):用于 nav 'auto' 的方向判定 + 抽屉手势开关。
-// matchMedia 变化 Vue 不会自动追踪,用 ref 桥接成响应式。
+// Có phải màn hình hẹp (di động) hay không: dùng để phán đoán hướng của nav 'auto' + công tắc cử chỉ ngăn kéo.
+// Thay đổi của matchMedia không được Vue tự động theo dõi, dùng ref bắc cầu thành phản ứng (reactive).
 const isNarrow = window.matchMedia('(max-width: 640px)');
 const narrowFlag = ref(isNarrow.matches);
 const onMq = (e: MediaQueryListEvent) => (narrowFlag.value = e.matches);
@@ -28,8 +28,8 @@ const navPlacement = computed<'top' | 'bottom'>(() => {
 
 const current = computed(() => getPage(ui.activePage));
 
-// —— 遮罩点击关闭:仅当按下与松开都在遮罩本身。
-// 避免:1) 移动端打开手势的合成 click 穿透秒关;2) 窗内按下拖到窗外误关。
+// —— Nhấn lớp phủ để đóng: chỉ khi cả nhấn xuống và thả ra đều nằm trên chính lớp phủ.
+// Tránh: 1) click tổng hợp từ cử chỉ mở trên di động xuyên thấu làm đóng ngay lập tức; 2) nhấn trong cửa sổ rồi kéo ra ngoài cửa sổ làm đóng nhầm.
 let pressedOnOverlay = false;
 
 function onOverlayPointerDown(e: PointerEvent) {
@@ -42,12 +42,12 @@ function onOverlayClick(e: MouseEvent) {
   pressedOnOverlay = false;
 }
 
-// —— 移动端:下滑关闭抽屉 ——
-const dragY = ref(0); // 当前下拉位移(px)
+// —— Di động: vuốt xuống để đóng ngăn kéo ——
+const dragY = ref(0); // Độ dịch chuyển kéo xuống hiện tại (px)
 const dragging = ref(false);
 let startY = 0;
 let activePointer: number | null = null;
-const CLOSE_THRESHOLD = 110; // 超过此位移松手即关闭
+const CLOSE_THRESHOLD = 110; // Vượt quá độ dịch chuyển này khi thả tay sẽ đóng
 
 function onHandleDown(e: PointerEvent) {
   if (!narrowFlag.value) return;
@@ -59,7 +59,7 @@ function onHandleDown(e: PointerEvent) {
 
 function onHandleMove(e: PointerEvent) {
   if (!dragging.value || e.pointerId !== activePointer) return;
-  // 只跟随向下的位移
+  // Chỉ đi theo độ dịch chuyển hướng xuống
   dragY.value = Math.max(0, e.clientY - startY);
 }
 
@@ -73,7 +73,7 @@ function onHandleUp(e: PointerEvent) {
   dragY.value = 0;
 }
 
-// 抽屉跟手样式:拖动时禁用过渡,松手时回弹有过渡
+// Kiểu dáng ngăn kéo bám theo tay: khi kéo thì tắt chuyển tiếp (transition), khi thả tay bật lại có chuyển tiếp
 const windowStyle = computed(() => {
   if (!narrowFlag.value || dragY.value === 0) return undefined;
   return {
@@ -85,10 +85,10 @@ const windowStyle = computed(() => {
 
 <template>
   <div class="bbs-root" :data-theme="ui.theme">
-    <!-- 弹窗 Teleport 宿主:.bbs-root 直接子级,在 .bbs-body 滚动容器之外。
-         各页弹窗 Teleport 到此,避开 iOS「可滚动祖先内 fixed 后代定位错乱」(详见 state/ui.ts)。 -->
+    <!-- Chủ thể Teleport hộp thoại: con trực tiếp của .bbs-root, nằm ngoài vùng chứa cuộn .bbs-body.
+         Hộp thoại các trang Teleport đến đây, tránh lỗi "định vị hậu duệ fixed bên trong tổ tiên có thể cuộn bị lệch" trên iOS (xem chi tiết tại state/ui.ts). -->
     <div ref="modalHost"></div>
-    <!-- 悬浮球:留在 shadow 内才能用 --bbs-* 主题变量;自身 position:fixed 贴边,不受 host 影响 -->
+    <!-- Quả cầu nổi: nằm lại trong shadow mới dùng được biến giao diện --bbs-*; bản thân nó position:fixed bám cạnh, không bị host ảnh hưởng -->
     <FloatingOrb v-if="ui.showOrb" />
     <Transition name="bbs-fade">
       <div
@@ -99,12 +99,12 @@ const windowStyle = computed(() => {
         @keydown.esc="closeBook"
         tabindex="-1"
       >
-        <!-- 窗口常驻于遮罩内(不独立 v-if、不嵌套 Transition):
-             嵌套 Transition 在父子 v-if 同时翻转时,子的 leave 不会触发(实测窗口直接随父被移除,
-             无任何动画)。改由遮罩 Transition 的 class 作后代选择器驱动窗口的进出场动画
-             (见 <style> 里 .bbs-fade-enter-from/.bbs-fade-leave-to 下的 .bbs-window)。 -->
-        <div class="bbs-window" :style="windowStyle" role="dialog" aria-modal="true" aria-label="柏宝书">
-            <!-- 移动端抓手:可下滑关闭 -->
+        <!-- Cửa sổ thường trực bên trong lớp phủ (không v-if độc lập, không lồng Transition):
+             Transition lồng nhau khi v-if cha con cùng lật, leave của con sẽ không kích hoạt (thực tế kiểm nghiệm cửa sổ bị gỡ thẳng theo cha,
+             không có bất kỳ hoạt ảnh nào). Đổi sang dùng class của Transition lớp phủ làm bộ chọn hậu duệ dẫn động hoạt ảnh ra vào của cửa sổ
+             (xem .bbs-window dưới .bbs-fade-enter-from/.bbs-fade-leave-to trong <style>). -->
+        <div class="bbs-window" :style="windowStyle" role="dialog" aria-modal="true" aria-label="Bách Bảo Thư">
+            <!-- Tay nắm di động: có thể vuốt xuống để đóng -->
             <div
               v-if="navPlacement !== 'top' || narrowFlag"
               class="bbs-grabber"
@@ -116,14 +116,14 @@ const windowStyle = computed(() => {
               <span class="bbs-grabber-bar"></span>
             </div>
 
-            <!-- 题首 -->
+            <!-- Đầu trang -->
             <header class="bbs-head">
-              <span class="bbs-brand-name">柏宝书</span>
+              <span class="bbs-brand-name">Bách Bảo Thư</span>
               <div class="bbs-head-actions">
-                <button class="bbs-icon-btn" type="button" :title="`切换主题:${nextTheme.label}`" @click="cycleTheme">
+                <button class="bbs-icon-btn" type="button" :title="`Chuyển giao diện: ${nextTheme.label}`" @click="cycleTheme">
                   <Icon :name="nextTheme.icon" />
                 </button>
-                <button class="bbs-icon-btn" type="button" title="关闭" @click="closeBook">
+                <button class="bbs-icon-btn" type="button" title="Đóng" @click="closeBook">
                   <Icon name="close" />
                 </button>
               </div>
@@ -145,7 +145,7 @@ const windowStyle = computed(() => {
 </template>
 
 <style scoped>
-/* —— 移动端抓手:桌面隐藏 —— */
+/* —— Tay nắm di động: ẩn trên máy tính —— */
 .bbs-grabber {
   display: none;
 }
@@ -194,7 +194,7 @@ const windowStyle = computed(() => {
   outline-offset: 2px;
 }
 
-/* —— 过渡:遮罩淡入淡出,窗口靠遮罩的过渡 class 联动(见下) —— */
+/* —— Chuyển tiếp: lớp phủ mờ dần vào/ra, cửa sổ liên động nhờ class chuyển tiếp của lớp phủ (xem bên dưới) —— */
 .bbs-fade-enter-active,
 .bbs-fade-leave-active {
   transition: opacity var(--bbs-dur) var(--bbs-ease);
@@ -204,9 +204,9 @@ const windowStyle = computed(() => {
   opacity: 0;
 }
 
-/* 窗口进出场:由遮罩 Transition 的 class 作后代选择器驱动(窗口自身不再套 Transition——
-   父子 v-if 同时翻转时子 Transition 的 leave 不触发,实测窗口会无动画直接被移除)。
-   进出场两端同款 transform → 对称。PC 微升+略放大;移动端在 media query 里改成滑回底部。 */
+/* Cửa sổ ra vào: được dẫn động bởi class của Transition lớp phủ làm bộ chọn hậu duệ (bản thân cửa sổ không bọc Transition nữa ——
+   khi v-if cha con cùng lật thì leave của Transition con không kích hoạt, thực tế cửa sổ sẽ bị gỡ thẳng không có hoạt ảnh).
+   Hai đầu vào ra dùng cùng transform → đối xứng. Trên PC hơi nâng lên + phóng to nhẹ; trên di động trong media query đổi thành trượt về đáy. */
 .bbs-fade-enter-from .bbs-window,
 .bbs-fade-leave-to .bbs-window {
   opacity: 0;
@@ -228,15 +228,15 @@ const windowStyle = computed(() => {
   transform: translateY(-6px);
 }
 
-/* 窗口过渡:进出场(transform+opacity)与拖动回弹(transform)共用;
-   拖动跟手时由内联 style 的 transition:none 覆盖,松手回弹再走这条。 */
+/* Chuyển tiếp cửa sổ: dùng chung cho ra vào (transform+opacity) và bật lại khi kéo (transform);
+   khi kéo bám theo tay sẽ bị transition:none của inline style ghi đè, khi thả tay bật lại sẽ đi theo đường này. */
 .bbs-window {
   transition:
     transform var(--bbs-dur) var(--bbs-ease),
     opacity var(--bbs-dur) var(--bbs-ease);
 }
 
-/* ============ 移动端:抓手 + 抽屉上滑入场 ============ */
+/* ============ Di động: tay nắm + ngăn kéo trượt lên khi vào ============ */
 @media (max-width: 640px) {
   .bbs-grabber {
     display: flex;
@@ -256,17 +256,17 @@ const windowStyle = computed(() => {
   .bbs-head {
     padding: 4px 16px 12px;
   }
-  /* 抽屉从底部滑入 / 滑回底部(纯位移,不淡透明) */
+  /* Ngăn kéo trượt từ đáy lên / trượt về đáy (thuần dịch chuyển, không làm mờ trong suốt) */
   .bbs-fade-enter-from .bbs-window,
   .bbs-fade-leave-to .bbs-window {
     opacity: 1;
     transform: translateY(100%) scale(1);
   }
-  /* 遮罩离场延后淡出:让抽屉先滑回底部,背景殿后再撤,否则窗口随遮罩一起被拉透明,
-     滑动过程看不见(窗口是遮罩子元素,父 opacity 会合成到子)。 */
+  /* Lớp phủ trễ mờ dần khi rời đi: để ngăn kéo trượt về đáy trước, nền rút lui sau cùng, nếu không cửa sổ sẽ bị kéo trong suốt cùng lớp phủ,
+     quá trình trượt sẽ không nhìn thấy (cửa sổ là phần tử con của lớp phủ, opacity cha sẽ tổng hợp lên con). */
   .bbs-fade-leave-active {
     transition: opacity 0.16s var(--bbs-ease) 0.18s;
   }
-  /* 窗口滑回底部要走完整 --bbs-dur,不被上面遮罩的短时长牵连(各自 transition 独立,这里仅强调) */
+  /* Cửa sổ trượt về đáy phải đi hết trọn vẹn --bbs-dur, không bị thời lượng ngắn của lớp phủ phía trên kéo theo (transition mỗi bên độc lập, ở đây chỉ nhấn mạnh) */
 }
 </style>

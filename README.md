@@ -1,81 +1,79 @@
-# 柏宝书 · SillyTavern 记忆引擎
+# Bách Bảo Thư · Bộ máy trí nhớ cho SillyTavern
 
-> 让你的角色真正「记得住」。柏宝书是一个为 SillyTavern 打造的长期记忆扩展——它会一边陪你聊，一边默默把剧情整理成摘要、盘点物品、记住登场人物、梳理来龙去脉，再在恰当的时候把这些记忆悄悄递给 AI。既省 token，又让长篇对话前后连贯、不失忆、不崩人设。
+> Giúp nhân vật của bạn thực sự "nhớ được". Bách Bảo Thư là một tiện ích mở rộng trí nhớ dài hạn được chế tác dành cho SillyTavern —— nó vừa trò chuyện cùng bạn, vừa âm thầm tổng hợp cốt truyện thành các bản tóm tắt, kiểm kê vật phẩm, ghi nhớ các nhân vật xuất hiện, hệ thống hóa đầu đuôi câu chuyện, rồi vào thời điểm thích hợp sẽ lặng lẽ chuyển những ký ức này cho AI. Vừa tiết kiệm token, vừa giúp các cuộc đối thoại dài hơi mạch lạc trước sau, không mất trí nhớ, không sụp đổ thiết lập nhân vật (OOC).
 
-聊得越久，AI 越容易忘事：早期的约定被抛在脑后，物品凭空消失又出现，角色性格漂移，时间线也乱成一团。柏宝书就是为了解决这些烦恼而生的——它把「记忆」这件事从你手里接管过去，全程自动，几乎无需操心。
-
----
-
-## 它能做什么
-
-### 📖 自动摘要，永不失忆
-- **边聊边记**：每当 AI 回复后，柏宝书会自动把这一楼的剧情整理成一段结构化摘要，并在合适的时候把太旧的原文楼层隐藏起来、改用摘要发送。上下文窗口再也不会被灌满，长对话也能一直聊下去。
-- **多层总结**：摘要攒多了会被压缩成「总结」，总结再多还能二次压缩成更上层的概览——就像给剧情建了一套目录，几百楼的故事也能一眼看清脉络。
-- **手动随心调**：想自己动手也没问题。任意楼层单独补摘、勾选多条手动合并、一键把落下的楼层批量补齐，全都支持；每条摘要都能直接编辑、删除。
-- **详细 / 精简两档**：一键切换摘要的详尽程度——要信息全就选详细，想省 token 就选精简。
-
-### 🕰️ 时间线不再错乱
-柏宝书会为每段剧情打上「故事内时间」锚点，让 AI 清楚地知道「现在是什么时候、过了多久」。再也不会出现「昨天的事被当成三年前」或者时间莫名倒流的尴尬。
-
-### 🎒 物品、人物、场景，样样有账本
-除了剧情摘要，柏宝书还会自动维护几本「台账」：
-- **物品**：谁获得了什么、消耗了什么、东西放在哪儿、随身还是寄存，清清楚楚，还带变动日志，绝不重复结算。
-- **角色（NPC）**：登场人物的身份、外貌、性格、当前穿着与状态，谁是核心主演、谁只是路人，自动分级管理——重要角色重点跟踪，龙套不占篇幅。
-- **生活小档案**：记录主角与主要角色明确说过或正文揭示的偏好、习惯和近况，每条标明所属人物，不因一次行为推断习惯。相关时才参考，不跨人物合并；旧记录默认仍属主角，可在角色页纠正。
-- **内心好感与外在态度**:摘要 AI 分别估计角色对你的内在倾向与外在对待方式,各用五档文字表达,另有"未知"和一句说明。默认保持,不按回合加减分;只有充分新依据才调整,嘴硬、客套或一时情绪不等于感情变化。角色页可查看、手动校正,楼层面板可追溯修改,带数据换对话也会保留。不想跟角色卡自带好感系统并行的话,可在设置 → 注入设置里关掉名册内的好感注入(记录与角色页展示不受影响)。
-- **角色对你的了解**：每个角色各有一份「了解清单」，记下该角色从剧情里知道（或以为）的你的事——名字、身世、经历、秘密、喜好。没记过、剧情里也没交代过的私事默认该角色不知道，防止角色凭人设或世界书对你全知；被骗了就照记被骗后的认知，揭穿时再改写原条。有记录的角色，卡片上会直接显示最近两条，点开（或点灯泡按钮）可查看全部、手动增改删（老相识早就知道的事可以手动补上）。默认开启，可在设置 → 注入设置里关掉，关掉后不再记录也不再发送，已有清单保留。
-- **场景**：去过的地点按「由大到小」的层级组织成一棵地图树，复用命名、避免重复，剧情走到哪、人在哪一目了然。
-- **计划与悬念**：角色立下的约定、埋下的伏笔、未解的谜题，都会被单独记进「悬念簿」，了结了就核销，避免 AI 把办完的事又拿出来说一遍。
-
-### 🔍 向量记忆：需要时才「想起来」
-开启向量记忆后，柏宝书会把历史剧情建成可检索的记忆库。每当续写新剧情时，它会智能判断「这一段可能需要回忆起哪些往事」，多角度检索、精排打分，再把最相关的几段旧记忆悄悄递给 AI 参考。哪怕是三百楼前的一个细节，也能在关键时刻被重新「想起来」。
-
-### 🚚 换对话不丢记忆
-- **带数据创建新对话**：一键把当前剧情的最近正文、历史摘要、物品与计划状态打包，开一个全新对话无缝接着聊——旧记忆随行，还能被向量召回。
-- **从 Horae 迁移**：用过旧插件 Horae 的老用户，可以把旧的摘要、物品、计划一键搬进柏宝书，不动原数据、平滑过渡。
-- **导入旧总结**：以前手写在世界书等位置的剧情总结可以直接粘贴进来，并指定它覆盖到哪一楼；柏宝书从此处接管后续剧情，不再重复总结旧楼。
-
-### 🎨 好看又好用的界面
-- 精心设计的多主题界面，自动跟随 SillyTavern 的配色。
-- 多种入口任你挑：屏幕悬浮球（可拖动、可换图标）、顶栏按钮、输入框上方按钮，还有每条楼层下方的小面板。
-- 楼层面板里可查看该楼摘要与数据变动，还能一键把某楼标记为「番外」——被标记的楼层会被记忆系统彻底忽略，适合小剧场、番外篇，取消即恢复。
-- 手机、平板、电脑都适配，操作顺手。
-
-### ⚙️ 想调多细都行
-- **独立副 API**：摘要、总结可以指派专门的模型渠道去跑，不占用、也不干扰你的主对话；不想额外配置，直接跟随主 API 也行。
-- **自定义提示词**：摘要、总结、破限、时间标签等每一套提示词都能自己改，还提供可点击插入的宏。
-- **排除名单**：可以按角色、按世界书整本或按条目名把不需要记忆的内容排除掉，既省 token 又不干扰。
-- **内容清洗**：自动剔除思维链、状态栏等格式块，还能自定义要清洗的标签，让摘要只保留真正的剧情。
-- **失败重试、超时控制、召回参数**……进阶旋钮一应俱全，也都有合理的默认值，新手无需理会。
+Trò chuyện càng lâu, AI càng dễ quên chuyện: những lời hẹn ước thuở đầu bị quẳng ra sau đầu, vật phẩm tự dưng biến mất rồi lại xuất hiện, tính cách nhân vật trôi lệch, dòng thời gian cũng rối thành một mớ. Bách Bảo Thư ra đời chính là để giải quyết những phiền não đó —— nó tiếp quản công việc "ghi nhớ" từ tay bạn, tự động toàn trình, hầu như không cần bận tâm.
 
 ---
 
-## 安装
+## Nó có thể làm được gì
 
-在 SillyTavern 的「扩展 → 安装扩展」里填入本仓库地址即可：
+### 📖 Tóm tắt tự động, không bao giờ mất trí nhớ
+- **Vừa trò chuyện vừa ghi nhớ**: Mỗi khi AI phản hồi xong, Bách Bảo Thư sẽ tự động tổng hợp cốt truyện của tầng đó thành một đoạn tóm tắt có cấu trúc, và vào thời điểm thích hợp sẽ ẩn các tầng nguyên văn quá cũ đi, chuyển sang dùng bản tóm tắt để gửi. Cửa sổ ngữ cảnh sẽ không bao giờ bị nhồi đầy nữa, cuộc đối thoại dài đến đâu cũng có thể tiếp tục mãi.
+- **Đại tóm tắt nhiều tầng**: Khi tóm tắt tích lũy nhiều sẽ được nén thành "Đại tóm tắt", đại tóm tắt nhiều thêm nữa còn có thể nén cấp hai thành bản khái quát tầng cao hơn —— giống như xây dựng một bộ mục lục cho cốt truyện, câu chuyện vài trăm tầng cũng có thể nhìn rõ mạch truyện chỉ trong nháy mắt.
+- **Tự tay điều chỉnh tùy ý**: Muốn tự mình thao tác cũng không thành vấn đề. Tóm tắt bù riêng cho tầng bất kỳ, tích chọn nhiều mục để gộp thủ công, bù đắp hàng loạt các tầng bị sót chỉ bằng một cú nhấn, tất cả đều được hỗ trợ; mỗi bản tóm tắt đều có thể chỉnh sửa, xóa bỏ trực tiếp.
+- **Hai mức Chi tiết / Tinh gọn**: Chuyển đổi mức độ chi tiết của tóm tắt bằng một cú nhấn —— muốn đầy đủ thông tin thì chọn Chi tiết, muốn tiết kiệm token thì chọn Tinh gọn.
+
+### 🕰️ Dòng thời gian không còn rối loạn
+Bách Bảo Thư sẽ gắn mốc "thời gian trong truyện" cho mỗi đoạn cốt truyện, giúp AI biết rõ "bây giờ là lúc nào, đã trôi qua bao lâu". Sẽ không còn cảnh ngượng ngùng "chuyện ngày hôm qua bị coi thành ba năm trước" hay thời gian tự dưng chảy ngược nữa.
+
+### 🎒 Vật phẩm, nhân vật, khung cảnh, mọi thứ đều có sổ cái
+Ngoài tóm tắt cốt truyện, Bách Bảo Thư còn tự động duy trì một vài cuốn "sổ cái":
+- **Vật phẩm**: Ai nhận được gì, tiêu hao gì, đồ đạc để ở đâu, mang theo bên mình hay gửi cất giữ, tất cả đều rõ ràng minh bạch, lại kèm theo nhật ký biến động, tuyệt đối không tính toán trùng lặp.
+- **Nhân vật (NPC)**: Thân phận, ngoại hình, tính cách, trang phục và trạng thái hiện tại của các nhân vật xuất hiện, ai là diễn viên chính cốt lõi, ai chỉ là người qua đường, đều được tự động quản lý phân cấp —— nhân vật quan trọng được theo dõi trọng điểm, nhân vật quần chúng không chiếm dụng dung lượng.
+- **Hồ sơ nhỏ đời sống**: Ghi lại sở thích, thói quen và tình trạng gần đây mà nhân vật chính cùng các nhân vật chính yếu đã nói rõ hoặc chính văn hé lộ, mỗi mục ghi rõ nhân vật sở hữu, không suy diễn thói quen chỉ từ một hành vi đơn lẻ. Chỉ tham khảo khi có liên quan, không gộp xuyên nhân vật; các bản ghi cũ mặc định vẫn thuộc về nhân vật chính, có thể chỉnh sửa lại ở trang Nhân vật.
+- **Hảo cảm nội tâm và thái độ bên ngoài**: AI tóm tắt ước tính riêng xu hướng nội tâm và cách đối xử bên ngoài của nhân vật đối với bạn, mỗi mặt biểu đạt bằng 5 mức văn bản, ngoài ra còn có "Chưa rõ" và một câu ghi chú giải thích. Mặc định giữ nguyên, không cộng trừ điểm theo từng lượt; chỉ khi có căn cứ mới đầy đủ mới điều chỉnh, mạnh miệng, khách sáo hay cảm xúc nhất thời không đồng nghĩa với thay đổi tình cảm. Có thể xem và hiệu chỉnh thủ công ở trang Nhân vật, truy ngược sửa đổi ở bảng tầng, đổi cuộc trò chuyện kèm dữ liệu cũng sẽ giữ lại. Nếu không muốn chạy song song với hệ thống hảo cảm có sẵn của thẻ nhân vật, có thể vào Cài đặt → Cài đặt tiêm để tắt phần tiêm hảo cảm trong danh sách (việc ghi nhận và hiển thị ở trang Nhân vật không bị ảnh hưởng).
+- **Hiểu biết của nhân vật về bạn**: Mỗi nhân vật có một "danh sách hiểu biết" riêng, ghi lại những chuyện về bạn mà nhân vật đó biết được (hoặc tưởng là vậy) từ trong cốt truyện —— tên tuổi, thân thế, trải nghiệm, bí mật, sở thích. Những chuyện riêng tư chưa từng ghi lại và trong cốt truyện cũng chưa từng tiết lộ thì mặc định nhân vật đó không biết, ngăn nhân vật dựa vào thiết lập hoặc Sách Thế Giới để toàn tri về bạn; nếu bị lừa thì ghi nhận đúng theo nhận thức sau khi bị lừa, khi vạch trần sẽ viết lại mục gốc. Nhân vật có bản ghi sẽ hiển thị trực tiếp hai mục gần nhất trên thẻ, nhấn mở (hoặc nhấn nút bóng đèn) để xem toàn bộ, thêm/sửa/xóa thủ công (những chuyện người quen cũ đã biết từ sớm có thể bổ sung thủ công). Mặc định bật, có thể tắt trong Cài đặt → Cài đặt tiêm, sau khi tắt sẽ không ghi nhận và không gửi nữa, danh sách đã có vẫn được giữ lại.
+- **Khung cảnh**: Các địa điểm đã đi qua được tổ chức thành một cây bản đồ theo phân cấp "từ lớn đến nhỏ", tái sử dụng tên gọi, tránh trùng lặp, cốt truyện đi tới đâu, người đang ở đâu đều rõ mồn một.
+- **Kế hoạch và Nghi vấn**: Những lời hẹn ước nhân vật đã lập, phục bút đã cài cắm, bí ẩn chưa lời giải, đều sẽ được ghi riêng vào "Sổ nghi vấn", khi kết thúc sẽ gạch sổ, tránh việc AI lại lôi những chuyện đã giải quyết xong ra nói lại lần nữa.
+
+### 🔍 Trí nhớ vector: Khi cần mới "nhớ lại"
+Sau khi bật trí nhớ vector, Bách Bảo Thư sẽ xây dựng cốt truyện lịch sử thành một kho ký ức có thể tìm kiếm. Mỗi khi viết tiếp cốt truyện mới, nó sẽ phán đoán thông minh "đoạn này có thể cần hồi tưởng lại những chuyện cũ nào", tìm kiếm đa góc độ, sắp xếp tinh chỉnh và chấm điểm, rồi lặng lẽ chuyển vài đoạn ký ức cũ liên quan nhất cho AI tham khảo. Cho dù là một chi tiết từ ba trăm tầng trước cũng có thể được "nhớ lại" vào thời khắc mấu chốt.
+
+### 🚚 Đổi cuộc trò chuyện không mất trí nhớ
+- **Tạo cuộc trò chuyện mới kèm dữ liệu**: Đóng gói chính văn gần nhất, tóm tắt lịch sử, trạng thái vật phẩm và kế hoạch của cốt truyện hiện tại chỉ bằng một cú nhấn, mở một cuộc trò chuyện hoàn toàn mới để trò chuyện nối tiếp liền mạch —— ký ức cũ đi kèm theo, lại còn có thể được truy xuất vector.
+- **Di chuyển dữ liệu từ Horae**: Người dùng cũ từng sử dụng plugin Horae có thể chuyển các bản tóm tắt, vật phẩm, kế hoạch cũ sang Bách Bảo Thư chỉ bằng một cú nhấn, không động chạm dữ liệu gốc, chuyển tiếp mượt mà.
+- **Nhập đại tóm tắt cũ**: Các bản tổng kết cốt truyện viết tay trước đây ở Sách Thế Giới hoặc nơi khác có thể dán trực tiếp vào đây, đồng thời chỉ định nó bao phủ tới tầng nào; Bách Bảo Thư sẽ tiếp quản cốt truyện tiếp theo từ điểm đó, không đại tóm tắt trùng lặp các tầng cũ nữa.
+
+### 🎨 Giao diện đẹp mắt và dễ sử dụng
+- Giao diện đa chủ đề được thiết kế tỉ mỉ, tự động đi theo phối màu của SillyTavern.
+- Nhiều lối vào tùy bạn chọn: quả cầu nổi trên màn hình (có thể kéo thả, đổi biểu tượng), nút trên thanh đỉnh, nút phía trên khung nhập liệu, cùng bảng nhỏ bên dưới mỗi tầng.
+- Trong bảng tầng có thể xem bản tóm tắt và biến động dữ liệu của tầng đó, lại còn có thể đánh dấu một tầng là "Ngoại truyện" bằng một cú nhấn —— tầng được đánh dấu sẽ bị hệ thống trí nhớ bỏ qua hoàn toàn, phù hợp cho tiểu kịch trường, phần ngoại truyện, bỏ đánh dấu là khôi phục ngay.
+- Điện thoại, máy tính bảng, máy tính đều tương thích tốt, thao tác thuận tay.
+
+### ⚙️ Muốn tinh chỉnh chi tiết đến đâu cũng được
+- **API phụ độc lập**: Tóm tắt, đại tóm tắt có thể chỉ định kênh mô hình chuyên biệt để chạy, không chiếm dụng, cũng không làm nhiễu cuộc đối thoại chính của bạn; nếu không muốn cấu hình thêm, cho đi theo API chính trực tiếp cũng được.
+- **Lời nhắc tùy chỉnh**: Mỗi bộ lời nhắc Tóm tắt, Đại tóm tắt, Phá giới hạn, Thẻ thời gian... đều có thể tự sửa đổi, lại còn cung cấp các macro nhấn để chèn.
+- **Danh sách loại trừ**: Có thể loại trừ những nội dung không cần ghi nhớ theo nhân vật, theo nguyên cuốn Sách Thế Giới hoặc theo tên mục, vừa tiết kiệm token vừa không gây nhiễu.
+- **Làm sạch nội dung**: Tự động loại bỏ các khối định dạng như chuỗi suy luận, thanh trạng thái..., lại còn có thể tùy chỉnh các thẻ cần làm sạch, giúp bản tóm tắt chỉ giữ lại cốt truyện thực sự.
+- **Thử lại khi thất bại, kiểm soát thời gian chờ, tham số truy xuất**… các nút vặn nâng cao có đủ mọi thứ, và đều có sẵn giá trị mặc định hợp lý, người mới không cần bận tâm.
+
+---
+
+## Cài đặt
+
+Điền địa chỉ kho lưu trữ này vào phần "Tiện ích mở rộng → Cài đặt tiện ích mở rộng" (Extensions → Install extension) của SillyTavern là được:
 
 ```
 https://github.com/baibai-git/ST-BaiBai-Book
 ```
 
-安装后进入柏宝书的「设置」页，打开总开关「柏宝书 · 记忆引擎」，按需配置摘要与向量记忆，就能开始使用了。设置会随 SillyTavern 保存在服务器，跨设备、跨局域网自动同步。
+Sau khi cài đặt, hãy vào trang "Cài đặt" của Bách Bảo Thư, bật công tắc tổng "Bách Bảo Thư · Bộ máy trí nhớ", cấu hình tóm tắt và trí nhớ vector theo nhu cầu là có thể bắt đầu sử dụng. Cài đặt sẽ được lưu trên máy chủ cùng với SillyTavern, tự động đồng bộ đa thiết bị và qua mạng nội bộ (LAN).
 
 ---
 
-## 小贴士
+## Mẹo nhỏ
 
-- 摘要、总结默认可以直接「跟随主 API」，零配置就能用；想用更省钱或更擅长整理的模型，再去配副渠道即可。
-- 向量记忆是可选项：不开也能正常摘要，开了则能召回更久远的记忆，代价是每回合多一点点延迟。
-- 所有记忆数据都跟着聊天走，删聊天即删记忆，隐私可控。
-
----
-
-## 插件开发者
-
-柏宝书提供只读 JavaScript API、`/bbs-get` STscript 指令和 ST 宏。接入方式与数据结构见 [PUBLIC_API.md](./PUBLIC_API.md)。
+- Tóm tắt, đại tóm tắt mặc định có thể trực tiếp "Theo API chính", không cần cấu hình gì vẫn dùng được ngay; khi nào muốn dùng mô hình tiết kiệm chi phí hơn hoặc giỏi tổng hợp hơn thì mới cần đi cấu hình kênh phụ.
+- Trí nhớ vector là tùy chọn: không bật vẫn tóm tắt bình thường, bật lên thì có thể truy xuất những ký ức xa xưa hơn, cái giá phải trả là mỗi lượt tăng thêm một chút xíu độ trễ.
+- Mọi dữ liệu trí nhớ đều đi theo cuộc trò chuyện, xóa cuộc trò chuyện là xóa trí nhớ, quyền riêng tư nằm trong tầm kiểm soát.
 
 ---
 
-作者：柏柏 · 欢迎反馈与建议。
-</content>
-</invoke>
+## Dành cho nhà phát triển plugin
+
+Bách Bảo Thư cung cấp JavaScript API chỉ đọc, lệnh STscript `/bbs-get` và các macro ST. Cách thức tích hợp và cấu trúc dữ liệu xem tại [PUBLIC_API.md](./PUBLIC_API.md).
+
+---
+
+Tác giả: Bách Bách · Hoan nghênh mọi ý kiến phản hồi và đóng góp.

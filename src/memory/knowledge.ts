@@ -2,8 +2,8 @@ import { normalizeLifeDetailText } from './lifeDetails';
 import type { KnowledgeOp, MemKnowledge } from './types';
 
 /**
- * 了解清单:每个角色知道/以为的主角的事。
- * 用途是防人设/世界书常驻导致的「全知」——注入时告诉主模型没记的私事该角色默认不知道。
+ * Danh sách hiểu biết: những chuyện về nhân vật chính mà mỗi nhân vật biết / tưởng là vậy.
+ * Công dụng là chống "toàn tri" do thiết lập nhân vật / sách thế giới thường trú gây ra —— khi tiêm sẽ báo cho mô hình chính biết chuyện riêng tư chưa ghi thì nhân vật đó mặc định không biết.
  */
 
 function norm(s: string): string {
@@ -26,23 +26,23 @@ function arr(v: unknown): unknown[] {
   return Array.isArray(v) ? v : [];
 }
 
-/** 了解条目 id:产生它的叶子 id + 该操作在叶子 knowledge 日志里的序号(日志只追加,序号稳定) */
+/** ID mục hiểu biết: id lá tạo ra nó + số thứ tự của thao tác đó trong nhật ký knowledge của lá (nhật ký chỉ nối thêm, số thứ tự ổn định) */
 export function knowledgeId(leafId: string, opIndex: number): string {
   return `know:${leafId}#${opIndex}`;
 }
 
-/** 同一角色的同义条目算重复;不同角色知道同一件事各记各的 */
+/** Mục đồng nghĩa của cùng một nhân vật tính là trùng lặp; nhân vật khác nhau biết cùng một việc thì mỗi người ghi riêng */
 export function sameKnowledge(a: { subject: string; text: string }, b: { subject: string; text: string }): boolean {
   return norm(a.subject) === norm(b.subject) && normalizeLifeDetailText(a.text) === normalizeLifeDetailText(b.text);
 }
 
-/** 某角色的全部条目(名字按规范化匹配) */
+/** Toàn bộ mục của một nhân vật (tên khớp theo chuẩn hóa) */
 export function knowledgeOf(list: MemKnowledge[], name: string): MemKnowledge[] {
   const key = norm(name);
   return key ? list.filter(k => norm(k.subject) === key) : [];
 }
 
-/** 清洗存储日志:丢掉缺字段的操作(手改数据等),其余保持原顺序 */
+/** Làm sạch nhật ký lưu trữ: bỏ các thao tác thiếu trường (sửa dữ liệu tay, v.v.), phần còn lại giữ nguyên thứ tự gốc */
 export function cleanKnowledgeOps(raw: unknown): KnowledgeOp[] {
   const out: KnowledgeOp[] = [];
   for (const r of arr(raw)) {
@@ -68,7 +68,7 @@ export function cleanKnowledgeOps(raw: unknown): KnowledgeOp[] {
   return out;
 }
 
-/** 按顺序把一个叶子的操作施加到清单上(重放用);add 同角色同义去重,update 过的挪到末尾 */
+/** Áp dụng tuần tự các thao tác của một lá lên danh sách (dùng khi phát lại); add cùng nhân vật đồng nghĩa thì khử trùng lặp, mục đã update thì chuyển xuống cuối */
 export function applyKnowledgeOps(list: MemKnowledge[], ops: KnowledgeOp[], leaf: { id: string; createdAt: number; time: string }): void {
   ops.forEach((op, i) => {
     if (op.op === 'add') {
@@ -82,18 +82,18 @@ export function applyKnowledgeOps(list: MemKnowledge[], ops: KnowledgeOp[], leaf
     if (op.op === 'remove') return;
     if (op.subject) k.subject = op.subject;
     if (op.text) k.text = op.text;
-    // 改完和另一条撞成同一句 → 去掉改的这条(那句话已经有条目记着)
+    // Sửa xong lại đụng thành cùng một câu với mục khác → bỏ mục vừa sửa này đi (câu đó đã có mục ghi rồi)
     if (list.some(o => sameKnowledge(o, k))) return;
-    // 挪到末尾:注入只发最近几条,被纠正的认知往往最要紧,不能按最初记下的时间被截掉
+    // Chuyển xuống cuối: khi tiêm chỉ gửi vài mục gần nhất, nhận thức được đính chính thường quan trọng nhất, không thể bị cắt mất theo thời gian ghi lần đầu
     list.push(k);
   });
 }
 
 /**
- * AI 输出(分桶)→ 有序存储日志。
- *  - k1/k2… 按提示词里展示的顺序翻成稳定 id;已是 know: 的原样保留,查无的丢弃;
- *  - who 只认名册里的角色(含本楼新登场),按名册写法归一;主角或查无此人的整条丢弃;
- *  - 先改/删旧条,再加新条:纠正认知时「删旧加新」不会误删新加的。
+ * Đầu ra AI (chia nhóm) → nhật ký lưu trữ có thứ tự.
+ *  - k1/k2… dịch thành id ổn định theo thứ tự hiển thị trong prompt; đã là know: thì giữ nguyên, tra không thấy thì hủy bỏ;
+ *  - who chỉ nhận nhân vật trong danh sách (gồm cả nhân vật mới xuất hiện ở tầng này), quy chuẩn theo cách viết trong danh sách; nhân vật chính hoặc tra không thấy người này thì hủy cả mục;
+ *  - Sửa/xóa mục cũ trước, thêm mục mới sau: khi đính chính nhận thức kiểu "xóa cũ thêm mới" sẽ không xóa nhầm mục mới thêm.
  */
 export function finalizeKnowledge(raw: unknown, shown: { id: string }[], npcNames: string[]): KnowledgeOp[] {
   if (!isRecord(raw)) return [];
@@ -126,7 +126,7 @@ export function finalizeKnowledge(raw: unknown, shown: { id: string }[], npcName
   return out;
 }
 
-/** 副 API 只看给定角色的清单(省 token);返回顺序即 k1/k2… 编号,按 names 顺序分组 */
+/** API phụ chỉ xem danh sách của các nhân vật được chỉ định (tiết kiệm token); thứ tự trả về chính là đánh số k1/k2…, gom nhóm theo thứ tự names */
 export function selectKnowledgeForSummary(list: MemKnowledge[], names: string[]): MemKnowledge[] {
   const out: MemKnowledge[] = [];
   const seen = new Set<string>();
@@ -139,9 +139,9 @@ export function selectKnowledgeForSummary(list: MemKnowledge[], names: string[])
   return out;
 }
 
-/** 渲染给副 API:按角色分组,编号全局连续(须与 selectKnowledgeForSummary 的顺序一致) */
+/** Kết xuất cho API phụ: gom nhóm theo nhân vật, đánh số liên tục toàn cục (phải khớp với thứ tự của selectKnowledgeForSummary) */
 export function fmtKnowledgeForSummary(shown: MemKnowledge[]): string {
-  if (!shown.length) return '  (无)';
+  if (!shown.length) return '  (Không có)';
   const lines: string[] = [];
   let current = '';
   shown.forEach((k, i) => {
@@ -154,13 +154,13 @@ export function fmtKnowledgeForSummary(shown: MemKnowledge[]): string {
   return lines.join('\n');
 }
 
-/** 注入时每个角色最多发几条(取最近的):相处久了清单会很长,全发太占上下文 */
+/** Khi tiêm mỗi nhân vật gửi tối đa bao nhiêu mục (lấy gần nhất): ở bên nhau lâu danh sách sẽ rất dài, gửi hết quá tốn ngữ cảnh */
 export const KNOWLEDGE_INJECT_CAP = 15;
 
 /**
- * 渲染注入块。只发给定角色(在场/主要角色);没记录的也列「暂无记录」,让「没记=不知道」对其生效。
- * 叮嘱只锁私事:看得见的、公开的、按关系本该知道的、剧情里交代过得知的照常知道,免得矫枉过正变失忆
- * (老存档开启时清单是空的,以前得知的事靠剧情记录兜住)。
+ * Kết xuất khối tiêm. Chỉ gửi các nhân vật được chỉ định (có mặt / nhân vật chính yếu); chưa có bản ghi cũng liệt kê "Chưa có ghi chép", để quy tắc "chưa ghi = không biết" có hiệu lực với họ.
+ * Lời dặn chỉ khóa chuyện riêng tư: những thứ nhìn thấy được, công khai, theo quan hệ vốn phải biết, hoặc trong cốt truyện đã nói rõ là biết được thì vẫn biết như thường, tránh uốn nắn quá đà thành mất trí nhớ
+ * (khi bật trên bản lưu cũ danh sách đang trống, những việc biết được trước đó nhờ bản ghi cốt truyện đỡ hộ).
  */
 export function fmtKnowledgeInjection(list: MemKnowledge[], names: string[], userName: string, cap = KNOWLEDGE_INJECT_CAP): string {
   const seen = new Set<string>();
@@ -171,15 +171,15 @@ export function fmtKnowledgeInjection(list: MemKnowledge[], names: string[], use
     seen.add(key);
     const own = knowledgeOf(list, name);
     if (!own.length) {
-      rows.push(`${oneLine(name)}:暂无记录`);
+      rows.push(`${oneLine(name)}:Chưa có ghi chép`);
       continue;
     }
     const shown = own.slice(-cap);
     const more = own.length - shown.length;
-    rows.push(`${oneLine(name)}:${more > 0 ? `(另有 ${more} 条较早的从略)` : ''}\n${shown.map(k => `  - ${oneLine(k.text)}`).join('\n')}`);
+    rows.push(`${oneLine(name)}:${more > 0 ? `(còn ${more} mục cũ hơn được lược bớt)` : ''}\n${shown.map(k => `  - ${oneLine(k.text)}`).join('\n')}`);
   }
   if (!rows.length) return '';
-  const u = userName || '主角';
-  return `角色对${u}的了解(下列角色只知道这里记下的${u}私事:身世、过往经历、秘密、私人喜好,以及${u}的名字,没写的就当该角色不知道,除非剧情里交代过该角色得知;别让角色凭人设或世界书说出自己不该知道的事。看得见的外貌举止、公开身份,以及按其与${u}的关系本该知道的,照常知道。条目是角色自己的认知,未必是真相:角色按自己以为的说话行事,不要替角色看穿):\n`
+  const u = userName || 'Nhân vật chính';
+  return `Sự hiểu biết của nhân vật về ${u} (các nhân vật dưới đây chỉ biết những chuyện riêng tư của ${u} được ghi lại tại đây: thân thế, trải nghiệm quá khứ, bí mật, sở thích cá nhân, cùng với tên của ${u}, những gì không viết thì coi như nhân vật đó không biết, trừ khi trong cốt truyện đã nói rõ nhân vật đó được biết; đừng để nhân vật dựa vào thiết lập nhân vật hay sách thế giới mà nói ra điều mình không nên biết. Ngoại hình cử chỉ nhìn thấy được, thân phận công khai, cũng như những điều vốn phải biết theo quan hệ với ${u}, thì vẫn biết như thường. Các mục là nhận thức của riêng nhân vật, chưa chắc là chân tướng: nhân vật nói năng hành xử theo những gì mình tưởng, đừng nhìn thấu thay cho nhân vật):\n`
     + rows.join('\n');
 }

@@ -1,17 +1,17 @@
 /**
- * 向量存储的调度层 + 纯前端本地实现(IndexedDB),集中在这一个文件,尽量不污染其它代码。
+ * Tầng điều độ lưu trữ vector + bản cài đặt cục bộ thuần frontend (IndexedDB), tập trung trong một file này để hạn chế làm bẩn mã nguồn khác.
  *
- * 后端柏宝库装了 → 走 BackendStore(转发 api/baibaoku.ts);没装 → 自动透明降级到
- * LocalStore:索引存浏览器 IndexedDB,召回只在当前聊天范围(不跨聊天、不跨设备)。
+ * Đã cài Bách Bảo Khố ở backend → đi qua BackendStore (chuyển tiếp api/baibaoku.ts); chưa cài → tự động hạ cấp trong suốt sang
+ * LocalStore: chỉ mục lưu ở IndexedDB của trình duyệt, truy xuất chỉ trong phạm vi cuộc trò chuyện hiện tại (không xuyên cuộc trò chuyện, không xuyên thiết bị).
  *
- * 对外导出与 api/baibaoku.ts **同名同签名**的 vec* 函数:调用方(index.ts / recall.ts)
- * 只需把 import 来源从 '@/api/baibaoku' 换成 './store',函数名与逻辑零改动。
+ * Xuất ra ngoài các hàm vec* **cùng tên cùng chữ ký** với api/baibaoku.ts: bên gọi (index.ts / recall.ts)
+ * chỉ cần đổi nguồn import từ '@/api/baibaoku' thành './store', tên hàm và logic không phải sửa một chữ.
  *
- * bundle(带数据建新对话的跨聊天快照)是后端独占能力,本地不实现——carryover.ts 仍直连
- * baibaoku,后端不在时它自会跳过建 bundle(新对话不带旧向量召回,摘要文本照常携带),
- * 正是降级想要的行为,故 carryover.ts 不动。
+ * bundle (ảnh chụp xuyên cuộc trò chuyện khi tạo cuộc trò chuyện mới kèm dữ liệu) là năng lực độc quyền của backend, cục bộ không cài đặt —— carryover.ts vẫn kết nối thẳng
+ * với baibaoku, khi không có backend nó sẽ tự bỏ qua việc tạo bundle (cuộc trò chuyện mới không mang truy xuất vector cũ, văn bản tóm tắt vẫn mang theo như thường),
+ * đúng là hành vi mong muốn khi hạ cấp, nên không đụng tới carryover.ts.
  *
- * 探测一次后端 /status,结果带 TTL 缓存:后端可用长缓存,本地短缓存(后端稍后就绪能切回)。
+ * Thăm dò một lần /status của backend, kết quả có bộ nhớ đệm kèm TTL: backend khả dụng thì lưu đệm dài, cục bộ thì lưu đệm ngắn (để nếu lát sau backend sẵn sàng có thể chuyển về lại).
  */
 
 import {
@@ -30,7 +30,7 @@ import { decodeFloat32Base64 } from './embed';
 
 type SearchOpts = { topK?: number; excludeLeafIds?: string[] };
 
-/** 与 baibaoku.ts 的 vec* 一一对应的最小存储接口(bundle 后端独占,不入接口)。 */
+/** Giao diện lưu trữ tối thiểu tương ứng 1-1 với vec* của baibaoku.ts (bundle độc quyền ở backend, không đưa vào giao diện). */
 export interface VectorStore {
   kind: 'backend' | 'local';
   upsert(database: string, scope: string, items: VecItem[]): Promise<{ upserted: number }>;
@@ -45,7 +45,7 @@ export interface VectorStore {
   stats(database: string, scopes: string[]): Promise<{ stats: Record<string, number> }>;
 }
 
-/* ============ 后端实现:转发 api/baibaoku.ts ============ */
+/* ============ Bản cài đặt backend: chuyển tiếp api/baibaoku.ts ============ */
 
 const backendStore: VectorStore = {
   kind: 'backend',
@@ -57,13 +57,13 @@ const backendStore: VectorStore = {
   stats: vecStatsBackend,
 };
 
-/* ============ 本地实现:IndexedDB + JS 余弦 ============ */
+/* ============ Bản cài đặt cục bộ: IndexedDB + Cosine JS ============ */
 
 const DB_NAME = 'bbs_vec_local';
 const DB_VERSION = 1;
 const STORE = 'items';
 
-/** IndexedDB 单库单表:key = [database, scope, leafId];by_scope 索引按 [database, scope] 取整段。 */
+/** Đơn kho đơn bảng trong IndexedDB: key = [database, scope, leafId]; chỉ mục by_scope lấy nguyên đoạn theo [database, scope]. */
 let dbPromise: Promise<IDBDatabase> | null = null;
 function openDb(): Promise<IDBDatabase> {
   if (dbPromise) return dbPromise;
@@ -97,7 +97,7 @@ function reqDone<T>(r: IDBRequest<T>): Promise<T> {
   });
 }
 
-/** 落库记录:向量以 Float32Array 直存(IndexedDB 结构化克隆原生支持类型化数组,免反复编解码)。 */
+/** Bản ghi lưu kho: vector lưu trực tiếp dưới dạng Float32Array (sao chép có cấu trúc của IndexedDB hỗ trợ gốc mảng định kiểu, khỏi cần mã hóa/giải mã lặp đi lặp lại). */
 interface LocalRecord {
   database: string;
   scope: string;
@@ -112,7 +112,7 @@ interface LocalRecord {
   msgIndex: number | null;
 }
 
-/** 取某 [database, scope] 下全部记录(规模 = 当前聊天叶子数,单角色可控)。 */
+/** Lấy toàn bộ bản ghi dưới một [database, scope] (quy mô = số lá của cuộc trò chuyện hiện tại, đơn nhân vật hoàn toàn kiểm soát được). */
 async function getScopeRows(database: string, scope: string): Promise<LocalRecord[]> {
   const db = await openDb();
   const tx = db.transaction(STORE, 'readonly');
@@ -121,7 +121,7 @@ async function getScopeRows(database: string, scope: string): Promise<LocalRecor
   return rows as LocalRecord[];
 }
 
-/* —— 向量归一化 / 余弦,口径对齐后端 vector-store.js —— */
+/* —— Chuẩn hóa vector / Cosine, tiêu chuẩn khớp với vector-store.js ở backend —— */
 
 function normalize(vec: Float32Array): Float32Array {
   let s = 0;
@@ -133,7 +133,7 @@ function normalize(vec: Float32Array): Float32Array {
   return out;
 }
 
-/** a 已归一化,b 在此归一化后点积 = 余弦相似度;维度不一致返回 -1(不可比)。 */
+/** a đã chuẩn hóa, b chuẩn hóa tại đây rồi nhân vô hướng = độ tương đồng cosine; số chiều không khớp trả về -1 (không thể so sánh). */
 function dotNormalized(a: Float32Array, b: Float32Array): number {
   if (a.length !== b.length) return -1;
   let dot = 0;
@@ -196,8 +196,8 @@ const localStore: VectorStore = {
     return { updated };
   },
 
-  // max 融合:每个叶子取它在各 query 上的最高余弦,跨 scope 同叶子合并留最高分。
-  // 纯按最终分取前 topK,不套阈值(阈值留召回端分档)。完全对齐后端 search。
+  // Dung hợp max: mỗi lá lấy cosine cao nhất của nó trên các query, cùng một lá xuyên scope gộp lại giữ điểm cao nhất.
+  // Thuần túy lấy topK mục đầu theo điểm cuối cùng, không áp ngưỡng (ngưỡng để dành cho đầu truy xuất phân mức). Khớp hoàn toàn với search ở backend.
   async search(database, scopes, queryVectors, opts = {}) {
     const topK = Number.isInteger(opts.topK) && (opts.topK as number) > 0 ? (opts.topK as number) : 20;
     const exclude = new Set((opts.excludeLeafIds ?? []).map(String));
@@ -243,7 +243,7 @@ const localStore: VectorStore = {
     };
   },
 
-  // 删 scope 下不在 present 的陈旧叶子;返回后端没有 / hash 变了的 leafId(需重 embed)。
+  // Xóa các lá lỗi thời dưới scope không có trong present; trả về các leafId mà kho chưa có / đã đổi hash (cần embed lại).
   async reconcile(database, scope, present) {
     const rows = await getScopeRows(database, scope);
     const presentMap = new Map(present.map(p => [String(p.leafId), {
@@ -297,13 +297,13 @@ const localStore: VectorStore = {
   },
 };
 
-/* ============ 调度:探测后端,选 store(带 TTL 缓存) ============ */
+/* ============ Điều độ: thăm dò backend, chọn store (có bộ nhớ đệm TTL) ============ */
 
 let probe: { store: VectorStore; at: number } | null = null;
-const TTL_BACKEND = 5 * 60_000; // 后端可用:5 分钟内不再探测
-const TTL_LOCAL = 15_000; // 已降级本地:15 秒后允许重探(后端可能刚就绪)
+const TTL_BACKEND = 5 * 60_000; // Backend khả dụng: trong vòng 5 phút không thăm dò lại
+const TTL_LOCAL = 15_000; // Đã hạ cấp xuống cục bộ: sau 15 giây cho phép thăm dò lại (backend có thể vừa mới sẵn sàng)
 
-/** 取当前生效的 store:探测后端 /status,可用走后端,否则降级本地。结果带 TTL 缓存。 */
+/** Lấy store đang có hiệu lực: thăm dò /status của backend, khả dụng thì đi qua backend, nếu không thì hạ cấp xuống cục bộ. Kết quả có bộ nhớ đệm TTL. */
 export async function getVectorStore(): Promise<VectorStore> {
   const now = Date.now();
   if (probe) {
@@ -320,17 +320,17 @@ export async function getVectorStore(): Promise<VectorStore> {
   return store;
 }
 
-/** 当前向量后端类型('backend' 后端 / 'local' 本地降级),供设置页状态指示。 */
+/** Loại backend vector hiện tại ('backend' backend / 'local' hạ cấp cục bộ), phục vụ chỉ báo trạng thái ở trang cài đặt. */
 export async function vectorBackendKind(): Promise<'backend' | 'local'> {
   return (await getVectorStore()).kind;
 }
 
-/** 清探测缓存:手动「重建/清空索引」前调用,强制重测一次后端是否就绪。 */
+/** Xóa bộ nhớ đệm thăm dò: gọi trước khi "Dựng lại / Xóa trống chỉ mục" thủ công, cưỡng chế kiểm tra lại một lần xem backend đã sẵn sàng chưa. */
 export function resetVectorStoreProbe(): void {
   probe = null;
 }
 
-/* ============ 对外转发:与 api/baibaoku.ts 同名同签名 ============ */
+/* ============ Chuyển tiếp hướng ra ngoài: cùng tên cùng chữ ký với api/baibaoku.ts ============ */
 
 export async function vecUpsert(database: string, scope: string, items: VecItem[]): Promise<{ upserted: number }> {
   return (await getVectorStore()).upsert(database, scope, items);

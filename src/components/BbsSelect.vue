@@ -4,24 +4,24 @@ import { modalHost } from '@/state/ui';
 import { computed, onBeforeUnmount, ref } from 'vue';
 
 /**
- * 自绘下拉选择(替代原生 <select>):触发器与弹出菜单都跟随 --bbs-* 主题,
- * 选项可带图标。原生 select 的弹出层由系统渲染,主题变量管不到,故自绘。
- * (与柏宝绘 BbiSelect.vue 同源,类名换 bbs- 前缀。)
+ * Hộp chọn thả xuống tự vẽ (thay thế <select> gốc): bộ kích hoạt và menu bật lên đều đi theo giao diện --bbs-*,
+ * tùy chọn có thể kèm biểu tượng. Lớp bật lên của select gốc do hệ thống kết xuất, biến giao diện không quản lý tới được, nên phải tự vẽ.
+ * (Cùng nguồn với BbiSelect.vue của Bách Bảo Hội, tên lớp đổi sang tiền tố bbs-.)
  *
- * 泛型 T:调用方的值常是字面量联合(如 Verbosity = 'detailed' | 'concise'),
- * 写死 string 会让 v-model 回写类型不兼容;泛型下选项与绑定值同类型,拼错值即报错。
+ * Kiểu tổng quát T: giá trị của phía gọi thường là hợp kiểu chuỗi (như Verbosity = 'detailed' | 'concise'),
+ * viết cứng string sẽ làm kiểu ghi ngược v-model không tương thích; dưới kiểu tổng quát thì tùy chọn và giá trị gắn kết cùng kiểu, viết sai giá trị sẽ báo lỗi ngay.
  *
- * 菜单为什么 Teleport 到 modalHost 而不是就地绝对定位:
- * 设置项都在 Collapsible(overflow:hidden)与 .bbs-body 滚动容器里,就地定位会被裁剪。
- * modalHost 是 .bbs-root 直接子级,菜单用视口级 fixed 定位,
- * 由触发器的 getBoundingClientRect 推算,下方空间不足时向上翻。
+ * Tại sao menu lại Teleport tới modalHost thay vì định vị tuyệt đối tại chỗ:
+ * Các mục cài đặt đều nằm trong Collapsible (overflow:hidden) và vùng chứa cuộn .bbs-body, định vị tại chỗ sẽ bị cắt mất.
+ * modalHost là con trực tiếp của .bbs-root, menu dùng định vị fixed cấp khung nhìn (viewport),
+ * được suy tính từ getBoundingClientRect của bộ kích hoạt, khi không gian phía dưới không đủ sẽ lật lên trên.
  *
- * 交互:点外部 / Esc / 滚动 / 缩放关闭;↑↓ 移动高亮,Enter/Space 选中,Home/End 跳首尾。
+ * Tương tác: nhấn bên ngoài / Esc / cuộn / thu phóng sẽ đóng; ↑↓ di chuyển tô sáng, Enter/Space chọn, Home/End nhảy đầu cuối.
  */
 const props = defineProps<{
   modelValue: T;
   options: { value: T; label: string; icon?: string }[];
-  /** 无障碍名称(行标题是纯文本 span,与控件无 label 关联,靠它补上) */
+  /** Tên trợ năng (tiêu đề dòng là span văn bản thuần, không có liên kết label với điều khiển, nhờ nó bổ sung vào) */
   ariaLabel?: string;
 }>();
 const emit = defineEmits<{ (e: 'update:modelValue', v: T): void }>();
@@ -30,7 +30,7 @@ const open = ref(false);
 const trigger = ref<HTMLElement | null>(null);
 const menu = ref<HTMLElement | null>(null);
 const menuStyle = ref<Record<string, string>>({});
-/** 键盘/悬停高亮项索引 */
+/** Chỉ số mục đang được tô sáng bởi bàn phím / di chuột */
 const activeIndex = ref(0);
 
 const current = computed(() => props.options.find(o => o.value === props.modelValue) ?? null);
@@ -43,7 +43,7 @@ function openMenu() {
   const el = trigger.value;
   if (!el || open.value) return;
   const rect = el.getBoundingClientRect();
-  // 估算菜单高度决定朝向:下方不够且上方更宽裕就向上翻
+  // Ước tính chiều cao menu để quyết định hướng: phía dưới không đủ và phía trên rộng rãi hơn thì lật lên trên
   const estimated = Math.min(MENU_MAX_HEIGHT, props.options.length * 34 + 10);
   const below = window.innerHeight - rect.bottom - MENU_GAP - VIEWPORT_MARGIN;
   const upward = below < estimated && rect.top - VIEWPORT_MARGIN > below;
@@ -63,7 +63,7 @@ function openMenu() {
   open.value = true;
   document.addEventListener('mousedown', onDocMousedown, true);
   document.addEventListener('keydown', onDocKeydown, true);
-  // 菜单是视口级 fixed,不随内容滚动;滚动/缩放时直接关掉,比重算位置干净。
+  // Menu là fixed cấp khung nhìn, không cuộn theo nội dung; khi cuộn/thu phóng thì đóng thẳng luôn, gọn sạch hơn tính lại vị trí.
   document.addEventListener('scroll', closeOnViewportChange, true);
   window.addEventListener('resize', closeOnViewportChange);
 }
@@ -93,7 +93,7 @@ function pick(option: { value: T }) {
 }
 
 function onDocMousedown(event: MouseEvent) {
-  // composedPath 穿透 shadow root;点到触发器或菜单内部都不算外部
+  // composedPath xuyên qua shadow root; nhấn vào bộ kích hoạt hoặc bên trong menu đều không tính là bên ngoài
   const path = event.composedPath();
   if (trigger.value && path.includes(trigger.value)) return;
   if (menu.value && path.includes(menu.value)) return;
@@ -110,7 +110,7 @@ function onDocKeydown(event: KeyboardEvent) {
   if (!open.value) return;
   const count = props.options.length;
   if (event.key === 'Escape') {
-    // 捕获阶段拦截,只关菜单,别触发窗口级 Esc(关整个面板)
+    // Chặn ở giai đoạn capture, chỉ đóng menu, đừng kích hoạt Esc cấp cửa sổ (đóng toàn bộ bảng)
     event.preventDefault();
     event.stopPropagation();
     closeMenu(true);
@@ -130,7 +130,7 @@ function onDocKeydown(event: KeyboardEvent) {
   }
 }
 
-/** 原生 select 习惯:收起态按 ↑/↓ 直接展开 */
+/** Thói quen của select gốc: ở trạng thái thu gọn nhấn ↑/↓ sẽ mở rộng trực tiếp */
 function onTriggerKeydown(event: KeyboardEvent) {
   if (open.value) return;
   if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -143,9 +143,9 @@ onBeforeUnmount(() => closeMenu());
 </script>
 
 <template>
-  <!-- 根类名叫 bbs-select-box 不叫 bbs-select:后者曾是美化原生 <select> 的类
-       (带背景图三角 + padding-right),现已随最后一个原生 select 一并删除,
-       但外部若再引入同名类仍会在触发器右边多画一个三角,故保持区分 -->
+  <!-- Tên lớp gốc gọi là bbs-select-box chứ không gọi là bbs-select: cái sau từng là lớp làm đẹp <select> gốc
+       (kèm tam giác ảnh nền + padding-right), nay đã xóa cùng select gốc cuối cùng,
+       nhưng nếu bên ngoài lại đưa lớp trùng tên vào thì vẫn sẽ vẽ thừa một tam giác bên phải bộ kích hoạt, nên giữ sự phân biệt -->
   <div class="bbs-select-box">
     <button
       ref="trigger"
@@ -241,13 +241,13 @@ onBeforeUnmount(() => closeMenu());
   transform: rotate(180deg);
 }
 
-/* 菜单 Teleport 到 modalHost(scoped 样式在同 shadow root 内照常生效) */
+/* Menu Teleport tới modalHost (kiểu dáng scoped trong cùng shadow root vẫn có hiệu lực như thường) */
 .bbs-select-menu {
   position: fixed;
-  /* 10003:高于普通弹窗遮罩(10001)与叠加层遮罩(10002)。
-     本组件也用在弹窗内部(渠道弹窗的「思考强度」),菜单与遮罩会同时存在;
-     同级时靠「后插入者胜出」能侥幸盖住,但删除确认那类 -top 遮罩(10002)会反压菜单,
-     故显式抬高,不依赖插入顺序。 */
+  /* 10003: cao hơn lớp phủ hộp thoại thường (10001) và lớp phủ chồng lớp (10002).
+     Component này cũng được dùng bên trong hộp thoại ("Cường độ suy luận" của hộp thoại kênh), menu và lớp phủ sẽ tồn tại đồng thời;
+     khi ngang cấp thì nhờ "kẻ chèn sau thắng" có thể may mắn đè lên được, nhưng lớp phủ -top kiểu xác nhận xóa (10002) sẽ đè ngược lại menu,
+     nên nâng cao tường minh, không phụ thuộc thứ tự chèn. */
   z-index: 10003;
   margin: 0;
   padding: 4px;

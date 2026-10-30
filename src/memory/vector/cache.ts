@@ -1,11 +1,11 @@
-/** 最近一次向量召回结果的本机缓存键。 */
+/** Khóa bộ nhớ đệm trên máy cho kết quả truy xuất vector gần nhất. */
 export const RECALL_CACHE_STORAGE_KEY = 'bbs_vec_recall_cache';
 
-/** 索引素材变化后立即失效旧召回结果，避免下一次生成复用修改前的内容。 */
+/** Sau khi nguyên liệu chỉ mục thay đổi thì lập tức vô hiệu hóa kết quả truy xuất cũ, tránh lần tạo tiếp theo tái sử dụng nội dung trước khi sửa đổi. */
 export function invalidateRecallCache(): void {
   try {
     localStorage.removeItem(RECALL_CACHE_STORAGE_KEY);
   } catch {
-    /* 隐私模式/存储不可用时无需处理。 */
+    /* Không cần xử lý khi ở chế độ ẩn danh / bộ nhớ lưu trữ không khả dụng. */
   }
 }

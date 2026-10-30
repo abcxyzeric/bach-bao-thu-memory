@@ -1,39 +1,39 @@
 /**
- * 森林节点的「最小拆解」选择算法 —— 纯函数、零依赖(便于单测,注入与列表共用)。
+ * Thuật toán lựa chọn "phân rã tối thiểu" cho các nút trong rừng —— hàm thuần, không phụ thuộc (tiện cho kiểm thử đơn vị, dùng chung giữa tiêm và danh sách).
  *
- * 背景:摘要是一棵森林,叶子(L0,挂消息 extra)+ 压缩节点(L1/L2…,childIds 引用下层)。
- * 给定一组「合格」叶子(由 leafEligible 判定),要为每个合格叶子选一个**最高的、能整体代表它的
- * 节点**(省 token):若某压缩节点的全部后代叶子都合格,就用这一个节点代表整段;否则降级、逐子递归。
+ * Bối cảnh: Tóm tắt là một khu rừng, lá (L0, gắn vào extra của tin nhắn) + nút nén (L1/L2…, childIds tham chiếu tầng dưới).
+ * Cho trước một tập hợp các lá "đạt chuẩn" (do leafEligible phán đoán), cần chọn cho mỗi lá đạt chuẩn một **nút cao nhất có thể đại diện tổng thể cho nó**
+ * (tiết kiệm token): nếu toàn bộ lá hậu duệ của một nút nén đều đạt chuẩn, thì dùng một nút này đại diện cho cả đoạn; nếu không thì hạ cấp, đệ quy từng nút con.
  *
- * 完好性(intact):压缩节点的某个 childId 指向的叶子若已失效(翻页到别的 swipe → 不在 byId 里),
- * 则该节点**不完整**——它的压缩文本嵌着失效那页的旧叙事,不能作为整体代表(会与当前正文冲突)。
- * 此时降级递归,改用它**仍完好的子节点**各自代表:受影响的那条链一路拆到叶子层、跳过失效叶子,
- * 而旁支完好的子节点(如同层另一条 L1)整条保留。节点失活只是「当前不展示/不注入」,森林数据不删除。
+ * Tính nguyên vẹn (intact): nếu một childId nào đó của nút nén trỏ tới lá đã mất hiệu lực (lật sang swipe khác → không có trong byId),
+ * thì nút đó **không nguyên vẹn** —— văn bản nén của nó có nhúng tự sự cũ của trang đã mất hiệu lực, không thể làm đại diện tổng thể (sẽ xung đột với chính văn hiện tại).
+ * Lúc này hạ cấp đệ quy, đổi sang dùng **các nút con vẫn nguyên vẹn** của nó tự đại diện riêng: nhánh bị ảnh hưởng tách dọc xuống tận tầng lá, bỏ qua lá mất hiệu lực,
+ * còn nút con nguyên vẹn ở nhánh bên (như một L1 khác cùng tầng) giữ nguyên cả nhánh. Nút mất hoạt tính chỉ là "hiện tại không hiển thị / không tiêm", dữ liệu rừng không xóa.
  */
 
-/** 统一视图节点:叶子来自 chat 扫描,压缩节点来自森林,childIds 跨存储连接 */
+/** Nút khung nhìn thống nhất: lá đến từ quét chat, nút nén đến từ rừng, childIds kết nối xuyên lưu trữ */
 export interface ViewNode {
   id: string;
   kind: 'leaf' | 'comp';
-  level: number; // leaf=0,comp=该压缩层级(供列表显示「总结L{level}」)
+  level: number; // leaf=0, comp=cấp độ nén đó (phục vụ danh sách hiển thị "Tổng kết L{level}")
   text: string;
   timeStart?: string;
   timeEnd?: string;
-  timeLabel?: string; // 旧数据回退
+  timeLabel?: string; // Dự phòng cho dữ liệu cũ
   createdAt: number;
-  childIds: string[]; // comp 才有
-  msgIndex: number; // leaf 才有意义(排序键);comp 取 -1
-  active: boolean; // leaf:所在消息已隐藏
-  /** 无逐楼 child 的导入历史节点;选择算法把它视为与 leaf 同类的完整终端。 */
+  childIds: string[]; // chỉ comp mới có
+  msgIndex: number; // chỉ leaf mới có ý nghĩa (khóa sắp xếp); comp nhận -1
+  active: boolean; // leaf: tin nhắn chứa nó đã bị ẩn
+  /** Nút lịch sử nhập vào không có child từng tầng; thuật toán lựa chọn coi nó là điểm cuối hoàn chỉnh cùng loại với leaf. */
   atomic?: boolean;
-  /** 原子导入历史的显式楼层范围。 */
+  /** Phạm vi tầng lầu tường minh của lịch sử nhập vào nguyên tử. */
   floorStart?: number;
   floorEnd?: number;
 }
 
 /**
- * 在已构建的森林视图上做选择(注入/列表共用)。逻辑见文件头注释。
- * byId 只收**有效**叶子 + 全部压缩节点;roots = 未被任何 childIds 引用的节点。
+ * Thực hiện lựa chọn trên khung nhìn rừng đã xây dựng (dùng chung cho tiêm / danh sách). Logic xem chú thích đầu file.
+ * byId chỉ nhận lá **hợp lệ** + toàn bộ nút nén; roots = các nút không bị bất kỳ childIds nào tham chiếu.
  */
 export function selectViewNodes(
   view: { byId: Map<string, ViewNode>; roots: ViewNode[] },
@@ -51,22 +51,22 @@ export function selectViewNodes(
       if (c) collectLeaves(c, acc);
     }
   };
-  // 完好:每个 childId 都能解析(无悬空)且子节点自身也完好;叶子恒完好。memoized。
+  // Nguyên vẹn: mỗi childId đều phân giải được (không treo lơ lửng) và bản thân nút con cũng nguyên vẹn; lá luôn nguyên vẹn. Được ghi nhớ (memoized).
   const intactMemo = new Map<string, boolean>();
   const isIntact = (n: ViewNode): boolean => {
     if (n.kind === 'leaf' || n.atomic) return true;
     const cached = intactMemo.get(n.id);
     if (cached !== undefined) return cached;
-    intactMemo.set(n.id, false); // 防环:递归未归前先占位 false
+    intactMemo.set(n.id, false); // Chống vòng lặp: trước khi đệ quy quay về thì giữ chỗ false trước
     let ok = n.childIds.length > 0;
     for (const cid of n.childIds) {
       const c = byId.get(cid);
-      if (!c || !isIntact(c)) { ok = false; break; } // 悬空 child ⇒ 不完整
+      if (!c || !isIntact(c)) { ok = false; break; } // child treo lơ lửng ⇒ không nguyên vẹn
     }
     intactMemo.set(n.id, ok);
     return ok;
   };
-  // 可作为整体代表:完好 + 全部后代叶子都合格。
+  // Có thể làm đại diện tổng thể: nguyên vẹn + toàn bộ lá hậu duệ đều đạt chuẩn.
   const canRepresent = (n: ViewNode): boolean => {
     if (!isIntact(n)) return false;
     const ls: ViewNode[] = [];
@@ -75,7 +75,7 @@ export function selectViewNodes(
   };
 
   const chosen: ViewNode[] = [];
-  const visited = new Set<string>(); // 防环/防重:正常森林是树,但病态环输入下避免爆栈
+  const visited = new Set<string>(); // Chống vòng lặp / chống trùng: rừng bình thường là cây, nhưng dưới đầu vào có vòng bệnh lý thì tránh tràn ngăn xếp
   const visit = (n: ViewNode): void => {
     if (visited.has(n.id)) return;
     visited.add(n.id);
@@ -94,7 +94,7 @@ export function selectViewNodes(
   };
   for (const r of roots) visit(r);
 
-  // 时间序拼接:叶子用楼层序;压缩节点用其最早后代叶子的楼层序
+  // Ghép theo thứ tự thời gian: lá dùng thứ tự tầng; nút nén dùng thứ tự tầng của lá hậu duệ sớm nhất của nó
   const sortKey = (n: ViewNode): number => {
     if (n.kind === 'leaf') return n.msgIndex;
     if (n.atomic) return n.floorStart ?? n.msgIndex;
@@ -107,15 +107,15 @@ export function selectViewNodes(
   return chosen.sort((a, b) => sortKey(a) - sortKey(b));
 }
 
-/* ============ 生活小档案:三投放层选择(纯函数,注入与测试共用) ============ */
+/* ============ Hồ sơ nhỏ đời sống: Lựa chọn ba tầng phân phối (hàm thuần, dùng chung cho tiêm và kiểm thử) ============ */
 
 /**
- * 选出本回合要注入的生活细节 —— 「记住 ≠ 每回合必提」的核心闸门:
- *  - pinned:手动置顶,常驻(≤5 条);
- *  - active:时效层,未过期且与近期上下文相关才注入;无关键词的长期 active 兜底注入;
- *  - archive:沉降层,仅 anchors/topics 命中近期上下文才浮出。
- * 总量封顶(置顶 5 + 触发补齐到 6),防一次性堆太多导致主模型逐条提及。
- * 只在注入选择层做裁剪,绝不删改真源叶子。
+ * Chọn ra các chi tiết đời sống sẽ tiêm trong lượt này —— cổng chắn cốt lõi của nguyên tắc "Ghi nhớ ≠ lượt nào cũng phải nhắc":
+ *  - pinned: ghim thủ công lên đầu, thường trú (≤5 mục);
+ *  - active: tầng thời hiệu, chưa hết hạn và liên quan tới ngữ cảnh gần đây mới tiêm; active dài hạn không có từ khóa thì tiêm dự phòng;
+ *  - archive: tầng lắng đọng, chỉ khi anchors/topics trúng ngữ cảnh gần đây mới nổi lên.
+ * Khống chế tổng lượng (ghim đầu 5 + kích hoạt bù cho đủ 6), chống việc chất đống quá nhiều cùng lúc khiến mô hình chính nhắc từng mục một.
+ * Chỉ cắt gọt ở tầng lựa chọn tiêm, tuyệt đối không xóa sửa lá nguồn chân lý.
  */
 export function selectLifeDetailsForInjection(
   details: import('./types').MemLifeDetail[],
@@ -130,7 +130,7 @@ export function selectLifeDetailsForInjection(
   for (const d of details) {
     if (d.tier === 'pinned') continue;
     if (pinned.length + picked.length >= TOTAL_CAP) break;
-    // 时效过期(两端日期都可解析且 now 已超过 until)→ 不注入;数据保留,可手动沉降/删除
+    // Hết hạn thời hiệu (ngày tháng hai đầu đều phân tích được và now đã vượt quá until) → không tiêm; dữ liệu giữ lại, có thể lắng đọng / xóa thủ công
     if (d.tier === 'active' && d.until && nowTime && compareDays) {
       const gap = compareDays(d.until, nowTime);
       if (gap !== null && gap > 0) continue;

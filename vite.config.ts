@@ -3,16 +3,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { defineConfig } from 'vitest/config';
 
-// 浏览器从 /scripts/extensions/third-party/ST-BaiBai-Book/dist/index.js 加载,
-// 想 import 宿主 ST 的模块时需要算出从 dist/ 回到 ST public/ 根的相对路径。
-// `@sillytavern/scripts/xxx` -> `../../../../../scripts/xxx.js`,并标为 external,
-// 这样 ST 自身的代码不会被打进我们的包里,运行时浏览器直接走相对路径。
+// Trình duyệt tải từ /scripts/extensions/third-party/ST-BaiBai-Book/dist/index.js,
+// khi muốn import module của ST chủ thì cần tính ra đường dẫn tương đối từ dist/ quay về gốc public/ của ST.
+// `@sillytavern/scripts/xxx` -> `../../../../../scripts/xxx.js`, đồng thời đánh dấu là external,
+// như vậy code của bản thân ST sẽ không bị đóng gói vào gói của chúng ta, lúc chạy trình duyệt sẽ đi thẳng theo đường dẫn tương đối.
 const relative_sillytavern_path = path.relative(
   path.join(__dirname, 'dist'),
   __dirname.substring(0, __dirname.lastIndexOf('public') + 'public'.length),
 );
 
-// ST 已在全局挂载的第三方库,映射到全局变量,避免重复打包。
+// Các thư viện bên thứ ba mà ST đã gắn ở toàn cục, ánh xạ sang biến toàn cục để tránh đóng gói trùng lặp.
 const globals: Record<string, string> = {
   jquery: '$',
   lodash: '_',
@@ -58,8 +58,8 @@ export default defineConfig(({ mode }) => ({
   },
 
   test: {
-    // 只跑本项目的测试:根目录的 .pnpm-store(本地虚拟商店,gitignore)里存着
-    // 其它 workspace 项目的源码,默认 glob 会扫进去产生无关失败。
+    // Chỉ chạy kiểm thử của dự án này: trong .pnpm-store ở thư mục gốc (kho ảo cục bộ, gitignore) có lưu
+    // mã nguồn của các dự án workspace khác, glob mặc định sẽ quét vào gây ra lỗi thất bại không liên quan.
     include: ['src/**/*.test.ts'],
     exclude: ['node_modules/**', '.pnpm-store/**'],
   },

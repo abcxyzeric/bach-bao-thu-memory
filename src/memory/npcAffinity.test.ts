@@ -13,8 +13,8 @@ import { buildSummaryPrompt, RULE_NPC_AFFINITY } from './prompts';
 import { memory, recomputeDerived } from './store';
 import { createEmptyMemory, type NpcAffinity, type NpcDelta, type StoredDelta, type SummaryDelta } from './types';
 
-const name = '艾琳';
-const initial: NpcDelta = { name, affinityInner: 1, affinityOuter: -1, affinityNote: '在意,但以冷淡掩饰', personality: '嘴硬、护短' };
+const name = 'Eileen';
+const initial: NpcDelta = { name, affinityInner: 1, affinityOuter: -1, affinityNote: 'Để tâm,nhưng lấy vẻ lạnh nhạt che giấu', personality: 'Mạnh miệng、bênh người mình' };
 const original = {
   summaryOnlyMode: settings.apiSettings.summaryOnlyMode,
   injection: { ...settings.apiSettings.injection },
@@ -24,8 +24,8 @@ const original = {
 };
 let seq = 0;
 const message = (delta: StoredDelta = {}): STMessage => ({
-  name: 'Character', is_user: false, is_system: false, mes: '一段明确发生的剧情。',
-  extra: { bbs_leaf: { id: `affinity-${++seq}`, text: '剧情摘要', delta, createdAt: seq, swipe: 0, v: 1 } },
+  name: 'Character', is_user: false, is_system: false, mes: 'Một đoạn cốt truyện xảy ra rõ ràng.',
+  extra: { bbs_leaf: { id: `affinity-${++seq}`, text: 'Tóm tắt cốt truyện', delta, createdAt: seq, swipe: 0, v: 1 } },
 });
 const base = () => message({ npcs: { add: [{ ...initial }] } });
 const patch = (values: Omit<NpcDelta, 'name'>) => message({ npcs: { update: [{ name, ...values }] } });
@@ -67,64 +67,64 @@ afterEach(async () => {
   settings.apiSettings.vector.enabled = original.vector;
 });
 
-describe('定性档位与未知', () => {
-  it.each([-2, -1, 0, 1, 2, null] as const)('保留有效值 %s', value => {
+describe('Mức định tính và chưa rõ', () => {
+  it.each([-2, -1, 0, 1, 2, null] as const)('Giữ lại giá trị hợp lệ %s', value => {
     expect(cleanNpcAffinityLevel(value)).toBe(value);
     const delta = finalizeDelta({ npcs: { add: [{ name, affinityInner: value }] } }, []);
     expect(deriveMemory([message(delta)]).npcs[0].affinityInner).toBe(value);
   });
-  it.each([undefined, -3, 3, 50, 0.5, NaN, Infinity, '1', '', true, false, {}, []])('拒绝非法值 %j,不能转成中性或极值', value => {
+  it.each([undefined, -3, 3, 50, 0.5, NaN, Infinity, '1', '', true, false, {}, []])('Từ chối giá trị phi pháp %j, không được chuyển thành trung tính hoặc cực trị', value => {
     expect(cleanNpcAffinityLevel(value)).toBeUndefined();
     const delta = finalizeDelta({ npcs: { update: [{ name, affinityInner: value }] } } as unknown as SummaryDelta, []);
     expect(deriveMemory([base(), message(delta)]).npcs[0]).toMatchObject(initial);
   });
-  it('下拉框空值是未知,零是中性;旧角色不凭空产生记录', () => {
+  it('Giá trị rỗng của hộp thả xuống là chưa rõ, số không là trung tính; nhân vật cũ không tự dưng sinh bản ghi', () => {
     expect(affinityLevelFromInput('')).toBeNull();
     expect(affinityLevelFromInput('0')).toBe(0);
     expect(affinityLevelFromInput('-2')).toBe(-2);
     expect(fmtNpcAffinity({})).toBe('');
-    expect(fmtNpcAffinity({ affinityInner: 0, affinityOuter: null })).toBe('内心好感:无明显好恶;外在态度:未知');
+    expect(fmtNpcAffinity({ affinityInner: 0, affinityOuter: null })).toBe('Hảo cảm nội tâm:Không rõ yêu ghét;Thái độ bên ngoài:Chưa rõ');
     expect(deriveMemory([message({ npcs: { add: [{ name }] } })]).npcs[0].affinityInner).toBeUndefined();
   });
-  it('楼层只展示真正提供的字段,清空说明可见', () => {
-    expect(fmtNpcAffinity({ affinityInner: 2 }, true)).toBe('内心好感:感情深厚');
-    expect(fmtNpcAffinity({ affinityOuter: null }, true)).toBe('外在态度:未知');
-    expect(fmtNpcAffinity({ affinityNote: '' }, true)).toBe('好感说明:清空');
-    expect(fmtNpcAffinity({ affinityNote: '表面客套\n内心不信任' }, true)).toBe('说明:表面客套 内心不信任');
+  it('Tầng chỉ hiển thị trường thực sự được cung cấp, xóa trống giải thích có thể nhìn thấy', () => {
+    expect(fmtNpcAffinity({ affinityInner: 2 }, true)).toBe('Hảo cảm nội tâm:Tình cảm sâu đậm');
+    expect(fmtNpcAffinity({ affinityOuter: null }, true)).toBe('Thái độ bên ngoài:Chưa rõ');
+    expect(fmtNpcAffinity({ affinityNote: '' }, true)).toBe('Giải thích hảo cảm:Xóa trống');
+    expect(fmtNpcAffinity({ affinityNote: 'Ngoài mặt khách sáo\nNội tâm không tin tưởng' }, true)).toBe('Giải thích:Ngoài mặt khách sáo Nội tâm không tin tưởng');
   });
 });
 
-describe('独立、绝对覆盖、可回滚的角色补丁', () => {
+describe('Bản vá nhân vật độc lập, ghi đè tuyệt đối, có thể quay lui', () => {
   it.each([
     [{ affinityInner: 2 }, 2, -1],
     [{ affinityOuter: 1 }, 1, 1],
     [{ affinityInner: -2, affinityOuter: 2 }, -2, 2],
     [{ affinityInner: null }, null, -1],
     [{ affinityOuter: 0 }, 1, 0],
-    [{ title: '掌柜' }, 1, -1],
-  ] as const)('补丁 %j 不联动另一侧', (values, inner, outer) => {
+    [{ title: 'Chưởng quầy' }, 1, -1],
+  ] as const)('Bản vá %j không liên động phía bên kia', (values, inner, outer) => {
     const chat = [base(), patch(values)];
     expect(deriveMemory(chat).npcs[0]).toMatchObject({ affinityInner: inner, affinityOuter: outer, affinityNote: initial.affinityNote });
     expect(deriveMemory(chat)).toEqual(deriveMemory(chat));
   });
-  it('没有好感补丁时,多轮普通互动保持档位和说明,不暗中累计', () => {
+  it('Khi không có bản vá hảo cảm, nhiều lượt tương tác thông thường giữ nguyên mức và giải thích, không ngầm cộng dồn', () => {
     const chat = [base(), ...Array.from({ length: 25 }, () => message({}))];
     expect(deriveMemory(chat).npcs[0]).toMatchObject(initial);
     expect(deriveMemory([...chat, patch({ affinityInner: 1 }), patch({ affinityInner: 1 })]).npcs[0].affinityInner).toBe(1);
   });
-  it('重复 add 只补空缺,不覆盖已经建立的档位与说明', () => {
-    const chat = [base(), message({ npcs: { add: [{ name, affinityInner: -2, affinityOuter: 2, affinityNote: '不应覆盖' }] } })];
+  it('add trùng lặp chỉ bù chỗ khuyết, không ghi đè mức và giải thích đã xác lập', () => {
+    const chat = [base(), message({ npcs: { add: [{ name, affinityInner: -2, affinityOuter: 2, affinityNote: 'Không được ghi đè' }] } })];
     expect(deriveMemory(chat).npcs[0]).toMatchObject(initial);
     const target: NpcAffinity = { affinityInner: null, affinityOuter: 0 };
     applyNpcAffinity(target, { affinityInner: 1, affinityOuter: 2 }, true);
     expect(target).toEqual({ affinityInner: 1, affinityOuter: 0 });
   });
-  it('撤回未知与清空说明通过 JSON 存储后仍有效', () => {
+  it('Rút về chưa rõ và xóa trống giải thích sau khi lưu qua JSON vẫn có hiệu lực', () => {
     const delta = finalizeDelta({ npcs: { update: [{ name, affinityInner: null, affinityNote: '' }] } }, []);
     const npc = deriveMemory([base(), message(JSON.parse(JSON.stringify(delta)))]).npcs[0];
     expect(npc).toMatchObject({ affinityInner: null, affinityOuter: -1, affinityNote: '' });
   });
-  it('遗漏、删除、切换 swipe 和重摘的截止点都不泄漏未来好感', () => {
+  it('Điểm cắt của bỏ qua, xóa, đổi swipe và tóm tắt lại đều không làm rò rỉ hảo cảm tương lai', () => {
     const changed = patch({ affinityInner: 2, affinityOuter: 2 });
     const chat = [base(), changed];
     expect(deriveMemory(chat, 1).npcs[0]).toMatchObject(initial);
@@ -136,110 +136,110 @@ describe('独立、绝对覆盖、可回滚的角色补丁', () => {
     delete changed.extra!.bbs_leaf;
     expect(deriveMemory(chat).npcs[0]).toMatchObject(initial);
   });
-  it('角色新增/校正/改名往返保留两侧,无关编辑不写入好感补丁', () => {
+  it('Thêm mới/hiệu chỉnh/đổi tên nhân vật qua lại giữ nguyên cả hai phía, chỉnh sửa không liên quan không ghi bản vá hảo cảm', () => {
     const chat = [message(), message()];
     useChat(chat);
     expect(upsertNpc(initial)).toBe(true);
-    expect(editNpc(name, { title: '新身份' })).toBe(true);
+    expect(editNpc(name, { title: 'Thân phận mới' })).toBe(true);
     const unrelated = chat[1].extra!.bbs_leaf!.delta.npcs!.update!.at(-1)!;
     expect(unrelated.affinityInner).toBeUndefined();
     expect(unrelated.affinityOuter).toBeUndefined();
-    expect(editNpc(name, { name: '新名字' })).toBe(true);
-    expect(memory.npcs[0]).toMatchObject({ name: '新名字', affinityInner: 1, affinityOuter: -1, affinityNote: initial.affinityNote });
-    expect(editNpc('新名字', { name, affinityInner: null, affinityNote: '' })).toBe(true);
+    expect(editNpc(name, { name: 'Tên mới' })).toBe(true);
+    expect(memory.npcs[0]).toMatchObject({ name: 'Tên mới', affinityInner: 1, affinityOuter: -1, affinityNote: initial.affinityNote });
+    expect(editNpc('Tên mới', { name, affinityInner: null, affinityNote: '' })).toBe(true);
     expect(memory.npcs).toHaveLength(1);
     expect(memory.npcs[0]).toMatchObject({ name, affinityInner: null, affinityOuter: -1, affinityNote: '' });
   });
-  it('编辑楼层可以清空说明且不把未提供的另一侧改成未知', () => {
-    const chat = [base(), patch({ affinityInner: 2, affinityNote: '新的依据' })];
+  it('Chỉnh sửa tầng có thể xóa trống giải thích mà không biến phía bên kia chưa cung cấp thành chưa rõ', () => {
+    const chat = [base(), patch({ affinityInner: 2, affinityNote: 'Căn cứ mới' })];
     useChat(chat);
     const delta: StoredDelta = { npcs: { update: [{ name, affinityInner: 0, affinityNote: '' }] } };
-    expect(editLeafFull(1, { text: '剧情摘要', timeStart: '', timeEnd: '', delta })).toBe(true);
+    expect(editLeafFull(1, { text: 'Tóm tắt cốt truyện', timeStart: '', timeEnd: '', delta })).toBe(true);
     expect(memory.npcs[0]).toMatchObject({ affinityInner: 0, affinityOuter: -1, affinityNote: '' });
   });
 });
 
-describe('离场同步与在场对账', () => {
+describe('Đồng bộ rời trường và đối chiếu có mặt', () => {
   const sceneLeaf = () => message({
-    location: '房间', locationPath: ['城', '客栈', '房间'],
-    scenes: { add: [{ path: ['城'], desc: '城市' }, { path: ['城', '客栈'], desc: '客栈' }, { path: ['城', '客栈', '房间'], desc: '房间' }, { path: ['城', '客栈', '厨房'], desc: '厨房' }] },
+    location: 'Căn phòng', locationPath: ['Thành', 'Quán trọ', 'Căn phòng'],
+    scenes: { add: [{ path: ['Thành'], desc: 'Thành phố' }, { path: ['Thành', 'Quán trọ'], desc: 'Quán trọ' }, { path: ['Thành', 'Quán trọ', 'Căn phòng'], desc: 'Căn phòng' }, { path: ['Thành', 'Quán trọ', 'Nhà bếp'], desc: 'Nhà bếp' }] },
     npcs: { add: [
-      { name: '厨师', location: '厨房' },
-      { name: '同伴', follow: true },
-      { name: '远客', location: '远方' },
+      { name: 'Đầu bếp', location: 'Nhà bếp' },
+      { name: 'Bạn đồng hành', follow: true },
+      { name: 'Khách phương xa', location: 'Phương xa' },
     ] },
   });
   const at = (mem: ReturnType<typeof deriveMemory>, n: string) => mem.npcs.find(x => x.name === n)!;
 
-  it('空字符串清掉旧地点(所在不明),不再判在场;JSON 往返保留清空语义', () => {
-    const delta = finalizeDelta({ npcs: { update: [{ name: '厨师', follow: false, location: '' }] } }, []);
+  it('Chuỗi rỗng xóa bỏ địa điểm cũ (không rõ nơi ở), không còn phán đoán có mặt; qua lại JSON giữ nguyên ngữ nghĩa xóa trống', () => {
+    const delta = finalizeDelta({ npcs: { update: [{ name: 'Đầu bếp', follow: false, location: '' }] } }, []);
     const chat = [sceneLeaf(), message(JSON.parse(JSON.stringify(delta)))];
     const mem = deriveMemory(chat);
-    expect(at(mem, '厨师')).toMatchObject({ follow: false });
-    expect(at(mem, '厨师').location).toBeUndefined();
-    expect(classifyNpcPresence(at(mem, '厨师'), mem.scenes, '房间', ['城', '客栈', '房间'])).toBe('absent');
-    // 对照:未清空的远客仍按地点判定为不在场,同伴恒在场
-    expect(classifyNpcPresence(at(mem, '远客'), mem.scenes, '房间', ['城', '客栈', '房间'])).toBe('absent');
-    expect(classifyNpcPresence(at(mem, '同伴'), mem.scenes, '房间', ['城', '客栈', '房间'])).toBe('present');
-    // 随行角色顺手写空 location(没有显式写 follow)不能取消随行:空串只清地点
-    const guard = deriveMemory([sceneLeaf(), message(JSON.parse(JSON.stringify(finalizeDelta({ npcs: { update: [{ name: '同伴', location: '' }] } }, []))))]);
-    expect(at(guard, '同伴').follow).toBe(true);
-    expect(at(guard, '同伴').location).toBeUndefined();
-    expect(classifyNpcPresence(at(guard, '同伴'), guard.scenes, '房间', ['城', '客栈', '房间'])).toBe('present');
-    // 要离队必须显式 follow:false;此时即便不带 location,原先随行时被清掉的地点也让它判不在场
-    const left = deriveMemory([sceneLeaf(), message({ npcs: { update: [{ name: '同伴', follow: false, location: '' }] } })]);
-    expect(classifyNpcPresence(at(left, '同伴'), left.scenes, '房间', ['城', '客栈', '房间'])).toBe('absent');
-    const leftNoLoc = deriveMemory([sceneLeaf(), message({ npcs: { update: [{ name: '同伴', follow: false }] } })]);
-    expect(classifyNpcPresence(at(leftNoLoc, '同伴'), leftNoLoc.scenes, '房间', ['城', '客栈', '房间'])).toBe('absent');
-    // 同一条补丁明确 follow:true 与空 location 同时出现时,随行优先(不能被空串反向取消)
-    const keep = deriveMemory([sceneLeaf(), message({ npcs: { update: [{ name: '厨师', follow: true, location: '' }] } })]);
-    expect(classifyNpcPresence(at(keep, '厨师'), keep.scenes, '房间', ['城', '客栈', '房间'])).toBe('present');
+    expect(at(mem, 'Đầu bếp')).toMatchObject({ follow: false });
+    expect(at(mem, 'Đầu bếp').location).toBeUndefined();
+    expect(classifyNpcPresence(at(mem, 'Đầu bếp'), mem.scenes, 'Căn phòng', ['Thành', 'Quán trọ', 'Căn phòng'])).toBe('absent');
+    // Đối chiếu: khách phương xa chưa xóa trống vẫn phán đoán vắng mặt theo địa điểm, bạn đồng hành luôn có mặt
+    expect(classifyNpcPresence(at(mem, 'Khách phương xa'), mem.scenes, 'Căn phòng', ['Thành', 'Quán trọ', 'Căn phòng'])).toBe('absent');
+    expect(classifyNpcPresence(at(mem, 'Bạn đồng hành'), mem.scenes, 'Căn phòng', ['Thành', 'Quán trọ', 'Căn phòng'])).toBe('present');
+    // Nhân vật đi cùng tiện tay viết location rỗng (không viết tường minh follow) không được hủy đi cùng: chuỗi rỗng chỉ xóa địa điểm
+    const guard = deriveMemory([sceneLeaf(), message(JSON.parse(JSON.stringify(finalizeDelta({ npcs: { update: [{ name: 'Bạn đồng hành', location: '' }] } }, []))))]);
+    expect(at(guard, 'Bạn đồng hành').follow).toBe(true);
+    expect(at(guard, 'Bạn đồng hành').location).toBeUndefined();
+    expect(classifyNpcPresence(at(guard, 'Bạn đồng hành'), guard.scenes, 'Căn phòng', ['Thành', 'Quán trọ', 'Căn phòng'])).toBe('present');
+    // Muốn rời đội bắt buộc viết tường minh follow:false; lúc này cho dù không kèm location, địa điểm bị xóa khi đi cùng trước đó cũng khiến họ được phán đoán vắng mặt
+    const left = deriveMemory([sceneLeaf(), message({ npcs: { update: [{ name: 'Bạn đồng hành', follow: false, location: '' }] } })]);
+    expect(classifyNpcPresence(at(left, 'Bạn đồng hành'), left.scenes, 'Căn phòng', ['Thành', 'Quán trọ', 'Căn phòng'])).toBe('absent');
+    const leftNoLoc = deriveMemory([sceneLeaf(), message({ npcs: { update: [{ name: 'Bạn đồng hành', follow: false }] } })]);
+    expect(classifyNpcPresence(at(leftNoLoc, 'Bạn đồng hành'), leftNoLoc.scenes, 'Căn phòng', ['Thành', 'Quán trọ', 'Căn phòng'])).toBe('absent');
+    // Khi trong cùng một bản vá xuất hiện rõ ràng cả follow:true lẫn location rỗng, đi cùng được ưu tiên (không bị chuỗi rỗng hủy ngược lại)
+    const keep = deriveMemory([sceneLeaf(), message({ npcs: { update: [{ name: 'Đầu bếp', follow: true, location: '' }] } })]);
+    expect(classifyNpcPresence(at(keep, 'Đầu bếp'), keep.scenes, 'Căn phòng', ['Thành', 'Quán trọ', 'Căn phòng'])).toBe('present');
   });
-  it('省略 location 保持旧值,不能把未提供当成清空', () => {
-    const chat = [sceneLeaf(), message({ npcs: { update: [{ name: '厨师', follow: false }] } })];
-    expect(at(deriveMemory(chat), '厨师').location).toBe('厨房');
+  it('Lược bỏ location giữ nguyên giá trị cũ, không được coi việc chưa cung cấp là xóa trống', () => {
+    const chat = [sceneLeaf(), message({ npcs: { update: [{ name: 'Đầu bếp', follow: false }] } })];
+    expect(at(deriveMemory(chat), 'Đầu bếp').location).toBe('Nhà bếp');
   });
-  it('手动编辑末尾空值=所在不明;改名继承所在地;取消随行不误清位置', () => {
+  it('Chỉnh sửa thủ công giá trị rỗng ở cuối = không rõ nơi ở; đổi tên kế thừa nơi ở; hủy đi cùng không xóa nhầm vị trí', () => {
     const chat = [message(), message()];
     useChat(chat);
-    expect(upsertNpc({ name, location: '客栈' })).toBe(true);
-    expect(memory.npcs[0].location).toBe('客栈');
+    expect(upsertNpc({ name, location: 'Quán trọ' })).toBe(true);
+    expect(memory.npcs[0].location).toBe('Quán trọ');
     expect(editNpc(name, { location: '' })).toBe(true);
     expect(memory.npcs[0].location).toBeUndefined();
-    expect(editNpc(name, { location: '厨房' })).toBe(true);
-    expect(editNpc(name, { name: '新名字' })).toBe(true);
-    expect(memory.npcs[0]).toMatchObject({ name: '新名字', location: '厨房' });
-    expect(setNpcFollow('新名字', false)).toBe(true);
-    expect(memory.npcs[0]).toMatchObject({ follow: false, location: '厨房' });
-    expect(editNpc('新名字', { location: '' })).toBe(true);
+    expect(editNpc(name, { location: 'Nhà bếp' })).toBe(true);
+    expect(editNpc(name, { name: 'Tên mới' })).toBe(true);
+    expect(memory.npcs[0]).toMatchObject({ name: 'Tên mới', location: 'Nhà bếp' });
+    expect(setNpcFollow('Tên mới', false)).toBe(true);
+    expect(memory.npcs[0]).toMatchObject({ follow: false, location: 'Nhà bếp' });
+    expect(editNpc('Tên mới', { location: '' })).toBe(true);
     expect(memory.npcs[0].location).toBeUndefined();
   });
-  it('摘要名册按本楼之前的状态标在场,离场去向未明标所在不明', async () => {
+  it('Danh sách tóm tắt gắn nhãn có mặt theo trạng thái trước tầng này, rời trường chưa rõ hướng đi gắn nhãn không rõ nơi ở', async () => {
     const second = message();
     delete second.extra!.bbs_leaf;
     const chat = [sceneLeaf(), second];
     useChat(chat);
     vi.spyOn(client, 'requestViaMainApi').mockResolvedValue(JSON.stringify({
-      summary: '厨师离开房间但没说去哪。', timeStart: '2026/9/13 10:00', timeEnd: '2026/9/13 10:05',
-      npcs: { update: [{ name: '厨师', follow: false, location: '' }] },
+      summary: 'Đầu bếp rời khỏi phòng nhưng không nói đi đâu.', timeStart: '2026/9/13 10:00', timeEnd: '2026/9/13 10:05',
+      npcs: { update: [{ name: 'Đầu bếp', follow: false, location: '' }] },
     }));
     await summarizeFloor(1);
     const material = vi.mocked(client.requestViaMainApi).mock.calls[0][0].map(m => m.content).join('\n');
-    expect(material).toContain('厨师〔同区域〕'); // 厨师在厨房:相对主角当前节点(房间)是同区域
-    expect(material).toContain('同伴〔在场〕 [随行]');
-    expect(material).toContain('远客〔不在场〕');
-    expect(memory.npcs.find(n => n.name === '厨师')?.location).toBeUndefined();
-    expect(classifyNpcPresence(memory.npcs.find(n => n.name === '厨师')!, memory.scenes, '房间', ['城', '客栈', '房间'])).toBe('absent');
+    expect(material).toContain('Đầu bếp〔Cùng khu vực〕'); // Đầu bếp ở nhà bếp: so với nút hiện tại của nhân vật chính (Căn phòng) là cùng khu vực
+    expect(material).toContain('Bạn đồng hành〔Có mặt〕 [Đi cùng]');
+    expect(material).toContain('Khách phương xa〔Vắng mặt〕');
+    expect(memory.npcs.find(n => n.name === 'Đầu bếp')?.location).toBeUndefined();
+    expect(classifyNpcPresence(memory.npcs.find(n => n.name === 'Đầu bếp')!, memory.scenes, 'Căn phòng', ['Thành', 'Quán trọ', 'Căn phòng'])).toBe('absent');
   });
 });
 
-describe('名册在场标记渲染', () => {
-  it('有 presence 时渲染标签;缺省保持旧格式,不引入所在不明', () => {
+describe('Kết xuất nhãn có mặt trong danh sách', () => {
+  it('Khi có presence thì kết xuất nhãn; mặc định giữ định dạng cũ, không đưa vào không rõ nơi ở', () => {
     const npc = { ...initial };
-    expect(fmtNpcSummaryList([{ ...npc, presence: 'present', follow: true }])).toContain('〔在场〕 [随行]');
-    expect(fmtNpcSummaryList([{ ...npc, presence: 'nearby', location: '厨房' }])).toContain('〔同区域〕 [在:厨房]');
-    expect(fmtNpcSummaryList([{ ...npc, presence: 'absent' }])).toContain('〔不在场〕 [所在不明]');
-    for (const mark of ['〔在场〕', '〔同区域〕', '〔不在场〕', '所在不明']) {
+    expect(fmtNpcSummaryList([{ ...npc, presence: 'present', follow: true }])).toContain('〔Có mặt〕 [Đi cùng]');
+    expect(fmtNpcSummaryList([{ ...npc, presence: 'nearby', location: 'Nhà bếp' }])).toContain('〔Cùng khu vực〕 [Ở:Nhà bếp]');
+    expect(fmtNpcSummaryList([{ ...npc, presence: 'absent' }])).toContain('〔Vắng mặt〕 [Không rõ nơi ở]');
+    for (const mark of ['〔Có mặt〕', '〔Cùng khu vực〕', '〔Vắng mặt〕', 'Không rõ nơi ở']) {
       expect(fmtNpcSummaryList([npc])).not.toContain(mark);
     }
   });
@@ -248,104 +248,104 @@ describe('名册在场标记渲染', () => {
 const promptArgs: Parameters<typeof buildSummaryPrompt>[0] = {
   user: 'User', char: 'Character', time: '', location: '', protagonist: {}, sceneFocus: null,
   lifeDetails: [], items: [], itemLog: [], scenes: [], npcs: [initial], openPlans: [], resolvedPlans: [],
-  history: '先前事实', content: '这次只是普通交谈', hasTimeTags: true, varsState: {}, varsMeaning: '', varsRule: '',
+  history: 'Sự thật trước đó', content: 'Lần này chỉ là trò chuyện bình thường', hasTimeTags: true, varsState: {}, varsMeaning: '', varsRule: '',
 };
-describe('摘要与主对话的提示词边界', () => {
-  it.each(['', 'CUSTOM {{content}}', 'CUSTOM {{npcs_block}} {{content}}'])('默认及自定义摘要模板都有协议与先前基线: %s', custom => {
+describe('Ranh giới từ nhắc của tóm tắt và đối thoại chính', () => {
+  it.each(['', 'CUSTOM {{content}}', 'CUSTOM {{npcs_block}} {{content}}'])('Mẫu tóm tắt mặc định và tùy chỉnh đều có giao thức và mốc cơ sở trước đó: %s', custom => {
     settings.apiSettings.prompts.summary = custom;
     const prompt = buildSummaryPrompt(promptArgs);
-    expect(prompt.system).toContain('【内心好感与外在态度规则】');
+    expect(prompt.system).toContain('【Quy tắc hảo cảm nội tâm và thái độ bên ngoài】');
     expect(prompt.system).not.toContain(initial.affinityNote);
     expect(prompt.user).toContain(fmtNpcSummaryList([initial]));
-    expect(prompt.user.split('对主角的好感与态度估计[')).toHaveLength(2);
-    expect(prompt.user).toContain('性格:嘴硬、护短');
+    expect(prompt.user.split('Ước lượng hảo cảm và thái độ với nhân vật chính[')).toHaveLength(2);
+    expect(prompt.user).toContain('Tính cách:Mạnh miệng、bênh người mình');
   });
-  it('明确默认稳定、内外独立、说明稳定及估计不能成为事实', () => {
-    for (const contract of ['【默认保持,跨档才更新】', '【内外完全独立】', '【说明也要稳定】', '不是每轮重新打分',
-      '两侧与说明均省略', '禁止增量', '禁止每轮升级修辞', '不要默认填 0', '不得把它抄入 summary/relation/ties/personality']) {
+  it('Nêu rõ mặc định ổn định, trong ngoài độc lập, giải thích ổn định và ước lượng không được trở thành sự thật', () => {
+    for (const contract of ['【Mặc định giữ nguyên, vượt bậc mới cập nhật】', '【Trong và ngoài hoàn toàn độc lập】', '【Giải thích cũng phải ổn định】', 'không phải mỗi lượt đều chấm điểm lại',
+      'cả hai phía và lời giải thích đều lược bỏ', 'nghiêm cấm dùng lượng tăng giảm', 'nghiêm cấm mỗi lượt lại nâng cấp từ ngữ tu từ', 'đừng mặc định điền 0', 'không được chép nó vào `summary`/`relation`/`ties`/`personality`']) {
       expect(RULE_NPC_AFFINITY).toContain(contract);
     }
-    // 估计是过去的总结,不是上限:防止主模型把旧档位当禁令冻结关系发展
-    expect(NPC_AFFINITY_BRIEFING).toContain('不是对本轮的上限或禁令');
+    // Ước lượng là tổng kết quá khứ, không phải giới hạn trần: ngăn mô hình chính coi bậc cũ là lệnh cấm làm đóng băng sự phát triển quan hệ
+    expect(NPC_AFFINITY_BRIEFING).toContain('không phải giới hạn trần hay lệnh cấm đối với lượt này');
   });
-  it('规则里的档位文字与界面档位一致', () => {
-    // 好感规则截自 summary.txt,档位行写死在文件里;改了 NPC_AFFINITY_LABELS 须同步那里
+  it('Chữ bậc trong quy tắc khớp với bậc trên giao diện', () => {
+    // Quy tắc hảo cảm cắt từ summary.txt, dòng bậc viết cố định trong tệp; sửa NPC_AFFINITY_LABELS phải đồng bộ ở đó
     for (const f of NPC_AFFINITY_FIELDS) {
       const levels = f.options.filter(o => o.value !== '').map(o => `${o.value}=${o.label}`).join(';');
       expect(RULE_NPC_AFFINITY).toContain(`${f.label}(${f.key}):${levels}`);
     }
   });
-  it('四档在场状态均注入独立好感,远处省略说明且守住角色视角', () => {
+  it('Bốn mức trạng thái có mặt đều tiêm hảo cảm độc lập, nơi xa lược bỏ giải thích và giữ vững góc nhìn nhân vật', () => {
     const chat = [message({
-      location: '房间', locationPath: ['城', '客栈', '房间'],
-      scenes: { add: [{ path: ['城'], desc: '城市' }, { path: ['城', '客栈'], desc: '客栈' },
-        { path: ['城', '客栈', '房间'], desc: '房间' }, { path: ['城', '客栈', '厨房'], desc: '厨房' }] },
+      location: 'Căn phòng', locationPath: ['Thành', 'Quán trọ', 'Căn phòng'],
+      scenes: { add: [{ path: ['Thành'], desc: 'Thành phố' }, { path: ['Thành', 'Quán trọ'], desc: 'Quán trọ' },
+        { path: ['Thành', 'Quán trọ', 'Căn phòng'], desc: 'Căn phòng' }, { path: ['Thành', 'Quán trọ', 'Nhà bếp'], desc: 'Nhà bếp' }] },
       npcs: { add: [
         { ...initial, important: true },
-        { name: '同伴', affinityInner: null, affinityOuter: 1, follow: true },
-        { name: '厨师', affinityInner: -1, affinityOuter: 1, affinityNote: '保持礼貌', location: '厨房' },
-        { name: '远客', affinityInner: -2, affinityOuter: 2, affinityNote: '远处说明不应注入', location: '远方' },
+        { name: 'Bạn đồng hành', affinityInner: null, affinityOuter: 1, follow: true },
+        { name: 'Đầu bếp', affinityInner: -1, affinityOuter: 1, affinityNote: 'Giữ lễ phép', location: 'Nhà bếp' },
+        { name: 'Khách phương xa', affinityInner: -2, affinityOuter: 2, affinityNote: 'Giải thích nơi xa không được tiêm', location: 'Phương xa' },
       ] },
     })];
     useChat(chat);
     const text = inject.buildStateInjectionText();
     expect(text.split(NPC_AFFINITY_BRIEFING)).toHaveLength(2);
-    expect(text).toContain('内心好感:未知;外在态度:友善亲近');
-    expect(text).toContain('内心好感:不喜欢;外在态度:友善亲近;说明:保持礼貌');
-    expect(text).toContain('内心好感:强烈反感;外在态度:明显亲近、积极表达');
-    expect(text).not.toContain('远处说明不应注入');
-    expect(text).toContain('不代表主角或其他角色知情');
+    expect(text).toContain('Hảo cảm nội tâm:Chưa rõ;Thái độ bên ngoài:Thân thiện gần gũi');
+    expect(text).toContain('Hảo cảm nội tâm:Không thích;Thái độ bên ngoài:Thân thiện gần gũi;Giải thích:Giữ lễ phép');
+    expect(text).toContain('Hảo cảm nội tâm:Phản cảm mãnh liệt;Thái độ bên ngoài:Gần gũi rõ rệt, thể hiện tích cực');
+    expect(text).not.toContain('Giải thích nơi xa không được tiêm');
+    expect(text).toContain('không đại diện cho việc nhân vật chính hay nhân vật khác biết chuyện');
   });
-  it('关闭「角色好感估计」后名册照发、好感不注入;摘要材料仍保留好感', () => {
+  it('Sau khi tắt「Ước lượng hảo cảm nhân vật」thì danh sách vẫn gửi như thường, hảo cảm không tiêm; tài liệu tóm tắt vẫn giữ lại hảo cảm', () => {
     useChat([base()]);
-    expect(inject.buildStateInjectionText()).toContain('好感估计');
+    expect(inject.buildStateInjectionText()).toContain('Ước lượng hảo cảm');
     settings.apiSettings.injection.npcAffinity = false;
     const text = inject.buildStateInjectionText();
-    expect(text).toContain('NPC名册');
+    expect(text).toContain('Danh sách NPC');
     expect(text).toContain(name);
-    expect(text).not.toContain('好感');
-    expect(text).not.toContain('五档定性估计');
-    // 副 API 摘要名册不受该开关影响:记录始终照常
-    expect(buildSummaryPrompt(promptArgs).user).toContain('对主角的好感与态度估计[');
+    expect(text).not.toContain('hảo cảm');
+    expect(text).not.toContain('ước lượng định tính 5 mức');
+    // Danh sách tóm tắt của API phụ không bị công tắc này ảnh hưởng: việc ghi chép luôn diễn ra bình thường
+    expect(buildSummaryPrompt(promptArgs).user).toContain('Ước lượng hảo cảm và thái độ với nhân vật chính[');
     settings.apiSettings.injection.npcAffinity = true;
-    expect(inject.buildStateInjectionText()).toContain('好感估计');
+    expect(inject.buildStateInjectionText()).toContain('Ước lượng hảo cảm');
   });
-  it('旧角色无好感记录时零额外注入,关闭注入/纯摘要模式仍有效', () => {
+  it('Nhân vật cũ không có bản ghi hảo cảm thì không tiêm thêm gì, tắt tiêm/chế độ chỉ tóm tắt vẫn có hiệu lực', () => {
     useChat([message({ npcs: { add: [{ name }] } })]);
-    expect(inject.buildStateInjectionText()).not.toContain('好感');
+    expect(inject.buildStateInjectionText()).not.toContain('Hảo cảm');
     useChat([base()]);
     settings.apiSettings.injection.npcs = false;
-    expect(inject.buildStateInjectionText()).not.toContain('内心好感');
+    expect(inject.buildStateInjectionText()).not.toContain('Hảo cảm nội tâm');
     settings.apiSettings.injection.npcs = true;
     settings.apiSettings.summaryOnlyMode = true;
     expect(inject.buildStateInjectionText()).toBe('');
   });
 });
 
-describe('实际摘要入口与跨对话继承', () => {
-  it('摘要用旧基线,解析 AI 的单侧更新,下一轮不变则保持', async () => {
+describe('Cổng tóm tắt thực tế và kế thừa xuyên cuộc trò chuyện', () => {
+  it('Tóm tắt dùng mốc cơ sở cũ, phân tích cập nhật một phía của AI, lượt tiếp theo không đổi thì giữ nguyên', async () => {
     const second = message();
     delete second.extra!.bbs_leaf;
     const chat = [base(), second];
     useChat(chat);
     vi.spyOn(client, 'requestViaMainApi').mockResolvedValue(JSON.stringify({
-      summary: '危急时她选择相救,但仍然嘴硬。', timeStart: '2026/9/13 10:00', timeEnd: '2026/9/13 10:05',
-      npcs: { update: [{ name, affinityInner: 2, affinityNote: '相救表现出更深在意,外在仍冷淡' }] },
+      summary: 'Lúc nguy cấp cô chọn cứu giúp, nhưng vẫn mạnh miệng.', timeStart: '2026/9/13 10:00', timeEnd: '2026/9/13 10:05',
+      npcs: { update: [{ name, affinityInner: 2, affinityNote: 'Cứu giúp thể hiện sự để tâm sâu sắc hơn, bên ngoài vẫn lạnh nhạt' }] },
     }));
     await summarizeFloor(1);
     const request = vi.mocked(client.requestViaMainApi).mock.calls[0][0].map(m => m.content).join('\n');
-    expect(request).toContain('内心好感:有好感;外在态度:冷淡疏远');
-    expect(request).toContain('性格:嘴硬、护短');
+    expect(request).toContain('Hảo cảm nội tâm:Có thiện cảm;Thái độ bên ngoài:Lạnh nhạt xa cách');
+    expect(request).toContain('Tính cách:Mạnh miệng、bênh người mình');
     expect(chat[1].extra!.bbs_leaf!.delta.npcs!.update![0].affinityOuter).toBeUndefined();
     expect(memory.npcs[0]).toMatchObject({ affinityInner: 2, affinityOuter: -1 });
     const third = message(); delete third.extra!.bbs_leaf; chat.push(third);
-    vi.mocked(client.requestViaMainApi).mockResolvedValue(JSON.stringify({ summary: '一起喝茶。', timeStart: '2026/9/13 10:05', timeEnd: '2026/9/13 10:10' }));
+    vi.spyOn(client, 'requestViaMainApi').mockResolvedValue(JSON.stringify({ summary: 'Cùng uống trà.', timeStart: '2026/9/13 10:05', timeEnd: '2026/9/13 10:10' }));
     await summarizeFloor(2);
-    expect(memory.npcs[0]).toMatchObject({ affinityInner: 2, affinityOuter: -1, affinityNote: '相救表现出更深在意,外在仍冷淡' });
+    expect(memory.npcs[0]).toMatchObject({ affinityInner: 2, affinityOuter: -1, affinityNote: 'Cứu giúp thể hiện sự để tâm sâu sắc hơn, bên ngoài vẫn lạnh nhạt' });
   });
-  it('带数据创建新对话保留窗口前未知/中性和窗口内单侧更新,不改源聊天', async () => {
+  it('Tạo cuộc trò chuyện mới mang theo dữ liệu giữ nguyên chưa rõ/trung tính trước cửa sổ và cập nhật một phía trong cửa sổ, không sửa cuộc trò chuyện nguồn', async () => {
     settings.apiSettings.keepRecent = 1;
-    const chat = [message({ npcs: { add: [{ name, affinityInner: null, affinityOuter: 0, affinityNote: '尚不知内心' }] } }), patch({ affinityOuter: 1 })];
+    const chat = [message({ npcs: { add: [{ name, affinityInner: null, affinityOuter: 0, affinityNote: 'Chưa rõ nội tâm' }] } }), patch({ affinityOuter: 1 })];
     const source = useChat(chat);
     const before = JSON.stringify(chat);
     const target = { ...source, chat: [] as STMessage[], chatMetadata: {}, getCurrentChatId: () => 'affinity-carried' };
@@ -355,7 +355,7 @@ describe('实际摘要入口与跨对话继承', () => {
     vi.spyOn(inject, 'refreshInjection').mockImplementation(() => {});
     expect(await createNewChatWithCarryover()).toBe(true);
     expect(JSON.stringify(chat)).toBe(before);
-    expect(target.chat[0].extra!.bbs_leaf!.delta.npcs!.add![0]).toMatchObject({ name, affinityInner: null, affinityOuter: 0, affinityNote: '尚不知内心' });
-    expect(deriveMemory(target.chat).npcs[0]).toMatchObject({ affinityInner: null, affinityOuter: 1, affinityNote: '尚不知内心' });
+    expect(target.chat[0].extra!.bbs_leaf!.delta.npcs!.add![0]).toMatchObject({ name, affinityInner: null, affinityOuter: 0, affinityNote: 'Chưa rõ nội tâm' });
+    expect(deriveMemory(target.chat).npcs[0]).toMatchObject({ affinityInner: null, affinityOuter: 1, affinityNote: 'Chưa rõ nội tâm' });
   });
 });

@@ -7,8 +7,8 @@ import * as notices from '@/st/toast';
 import { batchBackfill, checkResummary, currentSummaryPromise, handleGenerationIntercept, openingPendingFloor, planBatches, summarizeFloor, summarizeSelected } from './engine';
 import { buildBatchThinking, buildResummaryPrompt, buildSummaryThinking, RESUMMARY_THINKING_CHECKLIST, SUMMARY_OUTPUT_PROTOCOL } from './prompts';
 
-/** 新提示词的成文顺序段落标记(替代旧 RULE_SUMMARY_COMPOSITION 常量)。 */
-const COMPOSITION_HEADING = '【摘要成文顺序】';
+/** Dấu mốc đoạn trình tự viết của từ nhắc mới (thay thế hằng số RULE_SUMMARY_COMPOSITION cũ). */
+const COMPOSITION_HEADING = '【Trình tự viết tóm tắt】';
 import { renderSourceHints, SOURCE_HINTS_HEADER } from './sourceHints';
 import { memory } from './store';
 import { createEmptyMemory, type LeafExtra, type SummaryDelta } from './types';
@@ -189,23 +189,23 @@ describe('summary request roles', () => {
 
     expect(client.requestViaMainApi).toHaveBeenCalledOnce();
     const all = vi.mocked(client.requestViaMainApi).mock.calls[0][0];
-    // NVWA 独立核心集中在破限 system 位:整个请求恰好出现一次,其余消息不重复携带。
+    // Lõi độc lập NVWA tập trung ở vị trí system vượt giới hạn: toàn bộ yêu cầu xuất hiện đúng một lần, các tin nhắn khác không mang lặp lại.
     expect(all.filter(m => m.content.includes('<nvwa_standalone_core>'))).toHaveLength(1);
     expect(all[0].content).toContain('<nvwa_standalone_core>');
     const tail = vi.mocked(client.requestViaMainApi).mock.calls[0][0].slice(-3);
-    // 了解清单默认开启,清单带上其盘点项
+    // Danh sách hiểu biết mặc định bật, danh sách kiểm tra kèm theo mục kiểm điểm của nó
     const thinking = buildSummaryThinking('User', true);
     expect(tail).toEqual([
-      { role: 'system', content: expect.stringContaining(custom ? '【柏宝书主角档案兼容协议】' : '【物品规则】') },
+      { role: 'system', content: expect.stringContaining(custom ? '【Giao thức tương thích hồ sơ nhân vật chính của Bách Bảo Thư】' : '【Quy tắc vật phẩm】') },
       { role: 'user', content: expect.stringContaining('The first response.') },
       { role: 'system', content: thinking },
     ]);
     expect(tail[0].content).not.toContain('The first response.');
     expect(tail[1].content).toContain('[M1-P1] The first response.');
-    // 已取消预填充:末尾是 system 检查清单,不再有 assistant 预填充
+    // Đã hủy bỏ điền sẵn (prefill): ở cuối là danh sách kiểm tra system, không còn assistant điền sẵn
     expect(tail.at(-1)?.role).toBe('system');
     expect(thinking).toContain('<thinking>');
-    expect(tail[1].content).not.toContain('═══ 【物品规则】');
+    expect(tail[1].content).not.toContain('═══ 【Quy tắc vật phẩm】');
     expect(tail[1].content).not.toContain(SOURCE_HINTS_HEADER);
     expect(tail.map(m => m.content).join('\n').split(COMPOSITION_HEADING)).toHaveLength(custom ? 1 : 2);
     expect(tail.map(m => m.content).join('\n').split(SUMMARY_OUTPUT_PROTOCOL)).toHaveLength(2);
@@ -265,15 +265,15 @@ describe('summary request roles', () => {
 
     expect(client.requestViaMainApi).toHaveBeenCalledOnce();
     const material = vi.mocked(client.requestViaMainApi).mock.calls[0][0].at(-2)?.content ?? '';
-    expect(material).toContain('【用户·User】\n[M1-P1] Start the story.');
+    expect(material).toContain('【Người dùng·User】\n[M1-P1] Start the story.');
     expect(material).toContain([
-      '【角色·Character】',
-      `[M2-P1] (起始时间:${summary.timeStart})`,
+      '【Nhân vật·Character】',
+      `[M2-P1] (Thời gian bắt đầu:${summary.timeStart})`,
       '[M2-P2] <content>',
       '[M2-P3] The first response.',
       '[M2-P4] The second paragraph.',
       '[M2-P5] </content>',
-      `[M2-P6] (结束时间:${summary.timeEnd})`,
+      `[M2-P6] (Thời gian kết thúc:${summary.timeEnd})`,
     ].join('\n'));
     expect(material).not.toContain('Discarded');
     expect(material).not.toContain('[M2-P7]');
@@ -286,22 +286,22 @@ describe('summary request roles', () => {
     [false, '\n'], [false, '\r\n'], [true, '\n'], [true, '\r\n'],
   ] as const)('attaches verbatim reminders from cleaned user and AI paragraphs only (custom=%s, newline=%j)', async (custom, newline) => {
     if (custom) settings.apiSettings.prompts.summary = 'CUSTOM {{content}}';
-    const userBody = '我已经搬出旧宿舍，独自住进条件更好的公寓。';
+    const userBody = 'Tôi đã dọn ra khỏi ký túc xá cũ, ở riêng trong căn hộ có điều kiện tốt hơn.';
     const paragraphs = [
-      '「谷口风速已经过了九级，气温降到零下三十三度。」',
-      '「能见度不足三十米，红外热成像仪的探测距离会被压制在大半以内。」',
-      '「风太大了，我的狙击铳很难锁定主峰高地！」',
-      '「谷口两侧有暗坑，必须先放侦察蜂排查……」',
+      '「Tốc độ gió ở cửa thung lũng đã vượt quá cấp 9, nhiệt độ hạ xuống âm 33 độ.」',
+      '「Tầm nhìn không đủ 30 mét, khoảng cách dò tìm của máy ảnh nhiệt hồng ngoại sẽ bị áp chế xuống dưới một nửa.」',
+      '「Gió lớn quá, súng bắn tỉa của tôi rất khó khóa chặt vùng đất cao đỉnh chính!」',
+      '「Hai bên cửa thung lũng có hố ngầm, bắt buộc phải thả ong trinh sát kiểm tra trước……」',
     ];
     const body = [
-      '<thinking>无法使用的旧检查记录，不应进入提醒。</thinking>',
+      '<thinking>Bản ghi kiểm tra cũ không thể sử dụng, không được đưa vào lời nhắc.</thinking>',
       `<bbs_start>${summary.timeStart}</bbs_start>`,
       '<content>',
       ...paragraphs,
       'The door opened.',
       '</content>',
       `<bbs_end>${summary.timeEnd}</bbs_end>`,
-      '无法使用的状态栏，不应进入提醒。',
+      'Thanh trạng thái không thể sử dụng, không được đưa vào lời nhắc.',
     ].join(newline);
     const chat = [message(true, { mes: userBody }), message(false, { mes: body })];
     useChat(chat);
@@ -322,16 +322,16 @@ describe('summary request roles', () => {
       expect(messages.filter(m => m.role === 'system').every(m => !m.content.includes(line))).toBe(true);
     }
     expect(hints).not.toContain('The door opened.');
-    expect(material).not.toContain('不应进入提醒');
+    expect(material).not.toContain('không được đưa vào lời nhắc');
     expect(chat.map(m => m.mes)).toEqual([userBody, body]);
     expect(chat[1].extra?.bbs_leaf?.text).toBe(summary.summary);
-    if (custom) expect(material).toContain('CUSTOM 【用户·User】');
+    if (custom) expect(material).toContain('CUSTOM 【Người dùng·User】');
   });
 
   it('does not select reminder sources from history or later turns', async () => {
-    const history = '历史记录：旧设备无法使用。';
-    const future = '未来消息：设备已经恢复正常。';
-    const body = '本届联赛参赛者中最强的学生是二转巅峰。';
+    const history = 'Bản ghi lịch sử: thiết bị cũ không thể sử dụng.';
+    const future = 'Tin nhắn tương lai: thiết bị đã khôi phục bình thường.';
+    const body = 'Học sinh mạnh nhất trong số những người tham gia giải đấu kỳ này là đỉnh cao chuyển 2.';
     const chat = [
       message(false, { extra: { bbs_leaf: { ...leaf(), text: history } } }),
       message(true),
@@ -362,23 +362,23 @@ describe('summary request roles', () => {
   });
 
   it('includes copied reminder text when splitting batches by input size', () => {
-    const body = '能见度不足三十米。'.repeat(8);
+    const body = 'Tầm nhìn không đủ 30 mét. '.repeat(8);
     const chat = [message(false, { mes: body }), message(false, { mes: body })];
     useChat(chat);
-    expect((`【角色·Character】\n[M1-P1] ${body}`.length) * 2).toBeLessThan(500);
+    expect((`【Nhân vật·Character】\n[M1-P1] ${body}`.length) * 2).toBeLessThan(600);
 
-    expect(planBatches(chat, [0, 1], 500, 10)).toEqual([[0], [1]]);
+    expect(planBatches(chat, [0, 1], 600, 10)).toEqual([[0], [1]]);
   });
 
   it('includes preceding user paragraphs and their reminders in batch sizing', () => {
-    const userBody = '我已经搬出旧居，生活条件改善了。'.repeat(6);
+    const userBody = 'Tôi đã dọn ra khỏi chỗ ở cũ, điều kiện sống đã cải thiện. '.repeat(4);
     const chat = [
       message(true, { mes: userBody }), message(),
       message(true, { mes: userBody }), message(),
     ];
     useChat(chat);
 
-    expect(planBatches(chat, [1, 3], 500, 10)).toEqual([[1], [3]]);
+    expect(planBatches(chat, [1, 3], 600, 10)).toEqual([[1], [3]]);
     expect(planBatches(chat, [1, 3], 10000, 10)).toEqual([[1, 3]]);
   });
 
@@ -396,23 +396,23 @@ describe('summary request roles', () => {
     expect(await batchBackfill({ floors: [1, 3] })).toMatchObject({ done: 2, total: 2, cancelled: false });
 
     expect(client.requestViaMainApi).toHaveBeenCalledOnce();
-    // 批量请求过去是全局唯一漏掉 NVWA 核心的路径;确保破限位仍带核心且只带一次。
+    // Yêu cầu hàng loạt trước đây là đường dẫn duy nhất toàn cục bị sót lõi NVWA; đảm bảo vị trí vượt giới hạn vẫn mang lõi và chỉ mang một lần.
     const allBatch = vi.mocked(client.requestViaMainApi).mock.calls[0][0];
     expect(allBatch.filter(m => m.content.includes('<nvwa_standalone_core>'))).toHaveLength(1);
     expect(allBatch[0].content).toContain('<nvwa_standalone_core>');
     const tail = vi.mocked(client.requestViaMainApi).mock.calls[0][0].slice(-3);
     const thinking = buildBatchThinking(2);
     expect(tail).toEqual([
-      { role: 'system', content: expect.stringContaining('长度必须等于 2') },
+      { role: 'system', content: expect.stringContaining('độ dài bắt buộc phải bằng 2') },
       { role: 'user', content: expect.stringContaining('The second response.') },
       { role: 'system', content: thinking },
     ]);
     expect(tail[0].content).not.toContain('The first response.');
     expect(tail[0].content).toContain(COMPOSITION_HEADING);
-    expect(tail[1].content).not.toContain('【批量任务说明(关键)】');
-    expect(tail[1].content).toContain('━━ 第 1 楼 ━━\n【用户·User】\n[M1-P1] Start the story.');
+    expect(tail[1].content).not.toContain('【Hướng dẫn nhiệm vụ hàng loạt (Then chốt)】');
+    expect(tail[1].content).toContain('━━ Tầng thứ 1 ━━\n【Người dùng·User】\n[M1-P1] Start the story.');
     expect(tail[1].content).toContain('[M2-P1] The first response.');
-    expect(tail[1].content).toContain('━━ 第 2 楼 ━━\n【用户·User】\n[M3-P1] Continue the story.');
+    expect(tail[1].content).toContain('━━ Tầng thứ 2 ━━\n【Người dùng·User】\n[M3-P1] Continue the story.');
     expect(tail[1].content).toContain('[M4-P1] The second response.');
     expect(tail[1].content.match(/\[M\d+-P\d+\]/g)).toEqual(['[M1-P1]', '[M2-P1]', '[M3-P1]', '[M4-P1]']);
     expect(tail[1].content.indexOf('The first response.')).toBeLessThan(tail[1].content.indexOf('The second response.'));
@@ -420,7 +420,7 @@ describe('summary request roles', () => {
   });
 
   it('keeps each batch reminder inside its own floor with original message IDs', async () => {
-    const bodies = ['风速超过九级，气温降到零下三十三度。', '她已经搬出旧居，生活条件改善了。'];
+    const bodies = ['Tốc độ gió vượt quá cấp 9, nhiệt độ hạ xuống âm 33 độ.', 'Cô ấy đã dọn ra khỏi chỗ ở cũ, điều kiện sống đã cải thiện.'];
     const chat = [
       message(true), message(false, { mes: bodies[0] }),
       message(true), message(false, { mes: bodies[1] }),
@@ -433,7 +433,7 @@ describe('summary request roles', () => {
 
     expect(client.requestViaMainApi).toHaveBeenCalledOnce();
     const material = vi.mocked(client.requestViaMainApi).mock.calls[0][0].at(-2)!.content;
-    const [first, second] = material.split('━━ 第 2 楼 ━━');
+    const [first, second] = material.split('━━ Tầng thứ 2 ━━');
     expect(first.split(SOURCE_HINTS_HEADER)).toHaveLength(2);
     expect(second.split(SOURCE_HINTS_HEADER)).toHaveLength(2);
     expect(first.split(SOURCE_HINTS_HEADER)[1]).toContain(`[M2-P1] ${bodies[0]}`);
@@ -495,7 +495,7 @@ describe.each(['automatic', 'manual'] as const)('compression audit output (%s)',
   it.each([0, 1, 2])('sends a checklist, storing only final data (input level=%s)', async level => {
     const ids = seedInputs(level);
     const finalSummary = 'The confirmed merged facts.';
-    // 模型自行打开 <thinking> 检查块（不再有预填充）。
+    // Mô hình tự mở khối kiểm tra <thinking> (không còn điền sẵn).
     vi.mocked(client.requestViaMainApi).mockResolvedValue(
       `F1 | source 1 | confirmed fact\nCoverage: F1 | confirmed merged facts\n</thinking>\n${JSON.stringify({ summary: finalSummary })}`,
     );
@@ -515,7 +515,7 @@ describe.each(['automatic', 'manual'] as const)('compression audit output (%s)',
     expect(messages.at(-2)?.content).not.toMatch(/\[M\d+-P\d+\]/);
     expect(messages.at(-3)?.content).not.toContain(sourceText);
     expect(messages.at(-3)?.content).toContain(COMPOSITION_HEADING);
-    expect(messages.at(-2)?.content).not.toContain('【输出要求】');
+    expect(messages.at(-2)?.content).not.toContain('【Yêu cầu xuất】');
     expect(messages.at(-2)?.content).not.toContain(SOURCE_HINTS_HEADER);
     expect(messages.map(m => m.content).join('\n').split(SUMMARY_OUTPUT_PROTOCOL)).toHaveLength(2);
     const saved = memory.summaries.at(-1);
@@ -530,8 +530,8 @@ describe.each(['automatic', 'manual'] as const)('compression audit output (%s)',
       settings.apiSettings.prompts.resummary2 = 'CUSTOM {{content}}\nBUDGET {{target_min}}-{{target_max}}';
     }
     const texts = [
-      '本段能见度不足三十米，红外探测距离受限。',
-      '她已经搬出旧居，生活条件改善了。',
+      'Đoạn này tầm nhìn không đủ 30 mét, khoảng cách dò tìm hồng ngoại bị giới hạn.',
+      'Cô ấy đã dọn ra khỏi chỗ ở cũ, điều kiện sống đã cải thiện.',
     ];
     const ids = seedInputs(level, texts);
     const inputs = level === 0

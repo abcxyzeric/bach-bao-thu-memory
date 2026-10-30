@@ -1,7 +1,7 @@
 /**
- * SillyTavern getContext() 的薄封装 + 类型。
- * 整个扩展只通过这里接触宿主,稳定且单点。
- * 运行时 getContext 挂在 window.SillyTavern 上(ST 的稳定扩展 API)。
+ * Lớp bọc mỏng + kiểu dữ liệu cho getContext() của SillyTavern.
+ * Toàn bộ tiện ích mở rộng chỉ tiếp xúc với host thông qua đây, ổn định và tại một điểm duy nhất.
+ * Lúc chạy getContext được gắn trên window.SillyTavern (API mở rộng ổn định của ST).
  */
 
 export interface STMessage {
@@ -9,12 +9,12 @@ export interface STMessage {
   is_user: boolean;
   is_system: boolean;
   mes: string;
-  /** ST 当前消息的所有 swipe 正文。单页 AI 回复通常也有 swipes[0]。 */
+  /** Toàn bộ chính văn các swipe của tin nhắn hiện tại trong ST. Câu trả lời AI một trang thường cũng có swipes[0]. */
   swipes?: string[];
   send_date?: string;
-  /** 当前显示的 swipe 页码(多页 AI 回复时)。单页/无 swipe 时可能为 undefined,按 0 处理 */
+  /** Số trang swipe đang hiển thị hiện tại (khi câu trả lời AI có nhiều trang). Một trang / không có swipe có thể là undefined, xử lý như 0 */
   swipe_id?: number;
-  /** 消息私有数据。柏宝书在这里存隐藏、叶子摘要、番外与内部提示楼标记。 */
+  /** Dữ liệu riêng của tin nhắn. Bách Bảo Thư lưu nhãn ẩn, tóm tắt lá, ngoại truyện và tầng thông báo nội bộ tại đây. */
   extra?: Record<string, unknown> & {
     bbs_leaf?: import('@/memory/types').LeafExtra;
     bbs_hidden?: boolean;
@@ -40,7 +40,7 @@ export interface STEventTypes {
   [k: string]: string;
 }
 
-/** 角色卡(只用到极少字段;avatar 是稳定唯一键,name 可能重名) */
+/** Thẻ nhân vật (chỉ dùng rất ít trường; avatar là khóa duy nhất ổn định, name có thể trùng tên) */
 export interface STCharacter {
   name: string;
   avatar: string;
@@ -52,25 +52,25 @@ export interface STContext {
   chatMetadata: Record<string, unknown>;
   name1: string;
   name2: string;
-  /** 已加载的全部角色卡 */
+  /** Toàn bộ thẻ nhân vật đã nạp */
   characters?: STCharacter[];
-  /** 当前角色在 characters 中的索引(字符串/数字);群聊时为空 */
+  /** Chỉ mục của nhân vật hiện tại trong characters (chuỗi/số); khi trò chuyện nhóm thì trống */
   characterId?: string | number;
-  /** 当前群组 id;非群聊为空 */
+  /** ID nhóm hiện tại; không phải trò chuyện nhóm thì trống */
   groupId?: string;
   getCurrentChatId: () => string | undefined;
   getRequestHeaders: () => Record<string, string>;
   saveMetadataDebounced: () => void;
   saveMetadata: () => Promise<void>;
   saveChat: () => Promise<void>;
-  /** 扩展全局设置对象(= extension_settings,写进服务器 settings.json,跨设备同步)。ST 稳定 API。 */
+  /** Đối tượng cài đặt toàn cục của tiện ích mở rộng (= extension_settings, ghi vào settings.json trên máy chủ, đồng bộ xuyên thiết bị). API ổn định của ST. */
   extensionSettings?: Record<string, unknown>;
-  /** 防抖保存全局设置(连同 extensionSettings 落盘到服务器)。ST 稳定 API。 */
+  /** Chống rung lưu cài đặt toàn cục (lưu đĩa cùng extensionSettings lên máy chủ). API ổn định của ST. */
   saveSettingsDebounced?: () => void;
   reloadCurrentChat: () => Promise<void>;
   eventSource: STEventSource;
   eventTypes: STEventTypes;
-  /** 注入扩展提示(key, value, position, depth, scan, role, filter)。ST 稳定 API。 */
+  /** Tiêm gợi ý mở rộng (key, value, position, depth, scan, role, filter). API ổn định của ST. */
   setExtensionPrompt?: (
     key: string,
     value: string,
@@ -80,15 +80,15 @@ export interface STContext {
     role?: number,
     filter?: unknown,
   ) => void;
-  /** 执行斜杠命令(如 /hide 0-3)。ST 稳定 API。 */
+  /** Thực thi lệnh gạch chéo (như /hide 0-3). API ổn định của ST. */
   executeSlashCommandsWithOptions?: (command: string, options?: Record<string, unknown>) => Promise<unknown>;
   /**
-   * 连接管理:用「当前选中的连接档」发请求(跟随主 API)。来源 extensions/shared.js。
+   * Quản lý kết nối: gửi yêu cầu bằng "hồ sơ kết nối đang chọn hiện tại" (đi theo API chính). Nguồn từ extensions/shared.js.
    * sendRequest(profileId, messages, maxTokens, custom, overridePayload):
-   *   custom.includePreset=false → 不套补全预设(只用该档的 API 信息);
-   *   custom.includeInstruct=false → 文本补全档也跳过 instruct 模板;
-   *   overridePayload 可塞 temperature 等采样参数(因为不走预设)。
-   *   extractData=true(默认)时返回 { content } 取文本。
+   *   custom.includePreset=false → không áp preset hoàn thành (chỉ dùng thông tin API của hồ sơ đó);
+   *   custom.includeInstruct=false → hồ sơ hoàn thành văn bản cũng bỏ qua khuôn mẫu instruct;
+   *   overridePayload có thể nhét các tham số lấy mẫu như temperature (vì không đi qua preset).
+   *   Khi extractData=true (mặc định) trả về { content } để lấy văn bản.
    */
   ConnectionManagerRequestService?: {
     sendRequest: (
@@ -106,9 +106,9 @@ export interface STContext {
     ) => Promise<unknown>;
   };
   /**
-   * 用「当前主 API」(主界面正在用的聊天补全/文本补全设置)发一次性补全。来源 script.js,ST 稳定 API。
-   * prompt 传消息数组时只发这些消息、不带聊天历史/角色卡;api 缺省=main_api(用户当前主 API)。
-   * 内部走 sendOpenAIRequest('quiet', …),quiet 强制非流式,返回清洗后的整段文本。
+   * Dùng "API chính hiện tại" (cài đặt hoàn thành trò chuyện / hoàn thành văn bản đang dùng trên giao diện chính) gửi hoàn thành một lần. Nguồn từ script.js, API ổn định của ST.
+   * Khi prompt truyền mảng tin nhắn thì chỉ gửi các tin nhắn này, không mang lịch sử trò chuyện / thẻ nhân vật; api mặc định = main_api (API chính hiện tại của người dùng).
+   * Bên trong đi qua sendOpenAIRequest('quiet', …), quiet cưỡng chế phi luồng, trả về toàn bộ đoạn văn bản sau khi làm sạch.
    */
   generateRaw?: (params: {
     prompt: Array<{ role: string; content: string }> | string;
@@ -118,11 +118,11 @@ export interface STContext {
     prefill?: string;
     jsonSchema?: unknown;
   }) => Promise<string>;
-  /** 展开 {{char}}/{{user}} 等宏。摘要带角色卡描述时,字段里可能含宏,需用它还原。ST 稳定 API。 */
+  /** Mở rộng các macro như {{char}}/{{user}}. Khi tóm tắt mang theo mô tả thẻ nhân vật, bên trong trường có thể chứa macro, cần dùng hàm này để khôi phục. API ổn định của ST. */
   substituteParams?: (content: string) => string;
   /**
-   * 按文本激活世界书条目(关键词触发 + constant 常驻)。ST 稳定 API(world-info.js)。
-   * chat 为待扫描文本数组(由旧到新);isDryRun=true 仅扫描不触发副作用事件。
+   * Kích hoạt mục sách thế giới theo văn bản (kích hoạt bằng từ khóa + thường trú constant). API ổn định của ST (world-info.js).
+   * chat là mảng văn bản chờ quét (từ cũ đến mới); isDryRun=true chỉ quét không kích hoạt sự kiện tác dụng phụ.
    */
   getWorldInfoPrompt?: (
     chat: string[],
@@ -133,17 +133,17 @@ export interface STContext {
     worldInfoBefore?: string;
     worldInfoAfter?: string;
     worldInfoString?: string;
-    /** @深度条目:{depth, role, entries: string[]}。很多蓝灯条目在这里 */
+    /** Các mục @độ sâu: {depth, role, entries: string[]}. Rất nhiều mục đèn xanh lam nằm ở đây */
     worldInfoDepth?: Array<{ depth?: number; role?: number; entries?: string[] }>;
-    /** 作者注前/后条目(content 字符串数组) */
+    /** Các mục trước/sau ghi chú tác giả (mảng chuỗi content) */
     anBefore?: string[];
     anAfter?: string[];
   }>;
-  /** 全部已加载的世界书文件名(全局 + 角色绑定)。ST 稳定 API,用于「整本排除」下拉。 */
+  /** Toàn bộ tên file sách thế giới đã nạp (toàn cục + gắn với nhân vật). API ổn định của ST, dùng cho hộp thả xuống "Loại trừ cả cuốn". */
   getWorldInfoNames?: () => string[];
-  /** 主上下文最大 token(给 getWorldInfoPrompt 的预算参数) */
+  /** Token tối đa của ngữ cảnh chính (tham số ngân sách đưa cho getWorldInfoPrompt) */
   maxContext?: number;
-  // 兼容旧式命名
+  // Tương thích cách đặt tên kiểu cũ
   event_types?: STEventTypes;
   [k: string]: any;
 }
@@ -158,7 +158,7 @@ declare global {
   }
 }
 
-/** 取得 ST 上下文;未就绪时返回 null。 */
+/** Lấy ngữ cảnh ST; khi chưa sẵn sàng trả về null. */
 export function getContext(): STContext | null {
   try {
     return window.SillyTavern?.getContext?.() ?? null;
@@ -168,8 +168,8 @@ export function getContext(): STContext | null {
 }
 
 /**
- * 把文本追加到 ST 主输入框，不触发发送。
- * 派发 input 事件以同步 ST 的输入框高度、发送按钮和草稿相关状态。
+ * Nối thêm văn bản vào ô nhập chính của ST, không kích hoạt gửi.
+ * Phát sự kiện input để đồng bộ chiều cao ô nhập, nút gửi và các trạng thái liên quan đến bản nháp của ST.
  */
 export function appendChatInput(text: string): boolean {
   try {
@@ -200,10 +200,10 @@ export function appendChatInput(text: string): boolean {
 }
 
 /**
- * 更新消息正文时同步当前 swipe。
+ * Khi cập nhật chính văn tin nhắn thì đồng bộ luôn swipe hiện tại.
  *
- * ST 的保存格式里 `mes` 和 `swipes[swipe_id]` 都会存在；只改 `mes` 会造成当前页
- * 文本与 swipe 备份分裂。所有插件内部正文写回都走这里。
+ * Trong định dạng lưu của ST cả `mes` lẫn `swipes[swipe_id]` đều tồn tại; chỉ sửa `mes` sẽ gây ra việc văn bản
+ * trang hiện tại bị tách rời khỏi bản sao lưu swipe. Mọi thao tác ghi trả lại chính văn nội bộ của plugin đều đi qua đây.
  */
 export function setMessageText(message: STMessage | undefined, text: string): void {
   if (!message) return;
@@ -214,13 +214,13 @@ export function setMessageText(message: STMessage | undefined, text: string): vo
 }
 
 /**
- * 取 ST 的 doNewChat(getContext 未暴露,从 /script.js 动态取)。
- * 用于「带数据创建新对话」:doNewChat({deleteCurrentChat:false}) 在当前角色下新建一个空聊天并切入。
- * 取不到(旧版/路径变动)时返回 null,调用方据此降级报错。
+ * Lấy doNewChat của ST (getContext không bộc lộ, lấy động từ /script.js).
+ * Dùng cho "Tạo cuộc trò chuyện mới kèm dữ liệu": doNewChat({deleteCurrentChat:false}) tạo mới một cuộc trò chuyện trống dưới nhân vật hiện tại và chuyển vào đó.
+ * Khi không lấy được (bản cũ / đổi đường dẫn) trả về null, bên gọi dựa vào đó hạ cấp báo lỗi.
  */
 export async function getDoNewChat(): Promise<((opts?: { deleteCurrentChat?: boolean }) => Promise<void>) | null> {
   try {
-    // 变量持有路径,避免 Vite/vue-tsc 把 /script.js 当本地模块解析
+    // Biến giữ đường dẫn, tránh việc Vite/vue-tsc phân tích /script.js như mô-đun cục bộ
     const scriptPath = '/script.js';
     const mod: Record<string, unknown> = await import(/* @vite-ignore */ scriptPath);
     const fn = mod.doNewChat;
@@ -230,26 +230,26 @@ export async function getDoNewChat(): Promise<((opts?: { deleteCurrentChat?: boo
   }
 }
 
-/** 一条已激活的世界书条目(checkWorldInfo 返回的条目对象;只取过滤/排序/拼接用到的字段)。 */
+/** Một mục sách thế giới đã kích hoạt (đối tượng mục do checkWorldInfo trả về; chỉ lấy các trường dùng cho lọc/sắp xếp/ghép nối). */
 export interface WorldInfoEntry {
-  /** 所属世界书文件名(整本排除按它匹配) */
+  /** Tên file sách thế giới sở hữu (loại trừ cả cuốn khớp theo trường này) */
   world?: string;
-  /** 条目备注/标题(条目名过滤按它匹配) */
+  /** Ghi chú / tiêu đề mục (lọc tên mục khớp theo trường này) */
   comment?: string;
-  /** 条目正文 */
+  /** Chính văn của mục */
   content?: string;
-  /** 插入顺序(Order)。ST 拼提示词时同位置条目按它升序排列;缺省视为 100(ST 新建条目默认值) */
+  /** Thứ tự chèn (Order). Khi ST ghép prompt các mục cùng vị trí sẽ xếp tăng dần theo nó; mặc định coi là 100 (giá trị mặc định khi ST tạo mục mới) */
   order?: number;
-  /** 插入位置:0 角色前 / 1 角色后 / 2 作者注前 / 3 作者注后 / 4 @深度 / 5 EM上 / 6 EM下 / 7 出口;缺省视为 0 */
+  /** Vị trí chèn: 0 trước nhân vật / 1 sau nhân vật / 2 trước ghi chú tác giả / 3 sau ghi chú tác giả / 4 @độ sâu / 5 EM trên / 6 EM dưới / 7 cổng ra; mặc định coi là 0 */
   position?: number;
-  /** @深度条目的深度值(仅 position=4 时参与排序;ST 默认 4) */
+  /** Giá trị độ sâu của mục @độ sâu (chỉ tham gia sắp xếp khi position=4; ST mặc định là 4) */
   depth?: number;
   [k: string]: unknown;
 }
 
-/** checkWorldInfo 的返回结构(只声明我们要用的字段)。 */
+/** Cấu trúc trả về của checkWorldInfo (chỉ khai báo trường chúng ta cần dùng). */
 interface CheckWorldInfoResult {
-  /** 全部激活条目(已完成扫描/递归/预算,是最终该进提示词的集合) */
+  /** Toàn bộ các mục đã kích hoạt (đã hoàn tất quét/đệ quy/ngân sách, là tập hợp cuối cùng sẽ đi vào prompt) */
   allActivatedEntries?: Set<WorldInfoEntry> | Map<string, WorldInfoEntry>;
   [k: string]: unknown;
 }
@@ -262,14 +262,14 @@ type CheckWorldInfoFn = (
 ) => Promise<CheckWorldInfoResult>;
 
 /**
- * 取 ST 的 checkWorldInfo(getContext 未暴露,从 /scripts/world-info.js 动态取)。
- * 与 getWorldInfoPrompt 不同:它返回**条目对象集合**(带 world/comment/content),
- * 才能按世界书名 / 条目名过滤——而 getWorldInfoPrompt 只吐拼好的字符串,元信息全丢。
- * 取不到(旧版/路径变动)时返回 null,调用方据此降级回 getWorldInfoPrompt(不过滤)。
+ * Lấy checkWorldInfo của ST (getContext không bộc lộ, lấy động từ /scripts/world-info.js).
+ * Khác với getWorldInfoPrompt: nó trả về **tập hợp đối tượng mục** (kèm world/comment/content),
+ * nhờ đó mới lọc theo tên sách thế giới / tên mục được —— còn getWorldInfoPrompt chỉ nhả chuỗi đã ghép xong, mất sạch siêu thông tin.
+ * Khi không lấy được (bản cũ / đổi đường dẫn) trả về null, bên gọi dựa vào đó hạ cấp về lại getWorldInfoPrompt (không lọc).
  */
 export async function getCheckWorldInfo(): Promise<CheckWorldInfoFn | null> {
   try {
-    // 变量持有路径,避免 Vite/vue-tsc 把它当本地模块解析
+    // Biến giữ đường dẫn, tránh việc Vite/vue-tsc phân tích nó như mô-đun cục bộ
     const wiPath = '/scripts/world-info.js';
     const mod: Record<string, unknown> = await import(/* @vite-ignore */ wiPath);
     const fn = mod.checkWorldInfo;
@@ -280,10 +280,10 @@ export async function getCheckWorldInfo(): Promise<CheckWorldInfoFn | null> {
 }
 
 /**
- * ST-Prompt-Template(提示词模板插件)挂在 globalThis 的执行器接口(见其 exports.ts)。
- * 我们只用到 prepareContext + evalTemplate:前者备好含变量/世界书上下文的 env,
- * 后者对含 <% %> 的文本跑 EJS。用于让副 API 读到的世界书拿到「执行后」的成品,而非原文。
- * 只声明用到的两个方法;插件未安装时 globalThis.EjsTemplate 为 undefined,调用方据此降级。
+ * Giao diện bộ thực thi của ST-Prompt-Template (plugin khuôn mẫu prompt) gắn trên globalThis (xem exports.ts của nó).
+ * Chúng ta chỉ dùng tới prepareContext + evalTemplate: cái trước chuẩn bị xong env có chứa ngữ cảnh biến số / sách thế giới,
+ * cái sau chạy EJS trên văn bản có chứa <% %>. Dùng để giúp sách thế giới mà API phụ đọc được nhận về thành phẩm "sau khi thực thi", thay vì nguyên văn.
+ * Chỉ khai báo hai phương thức dùng tới; khi chưa cài plugin thì globalThis.EjsTemplate là undefined, bên gọi dựa vào đó hạ cấp.
  */
 export interface EjsTemplateApi {
   prepareContext: (context?: Record<string, unknown>, end?: number) => Promise<Record<string, unknown>>;
@@ -294,7 +294,7 @@ export interface EjsTemplateApi {
   ) => Promise<string | null>;
 }
 
-/** 取 ST-Prompt-Template 暴露的模板执行器;未安装/接口不完整时返回 null(调用方降级为不执行 EJS)。 */
+/** Lấy bộ thực thi khuôn mẫu do ST-Prompt-Template bộc lộ; khi chưa cài / giao diện không đầy đủ trả về null (bên gọi hạ cấp thành không thực thi EJS). */
 export function getEjsTemplate(): EjsTemplateApi | null {
   const api = (globalThis as { EjsTemplate?: Partial<EjsTemplateApi> }).EjsTemplate;
   if (api && typeof api.prepareContext === 'function' && typeof api.evalTemplate === 'function') {

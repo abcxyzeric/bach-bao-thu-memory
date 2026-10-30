@@ -1,28 +1,28 @@
 /**
- * 故事内时间的「相对时间」推断 —— 移植自旧插件 Horae 的 timeUtils,只保留中文、去掉多语言层。
+ * Suy đoán "thời gian tương đối" của thời gian trong truyện —— chuyển đổi từ timeUtils của plugin cũ Horae, chuẩn hóa sang tiếng Việt.
  *
- * 用途:历史摘要注入与摘要页展示时,在绝对时间前加一个相对前缀(如「昨天」「3天前」),
- * 让主模型与用户都能直观感知「这段剧情距离现在多久」。
+ * Công dụng: Khi tiêm tóm tắt lịch sử và hiển thị ở trang tóm tắt, thêm một tiền tố tương đối trước thời gian tuyệt đối (như "Hôm qua", "3 ngày trước"),
+ * giúp cả mô hình chính lẫn người dùng đều cảm nhận trực quan "đoạn cốt truyện này cách hiện tại bao lâu".
  *
- * 设计底线(沿用 Horae):时间是 AI 写的自由文本。
- *  - 数字日历(1988/9/29、1988年9月29日、9/29、带历法前缀的 X年M月D日)→ 精确算天数差。
- *  - 架空日历(霜月3日 这类非数字月名、含 XX/?? 的占位)→ 仅同月可算,跨架空月放弃。
- *  - 纯时辰无日期、彻底解析不出 → 返回空串,调用方降级为「不加前缀」。
- * 一句话:宁可不标,绝不标错。
+ * Nguyên tắc thiết kế (kế thừa Horae): Thời gian là văn bản tự do do AI viết.
+ *  - Lịch số (1988/9/29, ngày 29 tháng 9 năm 1988, 9/29, năm X tháng M ngày D có tiền tố lịch pháp) → tính chính xác độ lệch số ngày.
+ *  - Lịch hư cấu (tên tháng phi chữ số như Tháng Sương ngày 3, chứa ký tự giữ chỗ XX/??) → chỉ tính được khi cùng tháng, khác tháng hư cấu thì bỏ qua.
+ *  - Thuần canh giờ không có ngày tháng, hoàn toàn không phân tích ra → trả về chuỗi rỗng, bên gọi hạ cấp thành "không thêm tiền tố".
+ * Tóm lại một câu: Thà không gắn nhãn, tuyệt đối không gắn nhãn sai.
  */
 
-/** 中文周几(0=周日) */
-const WEEKDAY_NAMES = ['日', '一', '二', '三', '四', '五', '六'];
+/** Thứ trong tuần tiếng Việt (0 = Chủ nhật) */
+const WEEKDAY_NAMES = ['Chủ nhật', 'Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm', 'Thứ sáu', 'Thứ bảy'];
 
-/** 解析出的故事日期:standard 可精确换算,fantasy 仅同月可比 */
+/** Ngày tháng trong truyện phân tích ra được: standard có thể quy đổi chính xác, fantasy chỉ so sánh được trong cùng tháng */
 interface StoryDate {
   type: 'standard' | 'fantasy';
   year?: number;
   month?: number;
   day?: number | null;
-  /** 架空月标识(如「霜月」),fantasy 跨月比对用 */
+  /** Định danh tháng hư cấu (như "Tháng Sương"), dùng để đối chiếu khác tháng trong fantasy */
   monthId?: string;
-  /** 历法前缀(如「庆历」),仅展示用,不参与换算 */
+  /** Tiền tố lịch pháp (như "Khánh Lịch"), chỉ dùng để hiển thị, không tham gia quy đổi */
   calendarPrefix?: string;
   raw?: string;
 }
@@ -31,107 +31,111 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const WEEK_MS = 7 * DAY_MS;
 
 /**
- * 带「年月日」单位的日期字段之间允许出现的装饰分隔符。
+ * Dấu phân cách trang trí cho phép xuất hiện giữa các trường ngày tháng có đơn vị "năm/tháng/ngày".
  *
- * AI 常把纪年写成「元会历·3728年·2月1日」或「2024年／9月／30日」。
- * 这里只允许空白和常见点号、斜线、逗号、横线，且必须位于明确的 年→月 / 月→日
- * 单位边界，不做全局替换，避免误伤历法前缀和架空月名。
+ * AI thường viết kỷ nguyên thành "Nguyên Hội Lịch·3728·2·1" hoặc "2024／9／30".
+ * Ở đây chỉ cho phép khoảng trắng và các dấu chấm, gạch chéo, dấu phẩy, gạch ngang phổ biến, và bắt buộc phải nằm ở ranh giới đơn vị rõ ràng năm→tháng / tháng→ngày,
+ * không thay thế toàn cục, tránh làm hỏng nhầm tiền tố lịch pháp và tên tháng hư cấu.
  */
 const DATE_FIELD_SEPARATOR = '[\\s·・•‧∙⋅.．。﹒/／,，、_\\-—–－]*';
 
-/** 把全角/中文句点等日期分隔符规范成 /,便于后续正则统一处理 */
+/** Chuẩn hóa các dấu phân cách ngày tháng như dấu chấm toàn giác / chấm câu thành /, để các regex phía sau xử lý thống nhất */
 function normalizeNumericDateSeparators(dateStr: string): string {
   if (!dateStr) return dateStr;
   return dateStr
-    // 长格式(4 位年起):日数后只要不再跟数字/点即认,容忍后接逗号、中文、括号等
-    //(如「2025.11.1, 多云」「2025.11.1晴」);4 位年开头几乎不会是小数/版本号,放宽很安全。
+    // Định dạng dài (từ năm 4 chữ số trở lên): sau số ngày chỉ cần không nối tiếp số/dấu chấm là nhận, chấp nhận theo sau bởi dấu phẩy, chữ, dấu ngoặc, v.v.
+    // (như "2025.11.1, nhiều mây", "2025.11.1 nắng"); mở đầu bằng năm 4 chữ số hầu như không bao giờ là số thập phân/số phiên bản, nới lỏng rất an toàn.
     .replace(/^(\d{4,})[.．。﹒](\d{1,2})[.．。﹒](\d{1,2})(?![\d.．。﹒])/, '$1/$2/$3')
-    // 短格式(M.D):歧义大(「1.5个小时」是小数非日期),仍要求后接空白或结尾,保守。
+    // Định dạng ngắn (M.D): độ nhập nhằng lớn ("1.5 tiếng" là số thập phân không phải ngày tháng), vẫn yêu cầu theo sau bởi khoảng trắng hoặc kết thúc chuỗi, giữ thận trọng.
     .replace(/^(\d{1,2})[.．。﹒](\d{1,2})(?=$|\s)/, '$1/$2');
 }
 
-/** 看起来是结构化数字日期(用于排除「霜月3日」误判为架空) */
+/** Trông giống ngày tháng bằng số có cấu trúc (dùng để loại trừ việc phán đoán nhầm thành lịch hư cấu) */
 function looksLikeStructuredNumericDate(dateStr: string): boolean {
   if (!dateStr) return false;
   return (
     /^(?:\d{4,}[/.\-．。﹒]\d{1,2}[/.\-．。﹒]\d{1,2}|\d{1,2}[/.\-．。﹒]\d{1,2})(?=$|\s)/.test(dateStr) ||
     new RegExp(
-      `^\\d+\\s*年${DATE_FIELD_SEPARATOR}\\d{1,2}\\s*月${DATE_FIELD_SEPARATOR}\\d{1,2}\\s*日?(?=$|\\s)`,
+      `^\\d+\\s*\\u5e74${DATE_FIELD_SEPARATOR}\\d{1,2}\\s*\\u6708${DATE_FIELD_SEPARATOR}\\d{1,2}\\s*\\u65e5?(?=$|\\s)`,
     ).test(dateStr) ||
-    new RegExp(`^\\d{1,2}\\s*月${DATE_FIELD_SEPARATOR}\\d{1,2}\\s*日?(?=$|\\s)`).test(dateStr)
+    new RegExp(`^\\d{1,2}\\s*\\u6708${DATE_FIELD_SEPARATOR}\\d{1,2}\\s*\\u65e5?(?=$|\\s)`).test(dateStr)
   );
 }
 
-/** 从架空日期串里抽「日数」(阿拉伯优先,无则取首个数字) */
+/** Rút trích "số ngày" từ chuỗi ngày tháng hư cấu (ưu tiên số Ả Rập, không có thì lấy số đầu tiên) */
 function extractDayNumber(dateStr: string): number | null {
   if (!dateStr) return null;
-  const m = dateStr.match(/(\d+)\s*[日号]/) || dateStr.match(/第\s*(\d+)/);
+  const m = dateStr.match(/(?:ngày|mùng)\s*(\d+)/i)
+    || dateStr.match(/(\d+)\s*[\u65e5\u53f7]/)
+    || dateStr.match(/\u7b2c\s*(\d+)/);
   if (m) return parseInt(m[1], 10);
   const any = dateStr.match(/(\d+)/);
   if (any) return parseInt(any[1], 10);
   return null;
 }
 
-/** 从架空日期串里抽「月标识」(如「霜月」) */
+/** Rút trích "định danh tháng" từ chuỗi ngày tháng hư cấu (như "Tháng Sương") */
 function extractMonthIdentifier(dateStr: string): string | null {
   if (!dateStr) return null;
-  const m = dateStr.match(/([^\s\d]+月)/);
+  const vi = dateStr.match(/(tháng\s+[^\s\d,，.。·]+)/i);
+  if (vi) return vi[1].trim();
+  const m = dateStr.match(/([^\s\d]+\u6708)/);
   if (m) return m[1];
   const num = dateStr.match(/(?:\d{4}[/\-])?(\d{1,2})[/\-]\d{1,2}/);
-  if (num) return num[1] + '月';
+  if (num) return num[1] + '\u6708';
   return null;
 }
 
-/** 中文数字字面 → 值(0-9);「两」按 2,「〇/零」按 0 */
+/** Chữ số Hán tự → giá trị (0-9); giữ tương thích cho dữ liệu/kỷ nguyên cổ phong */
 const CN_DIGIT: Record<string, number> = {
-  〇: 0, 零: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9,
+  '\u3007': 0, '\u96f6': 0, '\u4e00': 1, '\u4e8c': 2, '\u4e24': 2, '\u4e09': 3,
+  '\u56db': 4, '\u4e94': 5, '\u516d': 6, '\u4e03': 7, '\u516b': 8, '\u4e5d': 9,
 };
 
-/** 中文数字字符集(供正则拼接;含「廿」=20、「卅」=30) */
-const CN_NUM_CLASS = '[一二三四五六七八九十两零〇廿卅]';
+/** Tập ký tự chữ số cổ phong (dùng để ghép regex; gồm cả 20, 30 viết tắt) */
+const CN_NUM_CLASS = '[\\u4e00\\u4e8c\\u4e09\\u56db\\u4e94\\u516d\\u4e03\\u516b\\u4e5d\\u5341\\u4e24\\u96f6\\u3007\\u5eff\\u5345]';
 
 /**
- * 解析 1-99 的中文数字(十、十一、二十、二十一、廿一、卅 等);纯阿拉伯数字直接 parseInt。
- * 仅覆盖日期/月份/小年份所需范围,失败返回 null。
+ * Phân tích chữ số 1-99; số Ả Rập thuần thì parseInt trực tiếp.
+ * Chỉ bao phủ phạm vi cần thiết cho ngày / tháng / năm nhỏ, thất bại trả về null.
  */
 function cnNumToInt(raw: string): number | null {
   if (!raw) return null;
   const s = raw.trim();
   if (/^\d+$/.test(s)) return parseInt(s, 10);
-  // 农历「初」前缀:初一~初九=个位、初十=10。剥掉「初」后剩「七」「十」交给下面正常解析。
+  // Tiền tố âm lịch (mùng): mùng 1~mùng 9=hàng đơn vị, mùng 10=10. Bóc bỏ tiền tố mùng rồi giao cho phần dưới phân tích bình thường.
   const str = s
-    .replace(/^初/, '')
-    .replace(/廿/g, '二十')
-    .replace(/卅/g, '三十'); // 廿/卅 展开成「二十/三十」
-  if (!str) return null; // 仅「初」无数字
-  // 含「十」:先处理,覆盖「十」(=10)、「十五」、「二十」、「二十一」等;单字「十」也走这里
-  const shiIdx = str.indexOf('十');
+    .replace(/^\u521d/, '')
+    .replace(/\u5eff/g, '\u4e8c\u5341')
+    .replace(/\u5345/g, '\u4e09\u5341'); // Mở rộng chữ viết tắt 20/30 thành hai mươi/ba mươi
+  if (!str) return null; // Chỉ có tiền tố mùng không có số
+  // Có chứa hàng chục: xử lý trước, bao phủ 10, 15, 20, 21...; chữ đơn 10 cũng đi lối này
+  const shiIdx = str.indexOf('\u5341');
   if (shiIdx >= 0) {
-    // 「十X」=1X(十在首位 → 十位为 1);「X十」「X十Y」→ 十位取前一字
     const tens = shiIdx === 0 ? 1 : CN_DIGIT[str[shiIdx - 1]];
     const onesPart = str.slice(shiIdx + 1);
     const ones = onesPart ? CN_DIGIT[onesPart] : 0;
     if (tens === undefined || ones === undefined) return null;
     return tens * 10 + ones;
   }
-  if (str.length === 1) return CN_DIGIT[str] ?? null; // 纯个位(含〇/两)
-  return null; // 无「十」又非单字 → 不在支持范围
+  if (str.length === 1) return CN_DIGIT[str] ?? null; // Hàng đơn vị thuần
+  return null; // Không có hàng chục lại không phải chữ đơn → ngoài phạm vi hỗ trợ
 }
 
-/** 解析故事内日期字符串;解析不出返回 null */
+/** Phân tích chuỗi ngày tháng trong truyện; không phân tích ra trả về null */
 export function parseStoryDate(dateStr: string): StoryDate | null {
   if (!dateStr) return null;
   let s = dateStr.trim();
-  // 去掉 AI 写的周几标注「(三)」
-  s = s.replace(/\s*\([日一二三四五六]\)\s*/g, ' ').trim();
+  // Bỏ ghi chú thứ trong tuần do AI viết như "(T4)" hoặc "(Thứ tư)"
+  s = s.replace(/\s*\((?:[\u65e5\u4e00\u4e8c\u4e09\u56db\u4e94\u516d]|Thứ\s+[^\)]+|Chủ\s+nhật|CN)\)\s*/gi, ' ').trim();
   s = normalizeNumericDateSeparators(s);
 
-  // 含 XX/?? 占位 → 架空
+  // Chứa ký tự giữ chỗ XX/?? → lịch hư cấu
   if (/[xX]{2}|[?？]{2}/.test(s)) {
     return { type: 'fantasy', raw: dateStr.trim() };
   }
 
-  // 标准:YYYY/M/D
+  // Chuẩn: YYYY/M/D
   const full = s.match(/^(\d{4,})[/\-](\d{1,2})[/\-](\d{1,2})/);
   if (full) {
     const year = parseInt(full[1], 10);
@@ -140,7 +144,7 @@ export function parseStoryDate(dateStr: string): StoryDate | null {
     if (month >= 1 && month <= 12 && day >= 1 && day <= 31) return { year, month, day, type: 'standard' };
   }
 
-  // 标准:M/D
+  // Chuẩn: M/D
   const short = s.match(/^(\d{1,2})[/\-](\d{1,2})(?:\s|$)/);
   if (short) {
     const month = parseInt(short[1], 10);
@@ -148,14 +152,46 @@ export function parseStoryDate(dateStr: string): StoryDate | null {
     if (month >= 1 && month <= 12 && day >= 1 && day <= 31) return { month, day, type: 'standard' };
   }
 
-  // 数字字段:阿拉伯数字或中文数字(含十/廿/卅),由 cnNumToInt 统一解析。
-  const NUM = `(?:\\d+|${CN_NUM_CLASS}+)`;
-  // 日字段额外允许农历「初」前缀(初七、初十);cnNumToInt 会剥掉「初」再解析。
-  const DAY = `(?:初)?${NUM}`;
+  // Định dạng tiếng Việt: [tiền tố] ngày D tháng M năm Y hoặc năm Y tháng M ngày D
+  const viDmy = s.match(/(?:ngày|mùng)\s*(\d{1,2})\s*tháng\s*(\d{1,2})\s*năm\s*(\d{1,4})/i);
+  if (viDmy) {
+    const day = parseInt(viDmy[1], 10);
+    const month = parseInt(viDmy[2], 10);
+    const year = parseInt(viDmy[3], 10);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      const prefixEnd = s.indexOf(viDmy[0]);
+      const calendarPrefix = s.substring(0, prefixEnd).trim() || undefined;
+      return { year, month, day, type: 'standard', calendarPrefix };
+    }
+  }
+  const viYmd = s.match(/năm\s*(?:thứ\s*)?(\d{1,4})[\s,·.\-]*tháng\s*(\d{1,2})[\s,·.\-]*(?:ngày|mùng)\s*(\d{1,2})/i);
+  if (viYmd) {
+    const year = parseInt(viYmd[1], 10);
+    const month = parseInt(viYmd[2], 10);
+    const day = parseInt(viYmd[3], 10);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      const prefixEnd = s.indexOf(viYmd[0]);
+      const calendarPrefix = s.substring(0, prefixEnd).trim() || undefined;
+      return { year, month, day, type: 'standard', calendarPrefix };
+    }
+  }
+  const viDm = s.match(/(?:ngày|mùng)\s*(\d{1,2})\s*tháng\s*(\d{1,2})(?!\s*năm)/i);
+  if (viDm) {
+    const day = parseInt(viDm[1], 10);
+    const month = parseInt(viDm[2], 10);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return { month, day, type: 'standard' };
+    }
+  }
 
-  // 标准:X年M月D日(年/月/日均可中文,带可选历法前缀,如「元持十二年八月二十一日」「永和十五年八月初七」)
+  // Trường số: số Ả Rập hoặc chữ số cổ phong (gồm 10/20/30), do cnNumToInt thống nhất phân tích.
+  const NUM = `(?:\\d+|${CN_NUM_CLASS}+)`;
+  // Trường ngày cho phép thêm tiền tố âm lịch (mùng); cnNumToInt sẽ bóc tiền tố mùng rồi phân tích.
+  const DAY = `(?:\\u521d)?${NUM}`;
+
+  // Chuẩn: Năm X tháng M ngày D (năm/tháng/ngày đều có thể là chữ số, kèm tiền tố lịch pháp tùy chọn)
   const yearCn = s.match(
-    new RegExp(`(${NUM})\\s*年${DATE_FIELD_SEPARATOR}(${NUM})\\s*月${DATE_FIELD_SEPARATOR}(${DAY})\\s*日?`),
+    new RegExp(`(${NUM})\\s*\\u5e74${DATE_FIELD_SEPARATOR}(${NUM})\\s*\\u6708${DATE_FIELD_SEPARATOR}(${DAY})\\s*\\u65e5?`),
   );
   if (yearCn) {
     const year = cnNumToInt(yearCn[1]);
@@ -168,13 +204,13 @@ export function parseStoryDate(dateStr: string): StoryDate | null {
     }
   }
 
-  // 明确写了年份却没能完整解析时，禁止继续降级成无年份的 M月D日。
-  // 否则「3727年★9月30日」会静默丢掉 3727，再与另一个无年份日期按同一年比较，
-  // 跨年方向就可能完全颠倒。此处宁可不标相对时间，也不基于残缺日期猜算。
-  if (new RegExp(`(?:${NUM})\\s*年`).test(s)) return null;
+  // Khi đã viết rõ năm nhưng không thể phân tích trọn vẹn, cấm tiếp tục hạ cấp thành tháng M ngày D không có năm.
+  // Nếu không ngày tháng có năm bị lỗi định dạng sẽ âm thầm đánh rơi năm 3727, rồi đem so với một ngày không năm khác như thể cùng một năm,
+  // hướng qua năm có thể bị đảo ngược hoàn toàn. Ở đây thà không gắn nhãn thời gian tương đối, chứ không đoán mò dựa trên ngày tháng khuyết tật.
+  if (new RegExp(`(?:${NUM})\\s*\\u5e74`).test(s)) return null;
 
-  // 标准:M月D日(月/日可中文,日可带「初」)
-  const cn = s.match(new RegExp(`(${NUM})\\s*月${DATE_FIELD_SEPARATOR}(${DAY})\\s*日?`));
+  // Chuẩn: Tháng M ngày D
+  const cn = s.match(new RegExp(`(${NUM})\\s*\\u6708${DATE_FIELD_SEPARATOR}(${DAY})\\s*\\u65e5?`));
   if (cn) {
     const month = cnNumToInt(cn[1]);
     const day = cnNumToInt(cn[2]);
@@ -183,7 +219,7 @@ export function parseStoryDate(dateStr: string): StoryDate | null {
     }
   }
 
-  // 架空日历
+  // Lịch hư cấu
   if (looksLikeStructuredNumericDate(s)) return null;
   const monthId = extractMonthIdentifier(s);
   const dayNum = extractDayNumber(s);
@@ -195,19 +231,22 @@ export function parseStoryDate(dateStr: string): StoryDate | null {
 }
 
 /**
- * 计算 from→to 的天数差(to - from,正=to 更晚)。
- * 解析不出或跨架空月无法判定 → 返回 null。
+ * Tính độ lệch số ngày từ from→to (to - from, dương = to muộn hơn).
+ * Không phân tích ra hoặc khác tháng hư cấu không thể phán đoán → trả về null.
  */
 export function calculateRelativeDays(fromDate: string, toDate: string): number | null {
   if (!fromDate || !toDate) return null;
 
-  // 先剥掉尾部时刻(15:00 / 下午 / 酉时…),只比日期
+  // Trước tiên bóc bỏ thời khắc ở đuôi (15:00 / buổi chiều / giờ Dậu…), chỉ so sánh ngày tháng
   const stripTime = (x: string): string =>
     normalizeNumericDateSeparators(
       x
         .trim()
         .replace(/\s+\d{1,2}[:：]\d{2}.*$/, '')
-        .replace(/\s+(凌晨|早上|上午|中午|下午|傍晚|晚上|深夜|子时|丑时|寅时|卯时|辰时|巳时|午时|未时|申时|酉时|戌时|亥时).*$/i, '')
+        .replace(
+          /\s+(rạng sáng|sáng sớm|buổi sáng|buổi trưa|buổi chiều|chập tối|buổi tối|đêm khuya|giờ\s+(?:tý|sửu|dần|mão|thìn|tỵ|ngọ|mùi|thân|dậu|tuất|hợi)|\u51cc\u6668|\u65e9\u4e0a|\u4e0a\u5348|\u4e2d\u5348|\u4e0b\u5348|\u508d\u665a|\u665a\u4e0a|\u6df1\u591c|\u5b50\u65f6|\u4e11\u65f6|\u5bc5\u65f6|\u536f\u65f6|\u8fb0\u65f6|\u5df3\u65f6|\u5348\u65f6|\u672a\u65f6|\u7533\u65f6|\u9149\u65f6|\u620c\u65f6|\u4ea5\u65f6).*$/i,
+          '',
+        )
         .trim(),
     );
   if (stripTime(fromDate) === stripTime(toDate)) return 0;
@@ -216,7 +255,7 @@ export function calculateRelativeDays(fromDate: string, toDate: string): number 
   const to = parseStoryDate(toDate);
   if (!from || !to) return null;
 
-  // 标准日历:精确算(用 setFullYear 避开 Date 对小年份的偏移)
+  // Lịch chuẩn: tính chính xác (dùng setFullYear để tránh độ lệch của Date đối với năm nhỏ)
   if (from.type === 'standard' && to.type === 'standard') {
     const defaultYear = 2024;
     const fromYear = from.year || to.year || defaultYear;
@@ -228,7 +267,7 @@ export function calculateRelativeDays(fromDate: string, toDate: string): number 
     return Math.round((toObj.getTime() - fromObj.getTime()) / DAY_MS);
   }
 
-  // 架空日历:仅同月可算,跨架空月名易误判 → 放弃
+  // Lịch hư cấu: chỉ tính được khi cùng tháng, khác tên tháng hư cấu dễ phán đoán sai → bỏ qua
   if (from.type === 'fantasy' || to.type === 'fantasy') {
     const fromMonth = from.monthId ?? from.month;
     const toMonth = to.monthId ?? to.month;
@@ -242,7 +281,7 @@ export function calculateRelativeDays(fromDate: string, toDate: string): number 
   return null;
 }
 
-/** 标准日历的两端转成 Date(供周/月/年语义判定);任一非标准则返回 null */
+/** Chuyển hai đầu của lịch chuẩn thành Date (phục vụ phán đoán ngữ nghĩa tuần/tháng/năm); bất kỳ bên nào không phải chuẩn thì trả về null */
 function toDatePair(fromDate: string, toDate: string): { from: Date; to: Date } | null {
   const from = parseStoryDate(fromDate);
   const to = parseStoryDate(toDate);
@@ -257,7 +296,7 @@ function toDatePair(fromDate: string, toDate: string): { from: Date; to: Date } 
   return { from: f, to: t };
 }
 
-/** 以「周一」为周起点算周差 */
+/** Tính độ lệch tuần lấy "Thứ hai" làm đầu tuần */
 function weekDiffByMonday(from: Date, to: Date): number {
   const weekStart = (d: Date): number => {
     const wd = d.getDay();
@@ -267,21 +306,21 @@ function weekDiffByMonday(from: Date, to: Date): number {
   return Math.round((weekStart(to) - weekStart(from)) / WEEK_MS);
 }
 
-/** 自然月差 */
+/** Độ lệch tháng tự nhiên */
 function monthDiff(from: Date, to: Date): number {
   return (to.getFullYear() - from.getFullYear()) * 12 + (to.getMonth() - from.getMonth());
 }
 
 /**
- * 算某个故事内时间的「周几」(周日…周六),仅在**纯数字公历且带年份**时给出,否则空串。
+ * Tính "thứ mấy" (Chủ nhật…Thứ bảy) của một thời gian trong truyện, chỉ đưa ra khi là **dương lịch thuần số và có kèm năm**, nếu không trả về chuỗi rỗng.
  *
- * 严格门槛(与相对时间口语档同一套考量,见 relativeTimeLabel 的 calendarPrefix 注释):
- *  - 必须 type==='standard':架空日历(霜月/含 XX 占位)算不出星期。
- *  - 必须有 year:M/D 这类无年份的写法定不了具体哪一天,星期无从谈起。
- *  - 必须无 calendarPrefix:庆历/元持/星历… 是古风/赛博纪年,套公历星期既出戏,
- *    且小年份(year=12)getDay() 算的是公元 12 年真实星期、值不可控 → 一律不标。
- * 用 setFullYear 建 Date(避开 Date 对小年份的偏移),与 toDatePair 同款。
- * 一句话:能确定到公历某一天才标星期,否则宁可不标。
+ * Ngưỡng nghiêm ngặt (cùng một bộ cân nhắc với mức khẩu ngữ thời gian tương đối, xem chú thích calendarPrefix của relativeTimeLabel):
+ *  - Bắt buộc type==='standard': lịch hư cấu (Tháng Sương / chứa ký tự giữ chỗ XX) không tính ra thứ trong tuần.
+ *  - Bắt buộc có year: cách viết không có năm như M/D không xác định được cụ thể ngày nào, không thể nói đến thứ mấy.
+ *  - Bắt buộc không có calendarPrefix: Khánh Lịch / Nguyên Trì / Tinh Lịch… là kỷ nguyên cổ phong / cyberpunk, áp thứ trong tuần dương lịch vào vừa lạc quẻ,
+ *    mà năm nhỏ (year=12) getDay() tính ra thứ thực tế của năm 12 Công nguyên, giá trị không kiểm soát được → nhất loạt không gắn nhãn.
+ * Dùng setFullYear để tạo Date (tránh độ lệch của Date với năm nhỏ), giống hệt toDatePair.
+ * Tóm lại một câu: Xác định được đến đúng một ngày dương lịch thì mới gắn nhãn thứ, nếu không thà không gắn.
  */
 export function weekdayLabel(timeStr?: string): string {
   const s = timeStr?.trim();
@@ -290,116 +329,118 @@ export function weekdayLabel(timeStr?: string): string {
   if (!d || d.type !== 'standard' || d.year == null || d.calendarPrefix) return '';
   const obj = new Date(0);
   obj.setFullYear(d.year, (d.month ?? 1) - 1, d.day ?? 1);
-  return `周${WEEKDAY_NAMES[obj.getDay()]}`;
+  return WEEKDAY_NAMES[obj.getDay()];
 }
 
 /**
- * 把「事件时间 event」相对「现在 now」格式化成相对前缀文本。
- * 解析不出 / 无法判定 → 返回空串(调用方据此不加前缀)。
+ * Định dạng "thời gian sự kiện event" so với "hiện tại now" thành văn bản tiền tố tương đối.
+ * Không phân tích ra / không thể phán đoán → trả về chuỗi rỗng (bên gọi dựa vào đó không thêm tiền tố).
  */
 export function relativeTimeLabel(eventTime?: string, nowTime?: string): string {
   const ev = eventTime?.trim();
   const now = nowTime?.trim();
   if (!ev || !now) return '';
 
-  // days = now - event,正=事件在过去
+  // days = now - event, dương = sự kiện ở quá khứ
   const days = calculateRelativeDays(ev, now);
   if (days === null || days === undefined) return '';
 
-  if (days === 0) return '今天';
-  if (days === 1) return '昨天';
-  if (days === 2) return '前天';
-  if (days === 3) return '大前天';
-  if (days === -1) return '明天';
-  if (days === -2) return '后天';
-  if (days === -3) return '大后天';
+  if (days === 0) return 'Hôm nay';
+  if (days === 1) return 'Hôm qua';
+  if (days === 2) return 'Hôm kia';
+  if (days === 3) return 'Hôm kìa';
+  if (days === -1) return 'Ngày mai';
+  if (days === -2) return 'Ngày kia';
+  if (days === -3) return 'Ngày kìa';
 
-  // 「上周X/上个月X号/去年X月X日」等是公历口语,套到带历法前缀的古风/赛博时间(元持/庆历/星历…)上
-  // 既出戏、对小年份的 getDay() 还是乱算的。故带前缀时不取 pair → 跳过这些档,降级为通用「N天前/N个月前/N年前」。
-  // 纯数字日期(含 2099/12/31 这类赛博时间)无前缀,按公历照常显示口语档。
+  // "Thứ X tuần trước / Ngày X tháng trước / Ngày X tháng X năm ngoái" v.v. là khẩu ngữ dương lịch, áp vào thời gian cổ phong / cyberpunk có tiền tố lịch pháp (Nguyên Trì / Khánh Lịch / Tinh Lịch…)
+  // vừa lạc quẻ, mà getDay() đối với năm nhỏ còn tính loạn. Vì vậy khi có tiền tố thì không lấy pair → bỏ qua các mức này, hạ cấp thành "N ngày trước / N tháng trước / N năm trước" chung.
+  // Ngày tháng thuần số (gồm cả thời gian cyberpunk như 2099/12/31) không có tiền tố, hiển thị mức khẩu ngữ bình thường theo dương lịch.
   const fromHasPrefix = !!parseStoryDate(ev)?.calendarPrefix;
   const toHasPrefix = !!parseStoryDate(now)?.calendarPrefix;
   const pair = fromHasPrefix || toHasPrefix ? null : toDatePair(ev, now);
 
   if (days > 0) {
-    // 过去方向
-    if (days < 4) return `${days}天前`;
+    // Hướng quá khứ
+    if (days < 4) return `${days} ngày trước`;
     if (days >= 4 && days <= 13 && pair) {
       const wd = weekDiffByMonday(pair.from, pair.to);
-      if (wd === 1) return `上周${WEEKDAY_NAMES[pair.from.getDay()]}`;
-      if (wd === 2) return `上上周${WEEKDAY_NAMES[pair.from.getDay()]}`;
+      if (wd === 1) return `${WEEKDAY_NAMES[pair.from.getDay()]} tuần trước`;
+      if (wd === 2) return `${WEEKDAY_NAMES[pair.from.getDay()]} 2 tuần trước`;
     }
     if (days >= 7 && days < 60 && pair && monthDiff(pair.from, pair.to) === 1) {
-      return `上个月${pair.from.getDate()}号`;
+      return `Ngày ${pair.from.getDate()} tháng trước`;
     }
     if (days >= 300 && pair) {
       const yearDiff = pair.to.getFullYear() - pair.from.getFullYear();
-      if (yearDiff === 1) return `去年${pair.from.getMonth() + 1}月${pair.from.getDate()}日`;
-      if (yearDiff === 2) return `前年${pair.from.getMonth() + 1}月${pair.from.getDate()}日`;
+      if (yearDiff === 1) return `Ngày ${pair.from.getDate()} tháng ${pair.from.getMonth() + 1} năm ngoái`;
+      if (yearDiff === 2) return `Ngày ${pair.from.getDate()} tháng ${pair.from.getMonth() + 1} năm kia`;
     }
-    if (days < 30) return `${days}天前`;
+    if (days < 30) return `${days} ngày trước`;
     if (days < 365) {
       const md = pair ? monthDiff(pair.from, pair.to) : 0;
       const months = md > 0 ? md : Math.floor(days / 30);
-      return `${months}个月前`;
+      return `${months} tháng trước`;
     }
     const years = Math.floor(days / 365);
     const remainMonths = Math.round((days % 365) / 30);
-    if (remainMonths > 0 && years < 5) return `${years}年${remainMonths}个月前`;
-    return `${years}年前`;
+    if (remainMonths > 0 && years < 5) return `${years} năm ${remainMonths} tháng trước`;
+    return `${years} năm trước`;
   }
 
-  // 未来方向
+  // Hướng tương lai
   const abs = Math.abs(days);
-  if (abs < 4) return `${abs}天后`;
+  if (abs < 4) return `${abs} ngày sau`;
   if (abs >= 4 && abs <= 13 && pair) {
     const wd = weekDiffByMonday(pair.from, pair.to);
-    if (wd === -1) return `下周${WEEKDAY_NAMES[pair.from.getDay()]}`;
-    if (wd === -2) return `下下周${WEEKDAY_NAMES[pair.from.getDay()]}`;
+    if (wd === -1) return `${WEEKDAY_NAMES[pair.from.getDay()]} tuần sau`;
+    if (wd === -2) return `${WEEKDAY_NAMES[pair.from.getDay()]} 2 tuần sau`;
   }
   if (abs >= 7 && abs < 60 && pair && monthDiff(pair.from, pair.to) === -1) {
-    return `下个月${pair.from.getDate()}号`;
+    return `Ngày ${pair.from.getDate()} tháng sau`;
   }
-  if (abs < 30) return `${abs}天后`;
+  if (abs < 30) return `${abs} ngày sau`;
   if (abs < 365) {
     const md = pair ? monthDiff(pair.from, pair.to) : 0;
     const months = md < 0 ? Math.abs(md) : Math.floor(abs / 30);
-    return `${months}个月后`;
+    return `${months} tháng sau`;
   }
   const years = Math.floor(abs / 365);
   const remainMonths = Math.round((abs % 365) / 30);
-  if (remainMonths > 0 && years < 5) return `${years}年${remainMonths}个月后`;
-  return `${years}年后`;
+  if (remainMonths > 0 && years < 5) return `${years} năm ${remainMonths} tháng sau`;
+  return `${years} năm sau`;
 }
 
-/* ============ 年龄推算(锚点制) ============ */
+/* ============ Suy tính tuổi tác (Chế độ mốc neo) ============ */
 
 /**
- * 从年龄原文解析出可推算的数字(全串匹配,防「二十出头」「25%」误判)。
- * 允许「约」前缀与「岁」后缀;其余写法(二十出头/年近三十…)视为模糊值,返回 null。
+ * Phân tích ra con số có thể suy tính từ nguyên văn tuổi tác (khớp toàn chuỗi, tránh nhận nhầm "hơn hai mươi", "25%").
+ * Cho phép tiền tố "khoảng" và hậu tố "tuổi"; các cách viết khác (ngoài hai mươi / xấp xỉ ba mươi…) coi là giá trị mơ hồ, trả về null.
  */
 function parseAgeNumber(raw: string): number | null {
-  const m = raw.trim().match(new RegExp(`^(?:约|大约)?\\s*(\\d{1,3}|${CN_NUM_CLASS}+)\\s*岁?$`));
+  const m = raw.trim().match(new RegExp(`^(?:khoảng|xấp xỉ|\\u7ea6|\\u5927\\u7ea6)?\\s*(\\d{1,3}|${CN_NUM_CLASS}+)\\s*(?:tuổi|\\u5c81)?$`, 'i'));
   if (!m) return null;
   const n = cnNumToInt(m[1]);
   return n != null && n > 0 && n < 1000 ? n : null;
 }
 
-/** 锚点时间的简短标注:能解析出年份 → 「(前缀)X年」;否则剥掉时刻后的原文;再不行空串。 */
+/** Ghi chú ngắn gọn của thời gian mốc neo: phân tích ra được năm → "(tiền tố) năm X"; nếu không thì lấy nguyên văn sau khi bóc bỏ thời khắc; vẫn không được thì chuỗi rỗng. */
 function anchorLabel(ageTime: string): string {
   const d = parseStoryDate(ageTime);
-  if (d?.type === 'standard' && d.year != null) return `${d.calendarPrefix ?? ''}${d.year}年`;
+  if (d?.type === 'standard' && d.year != null) {
+    return d.calendarPrefix ? `${d.calendarPrefix} năm ${d.year}` : `năm ${d.year}`;
+  }
   return ageTime.trim();
 }
 
 /**
- * 按「年龄锚点」推算当前显示年龄。年龄不是状态而是时间的函数:
- * 存储永远是「记录时的原文 + 锚点时间」,显示时相对当前故事时间推算,
- * 时间跳跃自动长岁,AI 忘不忘更新都不影响正确性。
- *  - 锚点到现在不足一年(或缺锚点/缺当前时间)→ 原样返回原文。
- *  - 跨了 N 年且原文是可解析数字 → 「约(N+原值)岁(锚点年时原值岁)」——不知生日,±1 岁误差,「约」是诚实的。
- *  - 模糊年龄(二十出头)/ 架空历算不出 / 时间倒流 → 原文 + 锚点括注,把推算留给读者/主模型。
- * 沿用「宁可不标,绝不标错」底线。age 空 → 空串。
+ * Suy tính tuổi hiển thị hiện tại theo "mốc neo tuổi tác". Tuổi không phải là trạng thái tĩnh mà là hàm số của thời gian:
+ * Lưu trữ luôn luôn là "nguyên văn lúc ghi + thời gian mốc neo", khi hiển thị thì suy tính tương đối so với thời gian câu chuyện hiện tại,
+ * thời gian nhảy vọt tự động tăng tuổi, AI có quên cập nhật hay không cũng không ảnh hưởng tính chính xác.
+ *  - Từ mốc neo đến hiện tại chưa đầy một năm (hoặc thiếu mốc neo / thiếu thời gian hiện tại) → trả về nguyên văn.
+ *  - Qua N năm và nguyên văn là con số phân tích được → "Khoảng (N+giá trị gốc) tuổi (năm mốc neo là giá trị gốc tuổi)" —— không biết sinh nhật, sai số ±1 tuổi, chữ "Khoảng" là trung thực.
+ *  - Tuổi mơ hồ (ngoài hai mươi) / lịch hư cấu không tính ra / thời gian quay ngược → nguyên văn + chú thích ngoặc đơn mốc neo, nhường việc suy tính cho người đọc / mô hình chính.
+ * Kế thừa nguyên tắc "thà không gắn nhãn, tuyệt đối không gắn nhãn sai". age trống → chuỗi rỗng.
  */
 export function ageDisplay(age?: string, ageTime?: string, now?: string): string {
   const raw = age?.trim();
@@ -410,13 +451,13 @@ export function ageDisplay(age?: string, ageTime?: string, now?: string): string
 
   const days = calculateRelativeDays(anchor, cur);
   const num = parseAgeNumber(raw);
-  if (days != null && days >= 0 && days < 365) return raw; // 不足一年:原样
+  if (days != null && days >= 0 && days < 365) return raw; // Chưa đầy một năm: giữ nguyên văn
   if (days != null && days >= 365 && num != null) {
     const est = num + Math.floor(days / 365);
     const label = anchorLabel(anchor);
-    return label ? `约${est}岁(${label}时${num}岁)` : `约${est}岁`;
+    return label ? `Khoảng ${est} tuổi(${label} là ${num} tuổi)` : `Khoảng ${est} tuổi`;
   }
-  // 算不出(架空跨月/时间倒流/模糊年龄跨年):原文 + 锚点括注,不猜
+  // Không tính ra (lịch hư cấu khác tháng / thời gian quay ngược / tuổi mơ hồ qua năm): nguyên văn + chú thích ngoặc đơn mốc neo, không đoán mò
   const label = anchorLabel(anchor);
-  return label ? `${raw}(${label}时)` : raw;
+  return label ? `${raw}(lúc ${label})` : raw;
 }

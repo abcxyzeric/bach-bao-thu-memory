@@ -1,50 +1,50 @@
 /**
- * 向量召回调试快照(全局,reactive)。
+ * Ảnh chụp gỡ lỗi truy xuất vector (toàn cục, reactive).
  *
- * 只为「设置 → 向量记忆 → 上次召回详情」面板服务:把上一次召回各阶段的中间结果
- * 留一份在内存里供 UI 订阅。纯调试观测,不参与召回逻辑,失败/降级也照样记录(写明 status)。
- * 全局单例(非按聊天):只关心「最近一次」,切聊天后下一次召回自然覆盖。
+ * Chỉ phục vụ cho bảng "Cài đặt → Trí nhớ vector → Chi tiết lần truy xuất trước": giữ lại một bản kết quả trung gian của các giai đoạn trong lần truy xuất trước
+ * ở trong bộ nhớ để UI đăng ký theo dõi. Quan sát gỡ lỗi thuần túy, không tham gia logic truy xuất, thất bại / hạ cấp cũng vẫn ghi lại như thường (ghi rõ status).
+ * Singleton toàn cục (không theo từng cuộc trò chuyện): chỉ quan tâm "lần gần nhất", sau khi chuyển cuộc trò chuyện lần truy xuất tiếp theo tự nhiên sẽ ghi đè.
  */
 
 import { reactive } from 'vue';
 
-/** Embedding 检索命中(后端 max 融合后) */
+/** Trúng tìm kiếm Embedding (sau khi backend dung hợp max) */
 export interface RecallDebugEmbedHit {
   leafId: string;
   similarity: number;
-  /** 来源 Q 下标(后端回传);-1 = 未知(旧后端未回传) */
+  /** Chỉ mục Q nguồn (backend trả về); -1 = chưa rõ (backend cũ không trả về) */
   queryIndex: number;
-  /** 来源标记:本聊天命中为楼层号「#5」,bundle 快照为「旧档」 */
+  /** Nhãn nguồn: trúng ở cuộc trò chuyện này là số tầng "#5", ảnh chụp bundle là "Bản lưu cũ" */
   source: string;
   storyTime: string;
   preview: string;
 }
 
-/** Rerank 候选及其分档结果 */
+/** Ứng viên Rerank cùng kết quả phân mức của nó */
 export interface RecallDebugRerankHit {
   leafId: string;
   rerankScore: number;
   similarity: number;
-  /** 分档:full=发全文,brief=发摘要,drop=两档都不达标被丢弃 */
+  /** Phân mức: full=gửi toàn văn, brief=gửi tóm tắt, drop=cả hai mức đều không đạt chuẩn nên bị hủy bỏ */
   tier: 'full' | 'brief' | 'drop';
-  /** 来源标记:本聊天命中为楼层号「#5」,bundle 快照为「旧档」 */
+  /** Nhãn nguồn: trúng ở cuộc trò chuyện này là số tầng "#5", ảnh chụp bundle là "Bản lưu cũ" */
   source: string;
   storyTime: string;
   preview: string;
 }
 
 export interface RecallDebug {
-  /** 记录时刻(Date.now);0 = 尚无记录 */
+  /** Thời khắc ghi nhận (Date.now); 0 = chưa có bản ghi */
   at: number;
-  /** 状态文案:'召回完成' | '进行中…' | '未召回:…' | '失败:…' */
+  /** Văn bản trạng thái: 'Truy xuất hoàn tất' | 'Đang thực hiện…' | 'Chưa truy xuất:…' | 'Thất bại:…' */
   status: string;
-  /** 查询重写的场景意图(兼作 rerank query) */
+  /** Ý đồ bối cảnh của bước viết lại truy vấn (kiêm làm rerank query) */
   intent: string;
-  /** 查询重写产出的多条检索 query */
+  /** Nhiều query tìm kiếm do bước viết lại truy vấn sinh ra */
   queries: string[];
   embedding: RecallDebugEmbedHit[];
   rerank: RecallDebugRerankHit[];
-  /** 最终注入主对话的文本(空 = 本回合未注入) */
+  /** Văn bản cuối cùng được tiêm vào đối thoại chính (trống = lượt này chưa chèn) */
   injectedText: string;
 }
 
@@ -52,21 +52,21 @@ function empty(): RecallDebug {
   return { at: 0, status: '', intent: '', queries: [], embedding: [], rerank: [], injectedText: '' };
 }
 
-/** 全局召回调试快照。UI 直接订阅;recall.ts 在各阶段写入。 */
+/** Ảnh chụp gỡ lỗi truy xuất toàn cục. UI trực tiếp đăng ký theo dõi; recall.ts ghi vào ở từng giai đoạn. */
 export const recallDebug = reactive<RecallDebug>(empty());
 
-/** 摘要预览:取摘要文本截断,供面板单行展示(去换行,限长)。 */
+/** Xem trước tóm tắt: lấy văn bản tóm tắt cắt ngắn, phục vụ bảng hiển thị trên một dòng (bỏ xuống dòng, giới hạn độ dài). */
 export function previewOf(text: string | null | undefined, max = 80): string {
   const s = String(text ?? '').replace(/\s+/g, ' ').trim();
   return s.length > max ? `${s.slice(0, max)}…` : s;
 }
 
-/** 开一次新召回:清空各阶段、置「进行中」。在 runVectorRecall 进入有效路径后调用。 */
+/** Mở một lần truy xuất mới: xóa trống các giai đoạn, đặt thành "Đang thực hiện". Gọi sau khi runVectorRecall đi vào đường dẫn hợp lệ. */
 export function resetRecallDebug(): void {
-  Object.assign(recallDebug, empty(), { at: Date.now(), status: '进行中…' });
+  Object.assign(recallDebug, empty(), { at: Date.now(), status: 'Đang thực hiện…' });
 }
 
-/** 仅更新状态文案(各早退路径写明原因,如「未召回:Query 重写未配置」)。 */
+/** Chỉ cập nhật văn bản trạng thái (các đường dẫn thoát sớm ghi rõ nguyên nhân, như "Chưa truy xuất: Chưa cấu hình viết lại Query"). */
 export function setRecallStatus(status: string): void {
   recallDebug.status = status;
   if (!recallDebug.at) recallDebug.at = Date.now();
@@ -89,12 +89,12 @@ export function setRecallInjected(text: string): void {
   recallDebug.injectedText = text;
 }
 
-/** 快照当前调试结果(深拷贝),供召回缓存留存,命中时再 restore 回面板。 */
+/** Chụp nhanh kết quả gỡ lỗi hiện tại (sao chép sâu), phục vụ lưu giữ trong bộ nhớ đệm truy xuất, khi trúng sẽ restore lại về bảng. */
 export function snapshotRecallDebug(): RecallDebug {
   return JSON.parse(JSON.stringify(recallDebug));
 }
 
-/** 把缓存的调试快照还原到面板(命中缓存时用,免得 reset 后面板空白)。 */
+/** Khôi phục ảnh chụp gỡ lỗi đã lưu đệm về lại bảng (dùng khi trúng bộ nhớ đệm, tránh việc sau khi reset bảng bị trống trơn). */
 export function restoreRecallDebug(snap: RecallDebug): void {
   Object.assign(recallDebug, snap);
 }

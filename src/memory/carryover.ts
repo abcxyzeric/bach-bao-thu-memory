@@ -1,16 +1,16 @@
 /**
- * 带数据创建新对话(Carryover)。
+ * Tạo cuộc trò chuyện mới kèm dữ liệu (Carryover).
  *
- * 把当前聊天(一堆历史楼层 + 最近全文窗口)→ 新建一个对话,带过去:
- *  - 合并历史摘要(窗口之前的剧情,选最高存活压缩层拼接)= 种子叶子的 text;
- *  - 当前结构化状态(截止窗口起点的 items/plans)→ 编码成「全量 add」delta = 种子叶子的 delta;
- *  - 最近保留窗口的楼层(原样全文 + 各自叶子)搬过去。
+ * Đem cuộc trò chuyện hiện tại (một loạt tầng lịch sử + cửa sổ toàn văn gần đây) → tạo mới một cuộc trò chuyện, mang sang:
+ *  - Tóm tắt lịch sử gộp (cốt truyện trước cửa sổ, chọn tầng nén còn sống cao nhất ghép lại) = text của lá hạt giống;
+ *  - Trạng thái có cấu trúc hiện tại (items/plans tính đến điểm đầu cửa sổ) → mã hóa thành delta "add toàn bộ" = delta của lá hạt giống;
+ *  - Các tầng trong cửa sổ giữ lại gần đây (nguyên văn toàn bộ + lá riêng của từng tầng) chuyển sang.
  *
- * 新对话靠现成重放管线(deriveMemory:空白起步逐叶子 fold)还原状态——无需特殊载体,
- * 只要造一片把状态编码成全量 add 的「种子叶子」挂在 #0,并另置一条 L2 总结收纳它(承载合并摘要文本)。
+ * Cuộc trò chuyện mới dựa vào đường ống phát lại sẵn có (deriveMemory: khởi đầu trống rồi gấp từng lá) để khôi phục trạng thái —— không cần vật mang đặc biệt,
+ * chỉ cần tạo một "lá hạt giống" mã hóa trạng thái thành add toàn bộ gắn ở #0, và đặt thêm một tổng kết L2 thu nạp nó (mang văn bản tóm tắt gộp).
  *
- * 同时(若向量记忆开):把源聊天的向量快照成一个 bundle,哈希写进新聊天 metadata.bbs_bundles(累加),
- * 使新对话能向量召回源聊天的旧剧情。
+ * Đồng thời (nếu bật trí nhớ vector): chụp nhanh vector của cuộc trò chuyện nguồn thành một bundle, ghi mã băm vào metadata.bbs_bundles của cuộc trò chuyện mới (tích lũy),
+ * giúp cuộc trò chuyện mới có thể truy xuất vector cốt truyện cũ của cuộc trò chuyện nguồn.
  */
 
 import { getContext, getDoNewChat, setMessageText, type STMessage } from '@/st/context';
@@ -26,17 +26,17 @@ import type { JsonValue, LeafExtra, MemSummary, StoredDelta } from './types';
 import { isBaiBaoKuAvailable, vecBundleCreate } from '@/api/baibaoku';
 import { appendBundleHash, BUNDLES_META_KEY, currentBundleHashes, currentVectorDb } from './vector/scope';
 
-/** 携带计划:供 UI 预览「将携带多少」。 */
+/** Kế hoạch mang theo: phục vụ UI xem trước "sẽ mang theo bao nhiêu". */
 export interface CarryoverPlan {
-  /** 保留窗口起点(此索引起的楼层搬去新对话) */
+  /** Điểm đầu cửa sổ giữ lại (các tầng từ chỉ mục này trở đi sẽ chuyển sang cuộc trò chuyện mới) */
   carryStart: number;
-  /** 实际要搬的消息条数(窗口内非系统楼) */
+  /** Số lượng tin nhắn thực tế cần chuyển (các tầng phi hệ thống trong cửa sổ) */
   carryCount: number;
-  /** 其中 AI 楼条数 */
+  /** Trong đó số lượng tầng AI */
   aiCount: number;
-  /** 合并历史摘要字符数(0 = 无历史可摘) */
+  /** Số ký tự tóm tắt lịch sử gộp (0 = không có lịch sử để tóm) */
   recapLen: number;
-  /** 当前是否有可携带数据 */
+  /** Hiện tại có dữ liệu mang theo được hay không */
   hasData: boolean;
 }
 
@@ -92,8 +92,8 @@ function deltaHasData(delta: StoredDelta): boolean {
   );
 }
 
-/** 把「截止窗口起点的派生状态」编码成全量 add 的 StoredDelta(种子叶子的 delta)。
- *  leafId:种子叶子的 id(生活细节的稳定 id 由它派生,需先生成)。 */
+/** Mã hóa "trạng thái dẫn xuất tính đến điểm đầu cửa sổ" thành StoredDelta add toàn bộ (delta của lá hạt giống).
+ *  leafId: id của lá hạt giống (id ổn định của chi tiết đời sống dẫn xuất từ nó, cần tạo trước). */
 function encodeStateAsDelta(state: ReturnType<typeof deriveMemory>, leafId: string): StoredDelta {
   const delta: StoredDelta = {};
   if (state.state.time) delta.time = state.state.time;
@@ -104,11 +104,11 @@ function encodeStateAsDelta(state: ReturnType<typeof deriveMemory>, leafId: stri
   if (Object.values(state.protagonist).some(Boolean)) {
     delta.protagonist = { ...state.protagonist };
   }
-  // 局势卡:当前场面快照一并带走(新对话从同一局面接着演)
+  // Thẻ cục diện: mang theo cả ảnh chụp cảnh tượng hiện tại (cuộc trò chuyện mới diễn tiếp từ cùng một cục diện)
   if (state.state.sceneFocus) {
     delta.sceneFocus = { ...state.state.sceneFocus, participants: [...state.state.sceneFocus.participants] };
   }
-  // 生活小档案:全量带走(含沉降层——带走的是档案本身,投放层继续按 tier 工作)
+  // Hồ sơ nhỏ đời sống: mang theo toàn bộ (gồm cả tầng lắng đọng —— thứ mang đi là bản thân hồ sơ, tầng phân phối tiếp tục hoạt động theo tier)
   if (state.lifeDetails.length) {
     delta.lifeDetails = {
       add: state.lifeDetails.map(d => ({
@@ -118,13 +118,13 @@ function encodeStateAsDelta(state: ReturnType<typeof deriveMemory>, leafId: stri
         anchors: [...d.anchors],
         until: d.until,
       })),
-      // 非 active 的层级用 update 恢复(pinned/archive 在种子里先以 active 落地,再逐条拨回)
+      // Các cấp không phải active dùng update để khôi phục (pinned/archive trong hạt giống hạ cánh dưới dạng active trước, sau đó gạt lại từng mục)
       update: state.lifeDetails
         .map((d, i) => ({ id: `detail:${leafId}#${i}`, tier: d.tier }))
         .filter(u => u.tier !== 'active'),
     };
   }
-  // 了解清单:全量带走,第 i 条落地为 know:种子叶#i(与下方 knowledgeIds 同序)
+  // Danh sách hiểu biết: mang theo toàn bộ, mục thứ i hạ cánh thành know:lá hạt giống#i (cùng thứ tự với knowledgeIds bên dưới)
   if (state.knowledge.length) {
     delta.knowledge = state.knowledge.map(k => ({ op: 'add' as const, subject: k.subject, text: k.text }));
   }
@@ -155,7 +155,7 @@ function encodeStateAsDelta(state: ReturnType<typeof deriveMemory>, leafId: stri
       add: state.npcs.map(n => ({
         name: n.name,
         gender: n.gender,
-        // 年龄连同原锚点一起带走:不带 ageTime 的话,种子叶子重放会把锚点刷成建新对话当天,年龄推算全错
+        // Tuổi tác mang đi cùng mốc neo gốc: nếu không mang ageTime, khi phát lại lá hạt giống sẽ quét mốc neo thành ngày tạo cuộc trò chuyện mới, suy tính tuổi sai hết
         age: n.age,
         ageTime: n.ageTime,
         relation: n.relation,
@@ -192,7 +192,7 @@ function encodeStateAsDelta(state: ReturnType<typeof deriveMemory>, leafId: stri
   return delta;
 }
 
-/** 深拷贝一条要搬运的消息,取消隐藏、保留叶子。(导出供测试) */
+/** Sao chép sâu một tin nhắn cần chuyển đi, bỏ ẩn, giữ lại lá. (export phục vụ kiểm thử) */
 export function sanitizeCarryMessage(
   m: STMessage,
   detailIds: ReadonlyMap<string, string>,
@@ -205,7 +205,7 @@ export function sanitizeCarryMessage(
     const { bbs_hidden: _h, ...rest } = clone.extra;
     clone.extra = rest;
   }
-  // 窗口前的生活条目已改挂种子叶:同步窗口内引用,否则纠正归属/修改/沉降/删除会失效。
+  // Các mục đời sống trước cửa sổ đã đổi sang gắn ở lá hạt giống: đồng bộ tham chiếu trong cửa sổ, nếu không việc đính chính quy thuộc / sửa / lắng đọng / xóa sẽ mất hiệu lực.
   const life = clone.extra?.bbs_leaf?.delta.lifeDetails;
   if (life) {
     for (const update of life.update ?? []) update.id = detailIds.get(update.id) ?? update.id;
@@ -213,7 +213,7 @@ export function sanitizeCarryMessage(
       if (life[key]) life[key] = life[key].map(id => detailIds.get(id) ?? id);
     }
   }
-  // 未了结计划同样改挂种子叶,同理同步窗口内的了结/更新/重启/删除引用。
+  // Kế hoạch chưa khép lại cũng đổi sang gắn ở lá hạt giống, tương tự đồng bộ các tham chiếu khép lại / cập nhật / mở lại / xóa trong cửa sổ.
   const plans = clone.extra?.bbs_leaf?.delta.plans;
   if (plans) {
     const remap = (id: string) => planIds.get(id) ?? id;
@@ -223,14 +223,14 @@ export function sanitizeCarryMessage(
       if (plans[key]) plans[key] = plans[key].map(remap);
     }
   }
-  // 了解条目也改挂种子叶:窗口内的改写/删除引用跟着换 id
+  // Mục hiểu biết cũng đổi sang gắn ở lá hạt giống: tham chiếu sửa / xóa trong cửa sổ đổi id theo
   for (const op of clone.extra?.bbs_leaf?.delta.knowledge ?? []) {
     if (op.op !== 'add') op.id = knowledgeIds.get(op.id) ?? op.id;
   }
   return clone;
 }
 
-/** 计算携带计划(不产生副作用),供 UI 预览。 */
+/** Tính toán kế hoạch mang theo (không gây tác dụng phụ), phục vụ UI xem trước. */
 export function computeCarryoverPlan(): CarryoverPlan {
   const ctx = getContext();
   const chat = ctx?.chat ?? [];
@@ -241,7 +241,7 @@ export function computeCarryoverPlan(): CarryoverPlan {
   for (let i = carryStart; i < chat.length; i++) {
     const m = chat[i];
     if (!m) continue;
-    // ST 原生系统楼(带 type)不搬;真实楼(含被隐藏的)搬
+    // Tầng hệ thống gốc của ST (có type) không chuyển; tầng thực (gồm cả tầng bị ẩn) thì chuyển
     if (m.is_system && m.extra?.type) continue;
     carryCount++;
     if (!m.is_user) aiCount++;
@@ -259,67 +259,67 @@ export function computeCarryoverPlan(): CarryoverPlan {
 }
 
 /**
- * 执行带数据创建新对话。返回是否成功。
- * 全程 try/catch:失败 toast 并尽量不破坏当前聊天(doNewChat 前只读不写源)。
+ * Thực thi tạo cuộc trò chuyện mới kèm dữ liệu. Trả về có thành công hay không.
+ * Toàn trình try/catch: thất bại thì hiện toast và cố gắng không làm hỏng cuộc trò chuyện hiện tại (trước doNewChat chỉ đọc không ghi vào nguồn).
  */
 export async function createNewChatWithCarryover(): Promise<boolean> {
   const ctx = getContext();
   if (!ctx) {
-    toast('SillyTavern 上下文不可用', 'error');
+    toast('Ngữ cảnh SillyTavern không khả dụng', 'error');
     return false;
   }
   if (ctx.groupId) {
-    toast('群聊暂不支持带数据建新对话', 'warning');
+    toast('Trò chuyện nhóm tạm thời chưa hỗ trợ tạo cuộc trò chuyện mới kèm dữ liệu', 'warning');
     return false;
   }
   const sourceChat = ctx.chat ?? [];
   if (!sourceChat.length) {
-    toast('当前对话没有可携带的数据', 'warning');
+    toast('Cuộc trò chuyện hiện tại không có dữ liệu có thể mang theo', 'warning');
     return false;
   }
 
   const doNewChat = await getDoNewChat();
   if (!doNewChat) {
-    toast('无法创建新对话(ST 接口不可用)', 'error');
+    toast('Không thể tạo cuộc trò chuyện mới (giao diện ST không khả dụng)', 'error');
     return false;
   }
 
-  // ===== 1. 在建新对话前,从源聊天提取要携带的一切(只读) =====
+  // ===== 1. Trước khi tạo cuộc trò chuyện mới, trích xuất mọi thứ cần mang theo từ cuộc trò chuyện nguồn (chỉ đọc) =====
   const carryStart = resolveKeepStart(sourceChat);
   const sourceChatId = ctx.getCurrentChatId?.() ?? null;
-  const parentBundles = currentBundleHashes(); // 源聊天已携带的 bundle 哈希(将继承给新聊天)
+  const parentBundles = currentBundleHashes(); // Mã băm bundle đã mang theo của cuộc trò chuyện nguồn (sẽ kế thừa cho cuộc trò chuyện mới)
 
-  // 截止窗口起点的派生状态 → 种子叶子 delta(窗口楼层自己的叶子会继续累加,故截到窗口前避免重复)
+  // Trạng thái dẫn xuất tính đến điểm đầu cửa sổ → delta lá hạt giống (lá riêng của các tầng trong cửa sổ sẽ tiếp tục cộng dồn, nên cắt đến trước cửa sổ để tránh trùng lặp)
   const stateBefore = deriveMemory(sourceChat, carryStart);
-  // 种子叶 id 先生成:生活细节的稳定 id 由「叶子id#序号」派生,编码 delta 时就要用
+  // Tạo id lá hạt giống trước: id ổn định của chi tiết đời sống dẫn xuất từ "id lá#số thứ tự", ngay lúc mã hóa delta đã phải dùng
   const seedLeafId = makeLeafId();
   const seedDelta = encodeStateAsDelta(stateBefore, seedLeafId);
   const detailIds = new Map(stateBefore.lifeDetails.map((d, i) => [d.id, `detail:${seedLeafId}#${i}`]));
-  // 与 encodeStateAsDelta 的 plans.add 同序:第 i 个未了结计划 → 种子叶的第 i 条
+  // Cùng thứ tự với plans.add của encodeStateAsDelta: kế hoạch chưa khép lại thứ i → mục thứ i của lá hạt giống
   const planIds = new Map(stateBefore.plans.filter(p => p.status === 'open').map((p, i) => [p.id, planId(seedLeafId, i)]));
   const knowledgeIds = new Map(stateBefore.knowledge.map((k, i) => [k.id, knowledgeId(seedLeafId, i)]));
 
-  // 合并历史摘要(窗口之前的剧情) = 种子叶子 text
+  // Tóm tắt lịch sử gộp (cốt truyện trước cửa sổ) = text lá hạt giống
   const mergedSummary = renderHistoryNodes(selectHistoryNodesBefore(memory.summaries, sourceChat, carryStart));
 
-  // 种子叶子的时间锚:截止窗口前的状态时间(无则故事最新时间)
+  // Mốc thời gian của lá hạt giống: thời gian trạng thái trước điểm cắt cửa sổ (không có thì lấy thời gian mới nhất của câu chuyện)
   const seedTime = stateBefore.state.time || latestStoryTime(sourceChat) || '';
 
-  // 搬运的窗口楼层(深拷贝、取消隐藏、保留叶子)
+  // Các tầng cửa sổ được chuyển đi (sao chép sâu, bỏ ẩn, giữ lại lá)
   const carryMessages: STMessage[] = [];
   for (let i = carryStart; i < sourceChat.length; i++) {
     const m = sourceChat[i];
     if (!m) continue;
-    if (m.is_system && m.extra?.type) continue; // 原生系统楼不搬
+    if (m.is_system && m.extra?.type) continue; // Không chuyển tầng hệ thống gốc
     carryMessages.push(sanitizeCarryMessage(m, detailIds, planIds, knowledgeIds));
   }
 
   if (!mergedSummary && !carryMessages.length && !deltaHasData(seedDelta)) {
-    toast('当前对话没有可携带的数据', 'warning');
+    toast('Cuộc trò chuyện hiện tại không có dữ liệu có thể mang theo', 'warning');
     return false;
   }
 
-  // ===== 2. 先建 bundle 拿哈希(向量记忆开 + 源聊天有 id 时);失败仅警告,不阻断建聊天 =====
+  // ===== 2. Tạo bundle lấy mã băm trước (khi bật trí nhớ vector + cuộc trò chuyện nguồn có id); thất bại chỉ cảnh báo, không chặn việc tạo cuộc trò chuyện =====
   let newBundleHash: string | null = null;
   const vecDb = currentVectorDb();
   if (apiSettings.vector.enabled && vecDb && sourceChatId) {
@@ -329,39 +329,39 @@ export async function createNewChatWithCarryover(): Promise<boolean> {
         newBundleHash = hash;
       }
     } catch (e) {
-      console.warn('[柏宝书向量] 建 bundle 失败(新对话将不带源向量召回):', e);
+      console.warn('[Vector Bách Bảo Thư] Tạo bundle thất bại (cuộc trò chuyện mới sẽ không mang theo truy xuất vector nguồn):', e);
     }
   }
 
-  // ===== 3. 建新对话并切入 =====
+  // ===== 3. Tạo cuộc trò chuyện mới và chuyển vào =====
   try {
     await ctx.saveChat();
     await doNewChat({ deleteCurrentChat: false });
   } catch (e) {
-    toast(`创建新对话失败:${e instanceof Error ? e.message : String(e)}`, 'error');
+    toast(`Tạo cuộc trò chuyện mới thất bại: ${e instanceof Error ? e.message : String(e)}`, 'error');
     return false;
   }
 
-  // ===== 4. 写入新对话(此刻 ctx.chat 已指向新聊天) =====
+  // ===== 4. Ghi vào cuộc trò chuyện mới (lúc này ctx.chat đã trỏ sang cuộc trò chuyện mới) =====
   try {
     const targetCtx = getContext();
-    if (!targetCtx) throw new Error('新对话上下文不可用');
+    if (!targetCtx) throw new Error('Ngữ cảnh cuộc trò chuyện mới không khả dụng');
     const targetChat = targetCtx.chat ?? [];
 
-    // 确保有 #0 锚点楼:种子叶子(承载全量状态 delta + 合并摘要文本)必须挂在一条 #0 上。
-    // 卡有开场白 → 复用 #0 当锚点(清空正文、设系统楼,删其余开场白);
-    // 卡**空开场白** → getChat 不会 push 任何楼,targetChat 为空,此处主动造一条锚点楼。
-    //   (这是之前漏掉的分支:空开场白卡会让整个锚点块被跳过,导致窗口外摘要/状态全丢。)
+    // Đảm bảo có tầng mốc neo #0: lá hạt giống (mang delta trạng thái toàn bộ + văn bản tóm tắt gộp) bắt buộc phải gắn trên một tầng #0.
+    // Thẻ nhân vật có lời mở đầu → tái sử dụng #0 làm mốc neo (xóa trống chính văn, đặt làm tầng hệ thống, xóa các lời mở đầu còn lại);
+    // Thẻ nhân vật **trống lời mở đầu** → getChat sẽ không push bất kỳ tầng nào, targetChat trống, tại đây chủ động tạo một tầng mốc neo.
+    //   (Đây là nhánh bị sót trước kia: thẻ trống lời mở đầu sẽ làm cả khối mốc neo bị bỏ qua, dẫn đến mất sạch tóm tắt / trạng thái ngoài cửa sổ.)
     let anchor: STMessage;
     if (targetChat.length > 0) {
-      // 只在「新对话是全新无 user 楼」时清开场白,避免误删用户已有内容
+      // Chỉ xóa lời mở đầu khi "cuộc trò chuyện mới hoàn toàn chưa có tầng user", tránh xóa nhầm nội dung đã có của người dùng
       const hasUser = targetChat.some(m => m.is_user);
       if (!hasUser && carryMessages.length > 0) {
-        targetChat.splice(1); // 留 #0,删其余开场白
+        targetChat.splice(1); // Giữ #0, xóa các lời mở đầu còn lại
       }
       anchor = targetChat[0];
     } else {
-      // 空开场白卡:造一条锚点楼放进 #0
+      // Thẻ trống lời mở đầu: tạo một tầng mốc neo đưa vào #0
       anchor = {
         name: targetCtx.name2 || '',
         is_user: false,
@@ -373,7 +373,7 @@ export async function createNewChatWithCarryover(): Promise<boolean> {
     }
     anchor.is_system = true;
     setMessageText(anchor, '');
-    // 种子叶子挂 #0.extra
+    // Gắn lá hạt giống vào #0.extra
     const seedLeaf: LeafExtra = {
       id: seedLeafId,
       text: mergedSummary,
@@ -381,12 +381,12 @@ export async function createNewChatWithCarryover(): Promise<boolean> {
       timeEnd: seedTime || undefined,
       timeStart: seedTime || undefined,
       createdAt: Date.now(),
-      seed: true, // 种子叶子:承载旧对话合并总结,不进向量库(见 index.ts collectLeaves + LeafExtra.seed 注释)
+      seed: true, // Lá hạt giống: mang tổng kết gộp của cuộc trò chuyện cũ, không đưa vào kho vector (xem index.ts collectLeaves + chú thích LeafExtra.seed)
       v: 1,
     };
     anchor.extra = { ...(anchor.extra ?? {}), bbs_leaf: seedLeaf };
 
-    // 新对话森林:重置后放一条 L2 总结收纳种子叶子(承载合并摘要文本)。
+    // Rừng cuộc trò chuyện mới: sau khi đặt lại thì đặt một tổng kết L2 thu nạp lá hạt giống (mang văn bản tóm tắt gộp).
     memory.summaries.splice(0, memory.summaries.length);
     if (mergedSummary) {
       const l2: MemSummary = {
@@ -402,10 +402,10 @@ export async function createNewChatWithCarryover(): Promise<boolean> {
       memory.summaries.push(l2);
     }
 
-    // 搬入窗口楼层
+    // Chuyển các tầng cửa sổ vào
     for (const m of carryMessages) targetChat.push(m);
 
-    // 写新对话 metadata.bbs_bundles(继承源 + 本次新哈希,累加去重)
+    // Ghi metadata.bbs_bundles của cuộc trò chuyện mới (kế thừa nguồn + mã băm mới lần này, cộng dồn khử trùng)
     if (newBundleHash || parentBundles.length) {
       const meta = targetCtx.chatMetadata as Record<string, unknown>;
       if (newBundleHash) {
@@ -415,7 +415,7 @@ export async function createNewChatWithCarryover(): Promise<boolean> {
       }
     }
 
-    // 落盘 + 重算 + 刷新
+    // Lưu đĩa + tính lại + làm mới
     recomputeDerived();
     saveMemory();
     flushLeavesNow();
@@ -424,10 +424,10 @@ export async function createNewChatWithCarryover(): Promise<boolean> {
     if (typeof targetCtx.reloadCurrentChat === 'function') await targetCtx.reloadCurrentChat();
     refreshInjection();
 
-    toast(`已创建新对话:携带 AI ${carryMessages.filter(m => !m.is_user).length} 条,旧剧情摘要 ${mergedSummary ? '1' : '0'} 条`, 'success');
+    toast(`Đã tạo cuộc trò chuyện mới: mang theo ${carryMessages.filter(m => !m.is_user).length} mục AI, ${mergedSummary ? '1' : '0'} mục tóm tắt cốt truyện cũ`, 'success');
     return true;
   } catch (e) {
-    toast(`写入新对话失败:${e instanceof Error ? e.message : String(e)}`, 'error');
+    toast(`Ghi vào cuộc trò chuyện mới thất bại: ${e instanceof Error ? e.message : String(e)}`, 'error');
     return false;
   }
 }

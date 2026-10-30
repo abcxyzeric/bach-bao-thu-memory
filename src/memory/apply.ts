@@ -13,17 +13,17 @@ import { applyConditionPatch, hasConditionPatchContent, stripConditionFragmentId
 import { createEmptyMemory } from './types';
 import type { BaibaiMemory, ConditionPatch, ConditionPatchOp, ItemDelta, ItemLogEntry, JsonValue, LeafExtra, LifeDetailAdd, LifeDetailUpdate, MemLifeDetail, MemNpc, MemPlan, MemScene, MemSummary, NpcAffinity, NpcDelta, NpcPresence, PlanResolveItem, PlanUpdateItem, ProtagonistDelta, SceneDelta, SceneFocus, SceneOp, SceneReparent, StoredDelta, SummaryDelta, VarOp, VarTemplate, VarTier } from './types';
 
-// 供既有调用方继续从 apply 取在场类型;定义在 types.ts 与名册展示共用。
+// Cung cấp cho các bên gọi hiện có tiếp tục lấy kiểu có mặt từ apply; định nghĩa tại types.ts dùng chung với phần hiển thị danh sách.
 export type { NpcPresence } from './types';
 
 let idSeq = 0;
-/** 生成稳定唯一 id(不依赖 random;时间走 nowMs 便于测试注入) */
+/** Tạo id duy nhất ổn định (không phụ thuộc random; thời gian đi qua nowMs để tiện tiêm khi kiểm thử) */
 function uid(prefix: string): string {
   idSeq += 1;
   return `${prefix}_${nowMs()}_${idSeq}`;
 }
 
-// 单点封装时间获取,测试可 mock
+// Đóng gói một điểm lấy thời gian, có thể mock khi kiểm thử
 function nowMs(): number {
   return Date.now();
 }
@@ -46,7 +46,7 @@ function optText(v: unknown): string | undefined {
   return scalarText(v) || undefined;
 }
 
-/** 覆盖补丁文本:undefined=未提供;空字符串=明确清空。 */
+/** Văn bản bản vá ghi đè: undefined = không cung cấp; chuỗi rỗng = xóa trống rõ ràng. */
 function patchText(v: unknown): string | undefined {
   if (typeof v === 'string') return v.trim();
   if (typeof v === 'number' || typeof v === 'boolean') return String(v).trim();
@@ -119,8 +119,8 @@ function cleanItemList(v: unknown): ItemDelta[] {
 }
 
 /**
- * 建点宽、描述严:add 可不带 desc(写不出稳定特征就只建节点,不逼模型为过门槛编描述);
- * update 须带 desc,空字符串=清除错填的描述(节点保留),不带 desc 的 update 无事可做,丢弃。
+ * Tạo điểm rộng, mô tả nghiêm: add có thể không kèm desc (không viết ra được đặc trưng ổn định thì chỉ tạo nút, không ép mô hình bịa mô tả để vượt ngưỡng);
+ * update bắt buộc phải kèm desc, chuỗi rỗng = xóa mô tả điền sai (giữ lại nút), update không kèm desc thì không có việc gì để làm, hủy bỏ.
  */
 function cleanSceneDelta(raw: unknown, op: 'add' | 'update'): SceneDelta | null {
   if (!isRecord(raw)) return null;
@@ -180,8 +180,8 @@ function cleanSceneOpList(v: unknown): SceneOp[] {
 }
 
 /**
- * 旧存档(v0.17 编号协议)里的伤情补丁,仅供重放。入库时已被当年的清洗器洗过:
- * 编号都是小写 cN、text 都是字符串(空串=删该片段),这里只做形状校验。
+ * Bản vá thương tích trong bản lưu cũ (giao thức đánh số v0.17), chỉ dùng để phát lại. Khi đưa vào kho đã được bộ làm sạch lúc đó rửa qua:
+ * đánh số đều là chữ thường cN, text đều là chuỗi (chuỗi rỗng = xóa phân đoạn đó), ở đây chỉ kiểm tra hình dạng.
  */
 function cleanConditionPatchOp(raw: unknown, requireId: boolean): ConditionPatchOp | null {
   if (!isRecord(raw) || typeof raw.text !== 'string') return null;
@@ -202,14 +202,14 @@ function cleanConditionPatch(raw: unknown): ConditionPatch | undefined {
   return out;
 }
 
-/** condition 全文:剥掉旧存档里抄进去的 `[cN]` 编号;省略=undefined、空串=清空的语义不变。 */
+/** Toàn văn condition: bóc bỏ số thứ tự `[cN]` bị chép vào trong bản lưu cũ; ngữ nghĩa lược bỏ=undefined, chuỗi rỗng=xóa trống giữ nguyên. */
 function cleanConditionText(v: unknown): string | undefined {
   const text = patchText(v);
   return text === undefined ? undefined : stripConditionFragmentIds(text);
 }
 
-// v0.17 的 locationEvidence 硬关卡已撤:模型引文常与正文对不上,合法定位被静默丢弃,NPC 位置越记越少。
-// 旧习惯多给的 locationEvidence 不在下方白名单里,自然不入库。
+// Cổng chặn cứng locationEvidence của bản v0.17 đã rút bỏ: câu trích dẫn của mô hình thường không khớp với chính văn, định vị hợp lệ bị âm thầm hủy bỏ, vị trí NPC càng ghi càng ít.
+// locationEvidence do thói quen cũ đưa thừa không nằm trong danh sách trắng bên dưới, tự nhiên không đi vào kho.
 function cleanNpcDelta(raw: unknown, stored = false): NpcDelta | null {
   if (!isRecord(raw)) {
     const name = scalarText(raw);
@@ -219,8 +219,8 @@ function cleanNpcDelta(raw: unknown, stored = false): NpcDelta | null {
   if (!name) return null;
   const conditionPatch = cleanConditionPatch(raw.conditionPatch);
   const condition = cleanConditionText(raw.condition);
-  // 档案层空字符串=明确清除。外貌/关系/身份提示词教了模型用空串清错填,两路都收;
-  // 性别/年龄/人际/性格没教,模型给空串多是占位,只在重放已入库的 delta 时收(那是手动删空写进叶子的)
+  // Chuỗi rỗng ở tầng hồ sơ = xóa rõ ràng. Prompt ngoại hình/quan hệ/thân phận đã dạy mô hình dùng chuỗi rỗng để xóa chỗ điền sai, cả hai nhánh đều nhận;
+  // giới tính/tuổi/nhân tế/tính cách không dạy, mô hình đưa chuỗi rỗng đa phần là giữ chỗ, chỉ nhận khi phát lại delta đã lưu trong kho (đó là do xóa trống thủ công ghi vào lá)
   const archiveText = stored ? patchText : optText;
   const out: NpcDelta = {
     name,
@@ -235,18 +235,18 @@ function cleanNpcDelta(raw: unknown, stored = false): NpcDelta | null {
     title: patchText(raw.title),
     desc: patchText(raw.desc),
     personality: archiveText(raw.personality),
-    // 即时层(覆盖型快照)用 patchText:省略=保持旧值,空字符串=明确清空(痊愈/脱下)。
-    // 与 cleanProtagonistDelta 同语义;optText 会把空串洗成 undefined,导致永远无法清空。
+    // Tầng tức thời (ảnh chụp kiểu ghi đè) dùng patchText: lược bỏ = giữ giá trị cũ, chuỗi rỗng = xóa trống rõ ràng (lành bệnh/cởi bỏ).
+    // Cùng ngữ nghĩa với cleanProtagonistDelta; optText sẽ rửa chuỗi rỗng thành undefined, dẫn đến không bao giờ xóa trống được.
     outfit: patchText(raw.outfit),
     condition,
     important: optBool(raw.important),
     follow: optBool(raw.follow),
-    // 同 outfit/condition 的补丁语义:省略=保持旧值,空字符串=明确清空(离场且去向未明 → 所在不明)。
-    // 此前用 optText 会把空串洗成 undefined,导致 AI 无法清掉旧地点、离场后仍被判为在场。
+    // Cùng ngữ nghĩa bản vá với outfit/condition: lược bỏ = giữ giá trị cũ, chuỗi rỗng = xóa trống rõ ràng (rời hiện trường và chưa rõ đi đâu → không rõ nơi ở).
+    // Trước đây dùng optText sẽ rửa chuỗi rỗng thành undefined, khiến AI không thể xóa địa điểm cũ, sau khi rời trường vẫn bị phán đoán là có mặt.
     location: patchText(raw.location),
   };
-  // 伤情补丁只认旧存档(重放时 stored=true);新输出已改回全文覆盖,模型再给补丁也不收,
-  // 免得原样入库后编号随前面楼层变动而错位。全文与补丁同给时以全文为准(补丁编号对应的是旧片段)。
+  // Bản vá thương tích chỉ nhận ở bản lưu cũ (khi phát lại stored=true); đầu ra mới đã đổi về ghi đè toàn văn, mô hình có đưa bản vá nữa cũng không nhận,
+  // tránh việc đưa nguyên vào kho rồi đánh số bị lệch vị trí khi các tầng phía trước biến động. Khi đưa cả toàn văn lẫn bản vá thì lấy toàn văn làm chuẩn (đánh số bản vá ứng với phân đoạn cũ).
   if (stored && conditionPatch && condition === undefined) out.conditionPatch = conditionPatch;
   return out;
 }
@@ -256,10 +256,10 @@ function cleanNpcList(v: unknown, stored = false): NpcDelta[] {
 }
 
 /**
- * 清洗局势卡快照,三态语义与 patchText 同族:
- *  - undefined → undefined(未提供=不更新)
- *  - null      → null(明确清空:场面彻底结束/章节落幕)
- *  - 对象      → 规范化后的整卡(缺局面一句话则视为无效更新,不当清空)
+ * Làm sạch ảnh chụp thẻ cục diện, ngữ nghĩa ba trạng thái cùng họ với patchText:
+ *  - undefined → undefined (chưa cung cấp = không cập nhật)
+ *  - null      → null (xóa trống rõ ràng: cảnh tượng kết thúc triệt để / chương khép lại)
+ *  - đối tượng → cả thẻ sau khi chuẩn hóa (thiếu một câu cục diện thì coi là cập nhật vô hiệu, không coi là xóa trống)
  */
 function cleanSceneFocus(raw: unknown): SceneFocus | null | undefined {
   if (raw === undefined) return undefined;
@@ -268,7 +268,7 @@ function cleanSceneFocus(raw: unknown): SceneFocus | null | undefined {
   const situation = optText(raw.situation);
   if (!situation) return undefined;
   const out: SceneFocus = { situation, participants: cleanTextList(raw.participants) };
-  // currentFocus 已废弃:不再提示 AI 输出,此处仅为重放旧 delta 保留兼容
+  // currentFocus đã bỏ: không còn nhắc AI xuất ra, ở đây chỉ giữ lại tương thích để phát lại delta cũ
   const currentFocus = optText(raw.currentFocus);
   if (currentFocus) out.currentFocus = currentFocus;
   const tension = optText(raw.tension);
@@ -278,7 +278,7 @@ function cleanSceneFocus(raw: unknown): SceneFocus | null | undefined {
   return out;
 }
 
-/** 清洗生活细节 add:text 必填;topics/anchors 各留前几个短词。 */
+/** Làm sạch chi tiết đời sống add: text bắt buộc điền; topics/anchors mỗi thứ giữ vài từ ngắn đầu tiên. */
 function cleanLifeDetailAdd(raw: unknown): LifeDetailAdd | null {
   if (!isRecord(raw)) return null;
   const text = optText(raw.text);
@@ -298,7 +298,7 @@ function cleanLifeDetailAddList(v: unknown): LifeDetailAdd[] {
   return arr(v).map(cleanLifeDetailAdd).filter((x): x is LifeDetailAdd => !!x);
 }
 
-/** 清洗生活细节 update:稳定 id 必填;tier 仅手动 op 出现,透传合法值。 */
+/** Làm sạch chi tiết đời sống update: id ổn định bắt buộc điền; tier chỉ xuất hiện ở op thủ công, truyền thẳng giá trị hợp lệ. */
 function cleanLifeDetailUpdate(raw: unknown): (LifeDetailUpdate & { tier?: 'pinned' | 'active' | 'archive' }) | null {
   if (!isRecord(raw)) return null;
   const id = optText(raw.id);
@@ -310,7 +310,7 @@ function cleanLifeDetailUpdate(raw: unknown): (LifeDetailUpdate & { tier?: 'pinn
   if (text) out.text = text;
   if (raw.topics !== undefined) out.topics = cleanTextList(raw.topics).slice(0, 3);
   if (raw.anchors !== undefined) out.anchors = cleanTextList(raw.anchors).slice(0, 5);
-  if (raw.until !== undefined) out.until = optText(raw.until) ?? ''; // 空串=清除时效
+  if (raw.until !== undefined) out.until = optText(raw.until) ?? ''; // Chuỗi rỗng = xóa thời hiệu
   const tier = optText(raw.tier);
   if (tier === 'pinned' || tier === 'active' || tier === 'archive') out.tier = tier;
   return out;
@@ -328,7 +328,7 @@ function cleanProtagonistDelta(raw: unknown, legacyPatch = false): ProtagonistDe
   }
   const condition = cleanConditionText(raw.condition);
   if (condition !== undefined) out.condition = condition;
-  // 伤情补丁只认旧存档、全文优先,理由同 cleanNpcDelta。
+  // Bản vá thương tích chỉ nhận ở bản lưu cũ, ưu tiên toàn văn, lý do giống cleanNpcDelta.
   const conditionPatch = cleanConditionPatch(raw.conditionPatch);
   if (legacyPatch && conditionPatch && condition === undefined) out.conditionPatch = conditionPatch;
   return Object.keys(out).length ? out : null;
@@ -370,7 +370,7 @@ function cleanStoredPlanResolveList(v: unknown): PlanResolveItem[] {
   return arr(v).map(cleanStoredPlanResolve).filter((x): x is PlanResolveItem => !!x);
 }
 
-/** 清洗改期/暂缓项(StoredDelta 里 id 已是稳定 plan id)。content/targetTime 至少给一个。 */
+/** Làm sạch mục dời lịch / tạm hoãn (trong StoredDelta id đã là id plan ổn định). content/targetTime đưa ít nhất một cái. */
 function cleanStoredPlanUpdate(raw: unknown): PlanUpdateItem | null {
   if (!isRecord(raw)) return null;
   const id = namedText(raw, ['id', 'planId', 'ref']);
@@ -474,42 +474,42 @@ function cleanStoredDelta(raw: StoredDelta): StoredDelta {
   return out;
 }
 
-/* ============ 确定性 id ============ */
+/* ============ ID tất định ============ */
 
-/** 物品 id:按规范化名,故重放幂等、手动 op 可稳定引用 */
+/** ID vật phẩm: theo tên chuẩn hóa, nên phát lại bất biến, op thủ công có thể tham chiếu ổn định */
 export function itemId(name: string): string {
   return `item:${norm(name)}`;
 }
-/** NPC id:按规范化名,故重放幂等、手动 op 可稳定引用 */
+/** ID NPC: theo tên chuẩn hóa, nên phát lại bất biến, op thủ công có thể tham chiếu ổn định */
 export function npcId(name: string): string {
   return `npc:${norm(name)}`;
 }
-/** 计划 id:产生它的叶子 id + 在该叶子 add 数组里的序号 */
+/** ID kế hoạch: id lá tạo ra nó + số thứ tự trong mảng add tại lá đó */
 export function planId(leafId: string, addIndex: number): string {
   return `plan:${leafId}#${addIndex}`;
 }
 
-/** 生活细节 id:产生它的叶子 id + 在该叶子 add 数组里的序号(与 planId 同构) */
+/** ID chi tiết đời sống: id lá tạo ra nó + số thứ tự trong mảng add tại lá đó (đồng cấu với planId) */
 export function detailId(leafId: string, addIndex: number): string {
   return `detail:${leafId}#${addIndex}`;
 }
 
-/** 从一条 resolve 指令取稳定 plan id(兼容裸字符串旧数据) */
+/** Lấy id plan ổn định từ một chỉ thị resolve (tương thích dữ liệu cũ dạng chuỗi trần) */
 export function resolveEntryId(r: PlanResolveItem): string {
   return typeof r === 'string' ? r : r.id;
 }
 
-/** 规范化场景路径:逐段 trim,丢弃空段。返回干净的原文路径(保留大小写,仅去首尾空白) */
+/** Chuẩn hóa đường dẫn bối cảnh: trim từng đoạn, bỏ đoạn rỗng. Trả về đường dẫn nguyên văn sạch (giữ hoa thường, chỉ bỏ khoảng trắng đầu cuối) */
 export function normScenePath(path: string[] | undefined): string[] {
   if (!Array.isArray(path)) return [];
   return path.map(s => String(s ?? '').trim()).filter(Boolean);
 }
-/** 场景 id:按规范化路径(小写、'/'分隔),故重放幂等、手动 op 可稳定引用 */
+/** ID bối cảnh: theo đường dẫn chuẩn hóa (chữ thường, phân cách bằng '/'), nên phát lại bất biến, op thủ công có thể tham chiếu ổn định */
 export function sceneId(path: string[]): string {
   return `scene:${normScenePath(path).map(norm).join('/')}`;
 }
 
-/** Index used to resolve item storage text against the scene tree. */
+/** Chỉ mục dùng để phân giải văn bản nơi cất giữ vật phẩm đối chiếu với cây bối cảnh. */
 export interface SceneLocationIndex {
   byId: Map<string, MemScene>;
   byParent: Map<string, MemScene[]>;
@@ -567,12 +567,12 @@ function bestMatchedChild(children: MemScene[], locationKey: string): MemScene |
 }
 
 /**
- * Resolve a free-form item location into the deepest scene node it names.
+ * Phân giải địa điểm vật phẩm dạng tự do thành nút bối cảnh sâu nhất mà nó gọi tên.
  *
- * The walk is deliberately top-down: match a root scene name first, then only
- * inspect that root's children, repeating until no deeper direct child matches.
- * This avoids treating a child location as if it also belonged to every ancestor
- * or sibling whose name appears in the full text.
+ * Quá trình duyệt cố ý đi từ trên xuống: khớp tên bối cảnh gốc trước, sau đó chỉ
+ * kiểm tra các nút con của gốc đó, lặp lại cho đến khi không còn nút con trực tiếp sâu hơn nào khớp.
+ * Cách này tránh việc coi một địa điểm con như thể nó cũng thuộc về mọi tổ tiên
+ * hoặc anh em có tên xuất hiện trong toàn văn.
  */
 export function resolveSceneLocationId(
   scenes: MemScene[],
@@ -626,13 +626,13 @@ export function itemReachableAtScene(
 }
 
 /**
- * 当前地点 ↔ 场景树的「权威定位」:返回当前所在节点 id(找不到返回 '')。
- * 注入端与场景页**共用此函数**,杜绝两处分叉导致页面/提示词不一致。
+ * "Định vị có thẩm quyền" giữa Địa điểm hiện tại ↔ Cây bối cảnh: trả về id nút đang ở hiện tại (không tìm thấy trả về '').
+ * Đầu tiêm và trang bối cảnh **dùng chung hàm này**, triệt tiêu việc rẽ nhánh ở hai nơi dẫn đến bất nhất giữa trang giao diện và prompt.
  */
 export function findCurrentSceneId(scenes: MemScene[], here: string, locationPath?: string[]): string {
   const byId = new Map(scenes.map(s => [s.id, s]));
 
-  // 1) 权威路径:精确 → 最长存在前缀
+  // 1) Đường dẫn có thẩm quyền: chính xác → tiền tố tồn tại dài nhất
   const lp = normScenePath(locationPath);
   if (lp.length) {
     for (let depth = lp.length; depth >= 1; depth--) {
@@ -641,7 +641,7 @@ export function findCurrentSceneId(scenes: MemScene[], here: string, locationPat
     }
   }
 
-  // 2) 收紧模糊匹配(兜底):只看本级名 + 完整路径串,取最深
+  // 2) Khớp mờ thu hẹp (dự phòng): chỉ xét tên cấp này + chuỗi đường dẫn đầy đủ, lấy sâu nhất
   const h = (here ?? '').trim();
   if (!h) return '';
   let best: MemScene | null = null;
@@ -653,11 +653,11 @@ export function findCurrentSceneId(scenes: MemScene[], here: string, locationPat
 }
 
 /**
- * 两个场景节点路径的相对关系,以 pPath(主角当前节点)为基准。供 NPC 在场分档用:
- *  - 'same':同一节点。
- *  - 'near':N 是 P 的直接父(上一级)/ N 是 P 的后代(向下不封顶)/ 旁支且共享直接父。
- *  - 'far' :N 是 P 更上级祖先(≥2 级)/ 旁支且公共祖先更远。
- * 「同区域」= near:抬头最多一级就能找到与主角共同的地点(向上封顶一级,挡住街区/城镇;向下不封顶)。
+ * Quan hệ tương đối giữa đường dẫn hai nút bối cảnh, lấy pPath (nút hiện tại của nhân vật chính) làm chuẩn. Dùng cho phân mức có mặt của NPC:
+ *  - 'same': cùng một nút.
+ *  - 'near': N là cha trực tiếp của P (cấp ngay trên) / N là hậu duệ của P (hướng xuống không giới hạn trần) / nhánh bên và có chung cha trực tiếp.
+ *  - 'far' : N là tổ tiên cấp cao hơn của P (≥2 cấp) / nhánh bên và tổ tiên chung xa hơn.
+ * "Cùng khu vực" = near: ngước lên tối đa một cấp là tìm được địa điểm chung với nhân vật chính (hướng lên khóa trần một cấp, chặn khu phố / thị trấn; hướng xuống không giới hạn trần).
  */
 export type SceneRel = 'same' | 'near' | 'far';
 export function sceneRelation(pPath: string[], nPath: string[]): SceneRel {
@@ -666,19 +666,19 @@ export function sceneRelation(pPath: string[], nPath: string[]): SceneRel {
   while (common < min && norm(pPath[common]) === norm(nPath[common])) common++;
   const p = pPath.length;
   const q = nPath.length;
-  if (common === p && common === q) return 'same';       // 同一节点
-  if (common === q) return p - q === 1 ? 'near' : 'far';  // N 是 P 的祖先:仅上一级算近
-  if (common === p) return 'near';                        // N 是 P 的后代:向下不封顶
-  return p - common === 1 ? 'near' : 'far';               // 旁支:共享直接父才算近
+  if (common === p && common === q) return 'same';       // Cùng một nút
+  if (common === q) return p - q === 1 ? 'near' : 'far';  // N là tổ tiên của P: chỉ cấp ngay trên mới tính là gần
+  if (common === p) return 'near';                        // N là hậu duệ của P: hướng xuống không giới hạn trần
+  return p - common === 1 ? 'near' : 'far';               // Nhánh bên: có chung cha trực tiếp mới tính là gần
 }
 
 /**
- * NPC 在场分档的**唯一权威**:注入端(inject.ts)与 NPC 页(pages/npcs)都调它,杜绝两套逻辑漂移
- * (NPC 页曾复刻旧逻辑、又没用 locationPath,把主角误定位到同名旁支节点、错判在场——正是本函数要根治的)。
- *  - 'present':随行,或所在地=主角当前节点(含解析并入当前节点的更细子地点)。
- *  - 'nearby' :抬头最多一级就与主角共处(上一级祖先 / 后代 / 旁支共享直接父)。
- *  - 'absent' :更上级祖先(街区/校区)或更远旁支。
- * 主角/NPC 任一落不到树节点时退回纯字符串双向包含(present/absent 两态)。
+ * **Thẩm quyền duy nhất** để phân mức có mặt của NPC: đầu tiêm (inject.ts) và trang NPC (pages/npcs) đều gọi nó, triệt tiêu sự lệch nhau giữa hai bộ logic
+ * (trang NPC từng sao chép logic cũ, lại không dùng locationPath, định vị nhầm nhân vật chính sang nút nhánh bên trùng tên, phán đoán sai có mặt —— chính là điều hàm này giải quyết tận gốc).
+ *  - 'present': đi cùng, hoặc nơi ở = nút hiện tại của nhân vật chính (gồm cả địa điểm con chi tiết hơn được phân giải gộp vào nút hiện tại).
+ *  - 'nearby' : ngước lên tối đa một cấp là ở chung với nhân vật chính (tổ tiên cấp ngay trên / hậu duệ / nhánh bên có chung cha trực tiếp).
+ *  - 'absent' : tổ tiên cấp cao hơn (khu phố / khuôn viên trường) hoặc nhánh bên xa hơn.
+ * Khi nhân vật chính / NPC bất kỳ bên nào không rơi vào nút cây thì lùi về bao hàm hai chiều chuỗi thuần (hai trạng thái present/absent).
  */
 export function classifyNpcPresence(
   npc: MemNpc,
@@ -687,17 +687,17 @@ export function classifyNpcPresence(
   locationPath?: string[],
 ): NpcPresence {
   if (npc.follow === true) return 'present';
-  // 主角当前节点:走权威 findCurrentSceneId(优先 locationPath 精确定位,再模糊兜底)
+  // Nút hiện tại của nhân vật chính: đi qua findCurrentSceneId có thẩm quyền (ưu tiên định vị chính xác locationPath, sau đó dự phòng mờ)
   const cur = scenes.find(s => s.id === findCurrentSceneId(scenes, here, locationPath)) ?? null;
   if (!cur) return sceneNameReachable(npc.location, here) ? 'present' : 'absent';
-  // NPC 所在地同样解析成节点后比路径
+  // Nơi ở của NPC cũng phân giải thành nút rồi mới so đường dẫn
   const n = scenes.find(s => s.id === findCurrentSceneId(scenes, npc.location ?? '')) ?? null;
   if (!n) return sceneNameReachable(npc.location, here) ? 'present' : 'absent';
   const rel = sceneRelation(cur.path, n.path);
   return rel === 'same' ? 'present' : rel === 'near' ? 'nearby' : 'absent';
 }
 
-/** 包含式双向匹配(地名命名粗细不一时的兜底);空串不匹配。供 findCurrentSceneId 内部用。 */
+/** Khớp hai chiều kiểu bao hàm (dự phòng khi cách đặt tên địa danh có độ chi tiết khác nhau); chuỗi rỗng không khớp. Dùng nội bộ cho findCurrentSceneId. */
 function sceneNameReachable(a: string | undefined, b: string): boolean {
   const x = (a ?? '').trim();
   const y = b.trim();
@@ -705,31 +705,31 @@ function sceneNameReachable(a: string | undefined, b: string): boolean {
   return x.includes(y) || y.includes(x);
 }
 
-/** 叶子 id:不绑索引、不绑内容,写入即固定 */
+/** ID lá: không buộc chỉ mục, không buộc nội dung, vừa ghi vào là cố định */
 export function makeLeafId(): string {
   const rand = Math.floor(Math.random() * 36 ** 6).toString(36).padStart(6, '0');
   return `leaf_${nowMs().toString(36)}_${rand}`;
 }
 
-/* ============ 陈旧识别 ============ */
+/* ============ Nhận diện lỗi thời ============ */
 
-// 正文清洗已统一到 timeTag.ts 的 cleanBody / clampToTimeTags(整块删噪声标签,不再「裸删标签留内容」)。
+// Việc làm sạch chính văn đã thống nhất về cleanBody / clampToTimeTags của timeTag.ts (xóa nguyên khối thẻ nhiễu, không còn "xóa trần thẻ giữ nội dung").
 
-/** 取消息上的叶子(不校验有效性) */
+/** Lấy lá trên tin nhắn (không kiểm tra tính hợp lệ) */
 export function getLeaf(m: STMessage | undefined): LeafExtra | undefined {
   return m?.extra?.bbs_leaf as LeafExtra | undefined;
 }
 
-/** 叶子结构是否完整(有 id + delta)。不校验页码归属;供 pruneBrokenComps 判「叶子是否物理存在」。 */
+/** Cấu trúc lá có nguyên vẹn hay không (có id + delta). Không kiểm tra quyền sở hữu số trang; phục vụ pruneBrokenComps phán đoán "lá có tồn tại vật lý hay không". */
 export function leafIntact(m: STMessage | undefined): boolean {
   const leaf = getLeaf(m);
   return !!(leaf && leaf.id && leaf.delta);
 }
 
 /**
- * 把一个稳定 plan id(plan:${leafId}#${addIdx})反查成计划内容文本。
- * resolve/reopen/remove 只存 id、不存文本;楼内面板要显示「了结:找到妹妹」需据此回查产生它的叶子。
- * 找不到(叶子已删/id 非法)返回空串,调用方自行降级。
+ * Tra ngược một id plan ổn định (plan:${leafId}#${addIdx}) thành văn bản nội dung kế hoạch.
+ * resolve/reopen/remove chỉ lưu id, không lưu văn bản; bảng trong tầng muốn hiển thị "Khép lại: Tìm thấy em gái" cần dựa vào đây tra ngược về lá tạo ra nó.
+ * Không tìm thấy (lá đã xóa / id không hợp lệ) trả về chuỗi rỗng, bên gọi tự hạ cấp.
  */
 export function planContentById(planIdStr: string): string {
   const m = planIdStr.match(/^plan:(.+)#(\d+)$/);
@@ -745,7 +745,7 @@ export function planContentById(planIdStr: string): string {
   return '';
 }
 
-/** 叶子记录的页码(缺省按第一页 0);消息当前页码同口径(swipe_id 缺省 0)。 */
+/** Số trang được lá ghi nhận (mặc định tính là trang đầu tiên 0); số trang hiện tại của tin nhắn cùng tiêu chuẩn (swipe_id mặc định 0). */
 function leafSwipe(leaf: LeafExtra): number {
   return typeof leaf.swipe === 'number' ? leaf.swipe : 0;
 }
@@ -754,14 +754,14 @@ function msgSwipe(m: STMessage): number {
 }
 
 /**
- * 叶子是否对「当前显示的这一页」有效:结构完整 + 页码归属当前 swipe。
+ * Lá có hợp lệ đối với "trang đang hiển thị hiện tại" hay không: cấu trúc nguyên vẹn + số trang thuộc về swipe hiện tại.
  *
- * 页码校验解决多页串扰:ST 生成新 swipe 时 structuredClone 旧 extra,会把上一页的 bbs_leaf
- * 复制进新页;靠「叶子 swipe ≠ 当前 swipe_id」识别并失效——翻到没摘过的页正确显示「缺摘要」,
- * 翻回原页页码又匹配、摘要恢复。叶子数据始终留在各自 swipe 的 extra 里,不删除。
+ * Kiểm tra số trang giải quyết việc nhiễu chéo nhiều trang: khi ST tạo swipe mới sẽ structuredClone extra cũ, chép bbs_leaf của trang trước
+ * sang trang mới; dựa vào "swipe của lá ≠ swipe_id hiện tại" để nhận diện và vô hiệu hóa —— lật sang trang chưa tóm tắt sẽ hiển thị đúng là "Thiếu tóm tắt",
+ * lật về trang gốc số trang lại khớp, tóm tắt khôi phục. Dữ liệu lá luôn nằm lại trong extra của swipe tương ứng, không xóa.
  *
- * ⚠️ 不比对正文哈希:改正文(错字/润色)不改 swipe_id,故不会因此失效——这正是用页码而非
- * srcHash 的好处。代价同前:编辑正文不自动重摘,沿用旧叶子;需要时手动删叶子再重摘。
+ * ⚠️ Không đối chiếu mã băm chính văn: sửa chính văn (lỗi chính tả / trau chuốt) không làm đổi swipe_id, nên sẽ không vì thế mà mất hiệu lực —— đây chính là lợi ích của việc dùng số trang thay vì
+ * srcHash. Đánh đổi như trước: chỉnh sửa chính văn không tự động tóm tắt lại, kế thừa lá cũ; khi cần thì xóa lá thủ công rồi tóm tắt lại.
  */
 export function leafValid(m: STMessage | undefined): boolean {
   const leaf = getLeaf(m);
@@ -770,70 +770,70 @@ export function leafValid(m: STMessage | undefined): boolean {
   return leafSwipe(leaf) === msgSwipe(m);
 }
 
-/* ============ 重放引擎 ============ */
+/* ============ Engine phát lại ============ */
 
 /**
- * 把一条叶子的 StoredDelta 施加到派生记忆 mem 上。无副作用地 fold。
- * 施加顺序(同一叶子内):items(add→update→remove)→ plans(add→resolve→reopen→remove)。
- * 顺序保证「同叶子内先添加后操作」成立(如手动在最新叶子里删掉刚加的项)。
+ * Áp dụng StoredDelta của một lá lên bộ nhớ dẫn xuất mem. Gấp (fold) không gây tác dụng phụ ngoài phạm vi.
+ * Thứ tự áp dụng (trong cùng một lá): items(add→update→remove) → plans(add→resolve→reopen→remove).
+ * Thứ tự đảm bảo nguyên tắc "trong cùng lá thêm trước thao tác sau" luôn đúng (như xóa thủ công mục vừa thêm ngay trong lá mới nhất).
  *
- * 副作用:每条物品变动往 mem.itemLog 追加一条带「故事内时间」的记录(leaf.time)。
- * 按楼层序重放,故 itemLog 天然时序有序;deriveMemory 末尾再截最近若干条。
+ * Tác dụng phụ: mỗi biến động vật phẩm nối thêm một bản ghi có kèm "thời gian trong truyện" (leaf.time) vào mem.itemLog.
+ * Phát lại theo thứ tự tầng lầu, nên itemLog tự nhiên có thứ tự thời gian; cuối deriveMemory mới cắt lấy một số mục gần nhất.
  */
 /**
- * 把 delta 里的随身/地点信息施加到物品上(仅在 delta 明确给了才覆盖,last-write-wins)。
- * carried=true 时清掉 location(随身物品无存放地);carried=false 时保留/采用 location。
+ * Áp dụng thông tin mang theo người / địa điểm trong delta lên vật phẩm (chỉ khi delta đưa rõ ràng mới ghi đè, last-write-wins).
+ * Khi carried=true thì xóa location (vật phẩm mang theo người không có nơi cất); khi carried=false thì giữ lại / áp dụng location.
  */
 function applyPlacement(it: { carried?: boolean; location?: string }, src: ItemDelta): void {
   if (typeof src.carried === 'boolean') {
     it.carried = src.carried;
-    if (src.carried) it.location = undefined; // 拿在身上 → 无存放地
+    if (src.carried) it.location = undefined; // Cầm trên người → không có nơi cất
   }
   if (typeof src.location === 'string') {
     const loc = src.location.trim();
     if (loc) {
       it.location = loc;
-      if (it.carried === undefined) it.carried = false; // 给了地点即视为非随身
+      if (it.carried === undefined) it.carried = false; // Đã đưa địa điểm tức là coi như không mang theo người
     }
   }
 }
 
 /**
- * 把 delta 里的随行/所在地信息施加到 NPC 上(仅在 delta 明确给了才覆盖,last-write-wins)。
- * follow=true 时清掉 location(随行 NPC 无固定所在地);follow=false 时保留/采用 location。
- * location 为空字符串时表示「所在不明」,只清掉旧地点让定点 NPC 不再判在场;
- * **绝不动 follow**——随行角色本就不需要 location,模型可能顺手写空串,
- * 是否离队只能由显式 follow 决定,否则会把随行同伴误判成离场(同时清空两样会大范围误伤)。
- * 与物品 applyPlacement 同构(carried↔follow)。
+ * Áp dụng thông tin đi cùng / nơi ở trong delta lên NPC (chỉ khi delta đưa rõ ràng mới ghi đè, last-write-wins).
+ * Khi follow=true thì xóa location (NPC đi cùng không có nơi ở cố định); khi follow=false thì giữ lại / áp dụng location.
+ * Khi location là chuỗi rỗng biểu thị "không rõ nơi ở", chỉ xóa địa điểm cũ để NPC cố định không còn bị phán đoán là có mặt;
+ * **tuyệt đối không đụng vào follow** —— nhân vật đi cùng vốn không cần location, mô hình có thể tiện tay viết chuỗi rỗng,
+ * việc có rời đội hay không chỉ có thể do follow tường minh quyết định, nếu không sẽ phán đoán nhầm đồng hành đi cùng thành rời trường (xóa trống cả hai cùng lúc sẽ gây hỏng nhầm diện rộng).
+ * Đồng cấu với applyPlacement của vật phẩm (carried↔follow).
  */
 function applyNpcPlacement(n: { follow?: boolean; location?: string }, src: NpcDelta): void {
   if (typeof src.follow === 'boolean') {
     n.follow = src.follow;
-    if (src.follow) n.location = undefined; // 随行 → 无固定所在地
+    if (src.follow) n.location = undefined; // Đi cùng → không có nơi ở cố định
   }
   if (typeof src.location === 'string') {
     const loc = src.location.trim();
     if (loc) {
       n.location = loc;
-      if (n.follow === undefined) n.follow = false; // 给了所在地即视为定点
+      if (n.follow === undefined) n.follow = false; // Đã đưa nơi ở tức là coi như cố định
     } else {
-      // 空字符串=所在不明:清掉旧地点,避免继续判在场。
-      // 不改 follow:模型认为「随行就不必填 location」而顺手写空串时,
-      // 不能因此把随行同伴取消掉(要离队必须显式 follow:false)。
+      // Chuỗi rỗng = không rõ nơi ở: xóa địa điểm cũ, tránh tiếp tục phán đoán là có mặt.
+      // Không sửa follow: khi mô hình cho rằng "đi cùng thì không cần điền location" rồi tiện tay viết chuỗi rỗng,
+      // không thể vì thế mà hủy trạng thái đồng hành đi cùng (muốn rời đội bắt buộc phải follow:false tường minh).
       n.location = undefined;
     }
   }
 }
 
 /**
- * 把 delta 里的「即时层」状态(outfit/condition)与 important 施加到 NPC 上。
- * 与档案层(desc/title)不同:即时层一旦 delta 给了就**直接覆盖**(它本就是当前快照,
- * 不像 desc 那样「实质变化才动」);add 与 update 同样处理,确保换装/受伤能即时刷新。
+ * Áp dụng trạng thái "tầng tức thời" (outfit/condition) và important trong delta lên NPC.
+ * Khác với tầng hồ sơ (desc/title): tầng tức thời một khi delta đã đưa là **ghi đè trực tiếp** (bản thân nó vốn là ảnh chụp hiện tại,
+ * không giống desc là "có thay đổi thực chất mới đụng tới"); add và update xử lý giống nhau, đảm bảo thay đồ / bị thương làm mới tức thì.
  */
 function applyNpcState(n: { outfit?: string; condition?: string; important?: boolean }, src: NpcDelta): void {
   if (typeof src.outfit === 'string') n.outfit = src.outfit.trim() || undefined;
   if (typeof src.condition === 'string') n.condition = src.condition.trim() || undefined;
-  // 旧存档的伤情补丁:未列入 replace 的旧片段保留(新输出已改回全文覆盖)。
+  // Bản vá thương tích của bản lưu cũ: các phân đoạn cũ không nằm trong replace được giữ lại (đầu ra mới đã đổi về ghi đè toàn văn).
   if (src.conditionPatch && hasConditionPatchContent(src.conditionPatch)) {
     n.condition = applyConditionPatch(n.condition, src.conditionPatch);
   }
@@ -841,10 +841,10 @@ function applyNpcState(n: { outfit?: string; condition?: string; important?: boo
 }
 
 /**
- * 把 delta 里的年龄施加到 NPC/主角上。关键:**锚点由系统盖,AI 不填**——
- * delta 带 age 而无 ageTime 时,锚点取该叶子的故事内时间(storyTime),
- * 之后注入/展示按「锚点→当前时间」推算,时间跳跃自动长岁。
- * ageTime 单独出现时也采纳(手动 op / carryover 种子回填锚点用)。add 与 update 同样覆盖。
+ * Áp dụng tuổi tác trong delta lên NPC / nhân vật chính. Then chốt: **mốc neo do hệ thống đóng dấu, AI không điền** ——
+ * khi delta mang age mà không có ageTime, mốc neo lấy thời gian trong truyện của lá đó (storyTime),
+ * sau đó khi tiêm / hiển thị sẽ suy tính theo "mốc neo → thời gian hiện tại", thời gian nhảy vọt tự động tăng tuổi.
+ * Khi ageTime xuất hiện riêng lẻ cũng chấp nhận (dùng cho op thủ công / hạt giống carryover điền lại mốc neo). add và update ghi đè giống nhau.
  */
 function applyAge(n: { age?: string; ageTime?: string }, src: { age?: string; ageTime?: string }, storyTime: string): void {
   if (typeof src.age === 'string') {
@@ -856,12 +856,12 @@ function applyAge(n: { age?: string; ageTime?: string }, src: { age?: string; ag
   }
 }
 
-/** 主角档案是纯覆盖快照;空字符串表示清除旧值。年龄走锚点机制(applyAge)。 */
+/** Hồ sơ nhân vật chính là ảnh chụp ghi đè thuần túy; chuỗi rỗng biểu thị xóa giá trị cũ. Tuổi tác đi theo cơ chế mốc neo (applyAge). */
 function applyProtagonistState(target: BaibaiMemory['protagonist'], src: ProtagonistDelta, storyTime: string): void {
   for (const key of ['gender', 'identity', 'appearance', 'outfit', 'condition'] as const) {
     if (typeof src[key] === 'string') target[key] = src[key]!.trim() || undefined;
   }
-  // 旧存档的伤情补丁:只改指定片段(新输出已改回全文覆盖)。
+  // Bản vá thương tích của bản lưu cũ: chỉ sửa phân đoạn chỉ định (đầu ra mới đã đổi về ghi đè toàn văn).
   if (src.conditionPatch && hasConditionPatchContent(src.conditionPatch)) {
     target.condition = applyConditionPatch(target.condition, src.conditionPatch);
   }
@@ -869,17 +869,17 @@ function applyProtagonistState(target: BaibaiMemory['protagonist'], src: Protago
 }
 
 /**
- * 逐级 upsert 一条场景路径到派生场景树。
- * 遍历 path 的每个前缀确保每级节点存在(缺则创建,父 id 由上一级前缀算出);
- * 仅**最末级**节点采用 desc(setDesc 为真=update 覆盖;否则 add 仅在原本无描述时补)。
- * update 给空串=清除错填的描述,节点保留;add 不带 desc 只建节点。
- * 父子关系由确定性 id 隐式成立,无需 childIds。
+ * Upsert từng cấp một đường dẫn bối cảnh vào cây bối cảnh dẫn xuất.
+ * Duyệt qua mỗi tiền tố của path đảm bảo nút ở mỗi cấp đều tồn tại (thiếu thì tạo mới, id cha tính từ tiền tố cấp ngay trên);
+ * chỉ nút **cấp cuối cùng** mới áp dụng desc (setDesc là true = update ghi đè; nếu không thì add chỉ bù khi vốn chưa có mô tả).
+ * update đưa chuỗi rỗng = xóa mô tả điền sai, giữ lại nút; add không kèm desc chỉ tạo nút.
+ * Quan hệ cha con tự hình thành ngầm qua id tất định, không cần childIds.
  */
 function upsertScenePath(mem: BaibaiMemory, path: string[], desc: string | undefined, setDesc: boolean, t: number): void {
   const clean = normScenePath(path);
   if (!clean.length) return;
   const text = desc?.trim() ?? '';
-  // update 的空描述只用来清除已有节点的描述,不为此新建节点
+  // Mô tả rỗng của update chỉ dùng để xóa mô tả của nút đã có, không vì thế mà tạo nút mới
   if (setDesc && !text && !mem.scenes.some(s => s.id === sceneId(clean))) return;
   for (let depth = 1; depth <= clean.length; depth++) {
     const prefix = clean.slice(0, depth);
@@ -898,7 +898,7 @@ function upsertScenePath(mem: BaibaiMemory, path: string[], desc: string | undef
         updatedAt: t,
       });
     } else if (isLeafLevel && text) {
-      if (setDesc || !node.desc) node.desc = text; // update 覆盖;add 仅补空
+      if (setDesc || !node.desc) node.desc = text; // update ghi đè; add chỉ bù khi trống
       node.updatedAt = t;
     } else if (isLeafLevel && setDesc && desc !== undefined && node.desc) {
       node.desc = undefined;
@@ -907,21 +907,21 @@ function upsertScenePath(mem: BaibaiMemory, path: string[], desc: string | undef
   }
 }
 
-/** 移除一条场景路径及其所有后代(按 id 前缀匹配) */
+/** Gỡ bỏ một đường dẫn bối cảnh cùng toàn bộ hậu duệ của nó (khớp theo tiền tố id) */
 function removeScenePath(mem: BaibaiMemory, path: string[]): void {
   const clean = normScenePath(path);
   if (!clean.length) return;
   const id = sceneId(clean);
-  const childPrefix = `${id}/`; // 后代的 id 形如 `${id}/子级…`
+  const childPrefix = `${id}/`; // ID của hậu duệ có dạng `${id}/cấp con…`
   mem.scenes = mem.scenes.filter(s => s.id !== id && !s.id.startsWith(childPrefix));
 }
 
 /**
- * 重设父级:把 node(及其整棵子树)平移到 newPath。覆盖「加父 / 插中间节点 / 换父」三情形。
- *  - 先沿 newPath 的祖先逐级补建父级(带 descs 描述);
- *  - 再把 node 子树每个节点的 path/id/parentId 整体由 旧前缀 改写成 新前缀。
- * 防御:① node 不存在则跳过(可能已被前面的楼移过,幂等);
- *       ② newPath 穿过 node 自身(把父挂到自己子树下)会成环 → 跳过,保护树结构。
+ * Đặt lại cấp cha: dịch chuyển node (cùng toàn bộ cây con của nó) sang newPath. Bao phủ ba tình huống "thêm cha / chèn nút trung gian / đổi cha".
+ *  - Trước tiên dọc theo tổ tiên của newPath tạo bù từng cấp cha (kèm mô tả descs);
+ *  - Sau đó viết lại tổng thể path/id/parentId của mỗi nút trong cây con node từ tiền tố cũ sang tiền tố mới.
+ * Phòng vệ: ① node không tồn tại thì bỏ qua (có thể đã được tầng phía trước di chuyển rồi, bất biến);
+ *          ② newPath đi xuyên qua chính bản thân node (gắn cha vào dưới cây con của chính mình) sẽ tạo vòng → bỏ qua, bảo vệ cấu trúc cây.
  */
 function reparentScenePath(mem: BaibaiMemory, r: SceneReparent, t: number): void {
   const from = normScenePath(r.node);
@@ -929,14 +929,14 @@ function reparentScenePath(mem: BaibaiMemory, r: SceneReparent, t: number): void
   if (!from.length || !to.length) return;
   const fromId = sceneId(from);
   const node = mem.scenes.find(s => s.id === fromId);
-  if (!node) return; // 幂等:目标节点不存在
+  if (!node) return; // Bất biến: nút mục tiêu không tồn tại
 
   const newId = sceneId(to);
-  if (newId === fromId) return; // 原地不动
-  // 环检测:新路径不能落在被移动子树之内(newId 等于 fromId 或以 fromId/ 为前缀)
+  if (newId === fromId) return; // Đứng nguyên tại chỗ
+  // Phát hiện vòng: đường dẫn mới không được nằm bên trong cây con đang bị di chuyển (newId bằng fromId hoặc có tiền tố là fromId/)
   if (newId.startsWith(`${fromId}/`)) return;
 
-  // 补建 newPath 上「除末段外」的祖先层级(末段即 node 自身,稍后由平移产生)
+  // Tạo bù các cấp tổ tiên "trừ đoạn cuối" trên newPath (đoạn cuối chính là bản thân node, lát nữa do dịch chuyển sinh ra)
   for (let depth = 1; depth < to.length; depth++) {
     const prefix = to.slice(0, depth);
     const id = sceneId(prefix);
@@ -953,10 +953,10 @@ function reparentScenePath(mem: BaibaiMemory, r: SceneReparent, t: number): void
     });
   }
 
-  // 平移子树:旧路径前缀 from → 新路径前缀 to。
-  // 历史版本会把同一叶子里的 add 全部排在 reparent 前执行：用户先改名、再在新名下添加子地点时，
-  // add 会提前隐式建出目标节点，旧实现随后又把源节点直接改成相同 id，制造两个同 id 的场景。
-  // 这里按目标 id 逐节点合并，既修复旧聊天的派生结果，也防止任何畸形 delta 再造重复 id。
+  // Dịch chuyển cây con: tiền tố đường dẫn cũ from → tiền tố đường dẫn mới to.
+  // Phiên bản lịch sử từng xếp toàn bộ add trong cùng một lá chạy trước reparent: khi người dùng đổi tên trước, rồi thêm địa điểm con dưới tên mới,
+  // add sẽ ngầm tạo ra nút mục tiêu trước, bản cài đặt cũ sau đó lại đổi thẳng nút nguồn thành cùng id, tạo ra hai bối cảnh trùng id.
+  // Ở đây gộp từng nút theo id mục tiêu, vừa sửa kết quả dẫn xuất của cuộc trò chuyện cũ, vừa ngăn mọi delta dị dạng tạo lại id trùng lặp.
   const childPrefix = `${fromId}/`;
   const moving = mem.scenes
     .filter(s => s.id === fromId || s.id.startsWith(childPrefix))
@@ -975,7 +975,7 @@ function reparentScenePath(mem: BaibaiMemory, r: SceneReparent, t: number): void
       ?? mem.scenes.find(s => !movingSet.has(s) && s.id === targetId);
 
     if (existing) {
-      // 目标已有节点：合并而非再造同 id。显式改名描述优先；否则只用源描述补目标空值。
+      // Mục tiêu đã có nút: gộp vào thay vì tạo thêm nút trùng id. Ưu tiên mô tả đổi tên tường minh; nếu không chỉ dùng mô tả nguồn bù vào chỗ trống của mục tiêu.
       if (!tail.length && rootDesc) existing.desc = rootDesc;
       else if (!existing.desc && entry.scene.desc) existing.desc = entry.scene.desc;
       existing.createdAt = Math.min(existing.createdAt, entry.scene.createdAt);
@@ -998,13 +998,13 @@ function reparentScenePath(mem: BaibaiMemory, r: SceneReparent, t: number): void
   if (mergedAway.size) mem.scenes = mem.scenes.filter(s => !mergedAway.has(s));
 }
 
-/* ============ 自定义变量:JSON 树 + 路径命令(仿 MVU) ============ */
+/* ============ Biến tùy chỉnh: Cây JSON + Lệnh đường dẫn (mô phỏng MVU) ============ */
 
 function isPlainObj(v: unknown): v is Record<string, JsonValue> {
   return !!v && typeof v === 'object' && !Array.isArray(v);
 }
 
-/** 深拷 JSON 值(避免多处共享引用被就地改)。 */
+/** Sao chép sâu giá trị JSON (tránh việc nhiều nơi dùng chung tham chiếu bị sửa tại chỗ). */
 export function deepCloneJson<T extends JsonValue>(v: T): T {
   if (Array.isArray(v)) return v.map(x => deepCloneJson(x)) as T;
   if (isPlainObj(v)) {
@@ -1015,7 +1015,7 @@ export function deepCloneJson<T extends JsonValue>(v: T): T {
   return v;
 }
 
-/** 深合并:b 覆盖 a(仅对象递归;数组/标量整体取 b)。 */
+/** Gộp sâu: b ghi đè a (chỉ đệ quy với đối tượng; mảng / giá trị vô hướng lấy trọn b). */
 function deepMerge(a: Record<string, JsonValue>, b: Record<string, JsonValue>): Record<string, JsonValue> {
   const out = deepCloneJson(a);
   for (const k of Object.keys(b)) {
@@ -1026,30 +1026,30 @@ function deepMerge(a: Record<string, JsonValue>, b: Record<string, JsonValue>): 
   return out;
 }
 
-/** 合并三层模板成初始状态:global < char < chat(精确层覆盖)。 */
+/** Gộp khuôn mẫu ba tầng thành trạng thái ban đầu: global < char < chat (tầng chính xác hơn ghi đè). */
 export function mergeTemplates(t: Record<VarTier, VarTemplate>): Record<string, JsonValue> {
   return deepMerge(deepMerge(deepCloneJson(t.global.json), t.char.json), t.chat.json);
 }
 
 /**
- * 在**重放起点(seed)**展开变量模板里的 ST 宏({{user}}/{{char}}/… 全套,走 substituteParams)。
- * 深走整棵 JSON:对象的**键**与所有**字符串值**都替换;数字/布尔/null 原样。
+ * Tại **điểm khởi đầu phát lại (seed)** mở rộng các macro ST ({{user}}/{{char}}/… trọn bộ, đi qua substituteParams) bên trong khuôn mẫu biến.
+ * Duyệt sâu toàn bộ cây JSON: cả **khóa** của đối tượng lẫn mọi **giá trị chuỗi** đều được thay thế; số/boolean/null giữ nguyên.
  *
- * 为何只在 seed 展开(而非注入时):宏只可能来自用户填的模板;AI 与手动命令产出的永远是真实值。
- * 故把「字面模板」在合并成初始状态的那一刻替换成真实名,之后 fold 各楼 VarOps 全程真实名、
- * 天然对齐——无需把 AI 输出的真实名反向映射回 {{user}}(那会因同名/群聊/改名而脆)。
- * 模板本身仍存字面宏(saveMemory 只存模板,mem.vars 是派生缓存不落盘),故全局变量跨角色可移植:
- * 切角色后重新 seed 即得新角色名。ST 未就绪 / 无 substituteParams 时原样返回(降级不炸)。
+ * Tại sao chỉ mở rộng ở seed (chứ không phải lúc tiêm): macro chỉ có thể đến từ khuôn mẫu người dùng điền; thứ do AI và lệnh thủ công sinh ra luôn là giá trị thực.
+ * Do đó thay thế "khuôn mẫu nguyên văn" thành tên thật ngay vào khoảnh khắc gộp thành trạng thái ban đầu, sau đó gấp VarOps các tầng toàn trình đều là tên thật,
+ * tự nhiên khớp nhau —— không cần ánh xạ ngược tên thật do AI xuất ra về lại {{user}} (việc đó rất dễ gãy vì trùng tên / trò chuyện nhóm / đổi tên).
+ * Bản thân khuôn mẫu vẫn lưu macro nguyên văn (saveMemory chỉ lưu khuôn mẫu, mem.vars là bộ nhớ đệm dẫn xuất không lưu đĩa), nên biến toàn cục có tính di động xuyên nhân vật:
+ * sau khi chuyển nhân vật seed lại là có ngay tên nhân vật mới. Khi ST chưa sẵn sàng / không có substituteParams thì trả về nguyên bản (hạ cấp không nổ).
  */
 export function expandVarMacros(json: Record<string, JsonValue>): Record<string, JsonValue> {
   const sub = getContext()?.substituteParams;
-  if (typeof sub !== 'function') return json; // 降级:拿不到宏展开就用字面值
+  if (typeof sub !== 'function') return json; // Hạ cấp: không lấy được mở rộng macro thì dùng giá trị chữ
   const walk = (v: JsonValue): JsonValue => {
     if (typeof v === 'string') return sub(v);
     if (Array.isArray(v)) return v.map(walk);
     if (isPlainObj(v)) {
       const out: Record<string, JsonValue> = {};
-      for (const k of Object.keys(v)) out[sub(k)] = walk(v[k]); // 键也展开
+      for (const k of Object.keys(v)) out[sub(k)] = walk(v[k]); // Khóa cũng mở rộng
       return out;
     }
     return v;
@@ -1057,7 +1057,7 @@ export function expandVarMacros(json: Record<string, JsonValue>): Record<string,
   return walk(json) as Record<string, JsonValue>;
 }
 
-/** 解析路径成段:"势力.魔法议会[0].声望" → ['势力','魔法议会',0,'声望'];''→[]。 */
+/** Phân tích đường dẫn thành các đoạn: "Thế lực.Hội đồng[0].Danh vọng" → ['Thế lực','Hội đồng',0,'Danh vọng']; ''→[]. */
 function parsePath(path: string): (string | number)[] {
   const segs: (string | number)[] = [];
   for (const part of String(path ?? '').split('.')) {
@@ -1084,7 +1084,7 @@ function removeChild(parent: any, key: string | number): void {
   else delete parent[String(key)];
 }
 
-/** 定位 path 的父容器与末段键;create=true 自动创建缺失中间层(下一段是数字→数组,否则对象)。 */
+/** Định vị vật chứa cha và khóa đoạn cuối của path; create=true tự động tạo tầng trung gian bị thiếu (đoạn tiếp theo là số → mảng, nếu không → đối tượng). */
 function locate(root: Record<string, JsonValue>, segs: (string | number)[], create: boolean): { parent: any; last: string | number } | null {
   let cur: any = root;
   for (let i = 0; i < segs.length - 1; i++) {
@@ -1100,11 +1100,11 @@ function locate(root: Record<string, JsonValue>, segs: (string | number)[], crea
   return { parent: cur, last: segs[segs.length - 1] };
 }
 
-/** 施加一条路径命令到 JSON 根(就地改)。坏命令由调用方 try/catch 兜住。 */
+/** Áp dụng một lệnh đường dẫn vào gốc JSON (sửa tại chỗ). Lệnh hỏng do bên gọi try/catch đỡ hộ. */
 function applyVarOp(root: Record<string, JsonValue>, op: VarOp): void {
   const segs = parsePath(op.path);
 
-  // 根(path=''):set 用 value 整体替换根内容;assign/remove 按 key 操作根对象
+  // Gốc (path=''): set dùng value thay thế tổng thể nội dung gốc; assign/remove thao tác đối tượng gốc theo key
   if (segs.length === 0) {
     if (op.op === 'set' && isPlainObj(op.value)) {
       for (const k of Object.keys(root)) delete root[k];
@@ -1146,7 +1146,7 @@ function applyVarOp(root: Record<string, JsonValue>, op: VarOp): void {
     case 'remove': {
       const container = getChild(parent, last);
       if (op.key === undefined) {
-        removeChild(parent, last); // 删 path 本身
+        removeChild(parent, last); // Xóa bản thân path
       } else if (Array.isArray(container)) {
         if (typeof op.key === 'number') container.splice(op.key, 1);
         else { const i = container.findIndex(x => x === op.key); if (i >= 0) container.splice(i, 1); }
@@ -1159,15 +1159,15 @@ function applyVarOp(root: Record<string, JsonValue>, op: VarOp): void {
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-/** 依序施加一批命令;单条坏命令跳过不致命。 */
+/** Áp dụng tuần tự một loạt lệnh; một lệnh hỏng đơn lẻ được bỏ qua không gây chết chương trình. */
 export function applyVarOps(root: Record<string, JsonValue>, ops: VarOp[] | undefined): void {
   if (!ops?.length) return;
   for (const op of ops) {
-    try { applyVarOp(root, op); } catch { /* 坏命令跳过 */ }
+    try { applyVarOp(root, op); } catch { /* Lệnh hỏng bỏ qua */ }
   }
 }
 
-/** 变量值 → 紧凑单行串(对象/数组 JSON 化;折叠换行;超长截断)。供旁注/面板展示。 */
+/** Giá trị biến → chuỗi đơn dòng gọn gàng (đối tượng/mảng chuyển thành JSON; gộp xuống dòng; quá dài thì cắt ngắn). Dùng cho chú thích bên lề / bảng hiển thị. */
 function fmtVarValue(v: JsonValue | undefined): string {
   if (v === undefined) return '';
   let s: string;
@@ -1178,21 +1178,21 @@ function fmtVarValue(v: JsonValue | undefined): string {
 }
 
 /**
- * 把一条变量命令描述成可读的「主文本 + 副文本」——楼层正文旁注与楼内面板**共用同一来源**,
- * 保证两处措辞一致。主文本=被改的路径(assign/remove 带 key 时拼到尾),副文本=值/增量。
+ * Mô tả một lệnh biến thành "văn bản chính + văn bản phụ" dễ đọc —— chú thích chính văn tầng lầu và bảng trong tầng **dùng chung cùng một nguồn**,
+ * đảm bảo câu chữ hai nơi nhất quán. Văn bản chính = đường dẫn bị sửa (khi assign/remove có key thì ghép vào cuối), văn bản phụ = giá trị / lượng tăng thêm.
  */
 export function describeVarOp(op: VarOp): { text: string; sub?: string } {
-  const path = op.path || '(根)';
+  const path = op.path || '(Gốc)';
   switch (op.op) {
     case 'set':
-      return { text: path, sub: `设为 ${fmtVarValue(op.value)}` };
+      return { text: path, sub: `đặt thành ${fmtVarValue(op.value)}` };
     case 'add': {
       const d = typeof op.delta === 'number' ? op.delta : 0;
       return { text: path, sub: `${d >= 0 ? '+' : ''}${d}` };
     }
     case 'assign': {
       const key = op.key !== undefined ? String(op.key) : '';
-      const full = key ? (op.path ? `${op.path}.${key}` : key) : `${path}[追加]`;
+      const full = key ? (op.path ? `${op.path}.${key}` : key) : `${path}[nối thêm]`;
       return { text: full, sub: `= ${fmtVarValue(op.value)}` };
     }
     case 'remove': {
@@ -1205,13 +1205,13 @@ export function describeVarOp(op: VarOp): { text: string; sub?: string } {
 }
 
 /**
- * 把本楼变量命令渲染成 <bbs_vars> 旁注的多行文本(每行一条,带动词前缀)。
- * 与 fmtItemLogInline 同角色:让窗口内全文楼层的主模型看到「本楼已改过这些变量」,防重复改。
- * 空则返回空串(调用方据此不写块)。
+ * Kết xuất lệnh biến của tầng này thành văn bản nhiều dòng cho chú thích <bbs_vars> (mỗi dòng một mục, kèm tiền tố động từ).
+ * Cùng vai trò với fmtItemLogInline: giúp mô hình chính ở các tầng toàn văn trong cửa sổ thấy được "tầng này đã sửa những biến này rồi", chống sửa lặp lại.
+ * Trống thì trả về chuỗi rỗng (bên gọi dựa vào đó không ghi khối).
  */
 export function fmtVarOpsInline(ops: VarOp[] | undefined): string {
   if (!ops?.length) return '';
-  const verb: Record<VarOp['op'], string> = { set: '设定', add: '变更', assign: '新增', remove: '删除' };
+  const verb: Record<VarOp['op'], string> = { set: 'Thiết lập', add: 'Thay đổi', assign: 'Thêm mới', remove: 'Xóa' };
   return ops
     .map(op => {
       const { text, sub } = describeVarOp(op);
@@ -1220,7 +1220,7 @@ export function fmtVarOpsInline(ops: VarOp[] | undefined): string {
     .join('\n');
 }
 
-/** 校验 AI 返回的命令数组 → 干净的 VarOp[](丢弃非法 op)。 */
+/** Kiểm tra mảng lệnh do AI trả về → VarOp[] sạch (hủy bỏ các op phi pháp). */
 export function finalizeVarOps(raw: unknown): VarOp[] {
   if (!Array.isArray(raw)) return [];
   const out: VarOp[] = [];
@@ -1246,41 +1246,41 @@ function applyStoredDeltaTo(mem: BaibaiMemory, d: StoredDelta, leaf: { id: strin
   };
   d = cleanStoredDelta(d);
 
-  // 覆盖型:空串忽略
+  // Kiểu ghi đè: bỏ qua chuỗi rỗng
   if (typeof d.time === 'string' && d.time.trim()) mem.state.time = d.time.trim();
   if (typeof d.location === 'string' && d.location.trim()) {
     mem.state.location = d.location.trim();
-    // location 一变,locationPath 跟随同一条 delta:AI 给了就采用,没给则清空(避免 path 比 location 旧)
+    // Hễ location thay đổi, locationPath đi theo cùng một delta: AI đưa thì áp dụng, không đưa thì xóa trống (tránh việc path cũ hơn location)
     const lp = normScenePath(d.locationPath);
     mem.state.locationPath = lp.length ? lp : undefined;
   } else if (d.locationPath !== undefined) {
-    // 少见:只更新 path 不动 location(手动场景);采用或清空
+    // Hiếm gặp: chỉ cập nhật path không đụng location (bối cảnh thủ công); áp dụng hoặc xóa trống
     const lp = normScenePath(d.locationPath);
     mem.state.locationPath = lp.length ? lp : undefined;
   }
   if (d.protagonist) applyProtagonistState(mem.protagonist, d.protagonist, logTime || mem.state.time);
 
-  // 局势卡:undefined=不动;null=清空;对象=整卡覆盖,并盖上本叶子的故事内时间
+  // Thẻ cục diện: undefined = giữ nguyên; null = xóa trống; đối tượng = ghi đè cả thẻ, và đóng dấu thời gian trong truyện của lá này
   if (d.sceneFocus !== undefined) {
     mem.state.sceneFocus = d.sceneFocus
       ? { ...d.sceneFocus, updatedTime: logTime || mem.state.time || undefined }
       : null;
   }
 
-  // 物品(一切计数:add 默认 +1,带符号累加,数量 ≤0 自动移除)
+  // Vật phẩm (mọi thứ đều đếm số lượng: add mặc định +1, cộng dồn có dấu, số lượng ≤0 tự động gỡ bỏ)
   if (d.items) {
     for (const add of d.items.add ?? []) {
       if (!add?.name?.trim()) continue;
       const id = itemId(add.name);
       const ex = mem.items.find(i => i.id === id);
-      const step = typeof add.qty === 'number' ? add.qty : 1; // 缺数量默认 1
+      const step = typeof add.qty === 'number' ? add.qty : 1; // Thiếu số lượng mặc định là 1
       if (ex) {
         const before = ex.qty;
-        const next = (ex.qty ?? 1) + step; // 原不计数旧数据按 1 起算
+        const next = (ex.qty ?? 1) + step; // Dữ liệu cũ vốn không đếm số lượng thì tính bắt đầu từ 1
         if (add.desc) ex.desc = add.desc;
-        applyPlacement(ex, add); // 随身/地点(明确给了才覆盖)
+        applyPlacement(ex, add); // Mang theo người / địa điểm (đưa rõ ràng mới ghi đè)
         if (next <= 0) {
-          mem.items.splice(mem.items.indexOf(ex), 1); // 减到 0 → 移除
+          mem.items.splice(mem.items.indexOf(ex), 1); // Trừ về 0 → gỡ bỏ
           log('remove', ex.name, before, 0);
         } else {
           ex.qty = next;
@@ -1300,18 +1300,18 @@ function applyStoredDeltaTo(mem: BaibaiMemory, d: StoredDelta, leaf: { id: strin
         mem.items.push(it);
         log('add', add.name.trim(), undefined, step);
       }
-      // step ≤0 且物品不存在:无可减,忽略
+      // step ≤0 và vật phẩm không tồn tại: không có gì để trừ, bỏ qua
     }
     for (const upd of d.items.update ?? []) {
       if (!upd?.name?.trim()) continue;
       const it = mem.items.find(i => i.id === itemId(upd.name));
-      if (!it) continue; // 容错:更新不存在的项则忽略
+      if (!it) continue; // Chịu lỗi: cập nhật mục không tồn tại thì bỏ qua
       const before = it.qty;
       if (upd.desc) it.desc = upd.desc;
-      applyPlacement(it, upd); // 随身/地点变更(移动物品)
+      applyPlacement(it, upd); // Thay đổi mang theo người / địa điểm (di chuyển vật phẩm)
       if (typeof upd.qty === 'number') {
         if (upd.qty <= 0) {
-          mem.items.splice(mem.items.indexOf(it), 1); // 设为 ≤0 → 移除
+          mem.items.splice(mem.items.indexOf(it), 1); // Đặt thành ≤0 → gỡ bỏ
           log('remove', it.name, before, 0);
           continue;
         }
@@ -1330,8 +1330,8 @@ function applyStoredDeltaTo(mem: BaibaiMemory, d: StoredDelta, leaf: { id: strin
     }
   }
 
-  // 场景 / 地点。旧的 AI/历史分桶保持 add → update → reparent → remove，确保向后兼容；
-  // 新版 UI 手动操作统一写入 ops，并在旧分桶之后严格按用户操作顺序重放。
+  // Bối cảnh / Địa điểm. Các nhóm AI/lịch sử cũ giữ nguyên thứ tự add → update → reparent → remove, đảm bảo tương thích ngược;
+  // thao tác thủ công trên UI bản mới thống nhất ghi vào ops, và phát lại nghiêm ngặt theo thứ tự thao tác của người dùng sau các nhóm cũ.
   if (d.scenes) {
     for (const a of d.scenes.add ?? []) upsertScenePath(mem, a.path, a.desc, false, t);
     for (const u of d.scenes.update ?? []) upsertScenePath(mem, u.path, u.desc, true, t);
@@ -1345,20 +1345,20 @@ function applyStoredDeltaTo(mem: BaibaiMemory, d: StoredDelta, leaf: { id: strin
     }
   }
 
-  // NPC(指令型:add 新登场 / update 改身份位置 / remove 退场)。施加序:add → update → remove。
-  // update 对不存在的名字按 upsert 创建,兼容迁移后名册为空、但后续摘要误产 update 的历史数据。
+  // NPC (kiểu chỉ thị: add mới xuất hiện / update sửa thân phận vị trí / remove rút lui). Thứ tự áp dụng: add → update → remove.
+  // update đối với tên chưa tồn tại sẽ tạo mới theo kiểu upsert, tương thích với dữ liệu lịch sử sau khi di chuyển danh sách bị trống nhưng tóm tắt sau đó lại sinh nhầm update.
   if (d.npcs) {
-    // 年龄锚点用「本叶子的故事内时间」;叶子无时间则退当前状态时间(delta.time 已在上方生效)
+    // Mốc neo tuổi tác dùng "thời gian trong truyện của lá này"; lá không có thời gian thì lùi về thời gian trạng thái hiện tại (delta.time đã có hiệu lực ở phía trên)
     const npcTime = logTime || mem.state.time;
     for (const add of d.npcs.add ?? []) {
       if (!add?.name?.trim()) continue;
       const id = npcId(add.name);
       const ex = mem.npcs.find(n => n.id === id);
       if (ex) {
-        // 已存在:档案层(gender/title/desc/性格/关系)add 视作补全(仅填空,不覆盖既有);
-        // 即时层(outfit/condition/important)仍直接覆盖(它本就是当前快照),再施加位置。
-        // 年龄同为「仅填空」:重复 add 多是复述旧信息,若覆盖会把锚点错误刷新到当前时间(冻龄);
-        // 真正的年龄变化(过生日/纠正)走 update。
+        // Đã tồn tại: tầng hồ sơ (gender/title/desc/tính cách/quan hệ) add coi như bổ sung (chỉ điền vào chỗ trống, không ghi đè cái đã có);
+        // tầng tức thời (outfit/condition/important) vẫn ghi đè trực tiếp (bản thân nó vốn là ảnh chụp hiện tại), rồi áp dụng vị trí.
+        // Tuổi tác cũng là "chỉ điền vào chỗ trống": add trùng lặp đa phần là thuật lại thông tin cũ, nếu ghi đè sẽ làm mới nhầm mốc neo sang thời gian hiện tại (đóng băng tuổi);
+        // thay đổi tuổi thực sự (qua sinh nhật / đính chính) đi qua update.
         if (add.gender && !ex.gender) ex.gender = add.gender.trim();
         if (add.age && !ex.age) applyAge(ex, add, npcTime);
         if (add.relation && !ex.relation) ex.relation = add.relation.trim();
@@ -1409,15 +1409,15 @@ function applyStoredDeltaTo(mem: BaibaiMemory, d: StoredDelta, leaf: { id: strin
         };
         mem.npcs.push(n);
       }
-      // 档案层空字符串=明确清除(纠正错填/手动删空),省略=保持;旧的 if (upd.x) 把空串当没写,永远清不掉
+      // Chuỗi rỗng ở tầng hồ sơ = xóa rõ ràng (đính chính điền sai / xóa trống thủ công), lược bỏ = giữ nguyên; if (upd.x) kiểu cũ coi chuỗi rỗng như chưa viết, không bao giờ xóa được
       for (const key of ['gender', 'relation', 'ties', 'title', 'desc', 'personality'] as const) {
         const v = upd[key];
         if (typeof v === 'string') n[key] = v.trim() || undefined;
       }
-      applyAge(n, upd, npcTime); // 年龄覆盖 + 锚点自动刷新(过生日/纠正);空串同样清除
-      applyNpcAffinity(n, upd); // 两侧独立覆盖,不做累加或自动联动
-      applyNpcState(n, upd); // 即时层(着装/状态/重要性)覆盖刷新
-      applyNpcPlacement(n, upd); // 随行/所在地变更(NPC 移动)
+      applyAge(n, upd, npcTime); // Ghi đè tuổi + tự động làm mới mốc neo (qua sinh nhật / đính chính); chuỗi rỗng cũng xóa sạch
+      applyNpcAffinity(n, upd); // Hai phía ghi đè độc lập, không cộng dồn hay liên động tự động
+      applyNpcState(n, upd); // Tầng tức thời (trang phục/trạng thái/tầm quan trọng) ghi đè làm mới
+      applyNpcPlacement(n, upd); // Thay đổi đi cùng / nơi ở (NPC di chuyển)
       n.updatedAt = t;
     }
     for (const name of d.npcs.remove ?? []) {
@@ -1427,12 +1427,12 @@ function applyStoredDeltaTo(mem: BaibaiMemory, d: StoredDelta, leaf: { id: strin
     }
   }
 
-  // 计划 / 悬念
+  // Kế hoạch / Nghi vấn
   if (d.plans) {
     (d.plans.add ?? []).forEach((add, addIdx) => {
       if (!add?.content?.trim()) return;
       const id = planId(leaf.id, addIdx);
-      if (mem.plans.some(p => p.id === id)) return; // 同叶子重放幂等
+      if (mem.plans.some(p => p.id === id)) return; // Phát lại cùng một lá bất biến
       const plan: MemPlan = {
         id,
         kind: add.kind === 'suspense' ? 'suspense' : 'plan',
@@ -1449,14 +1449,14 @@ function applyStoredDeltaTo(mem: BaibaiMemory, d: StoredDelta, leaf: { id: strin
       if (p) {
         p.status = 'resolved';
         p.resolvedAt = t;
-        // 携带「怎么了结/为什么」;裸字符串旧数据无此信息,保持不写
+        // Mang theo "khép lại thế nào / tại sao"; dữ liệu cũ dạng chuỗi trần không có thông tin này, giữ nguyên không ghi
         if (typeof r !== 'string') {
           p.outcome = r.outcome;
           p.resolvedReason = r.reason?.trim() || undefined;
         }
       }
     }
-    // 改期/暂缓:只整体更新仍存在事项的 content/targetTime;targetTime 空串=撤销旧期限而新期未定
+    // Dời lịch / tạm hoãn: chỉ cập nhật tổng thể content/targetTime của mục vẫn đang tồn tại; targetTime chuỗi rỗng = hủy bỏ thời hạn cũ mà thời hạn mới chưa định
     for (const u of d.plans.update ?? []) {
       const p = mem.plans.find(x => x.id === u.id);
       if (!p) continue;
@@ -1468,7 +1468,7 @@ function applyStoredDeltaTo(mem: BaibaiMemory, d: StoredDelta, leaf: { id: strin
       if (p) {
         p.status = 'open';
         p.resolvedAt = undefined;
-        p.outcome = undefined; // 重开 → 清掉上次了结的结论
+        p.outcome = undefined; // Mở lại → xóa kết luận của lần khép lại trước
         p.resolvedReason = undefined;
       }
     }
@@ -1478,12 +1478,12 @@ function applyStoredDeltaTo(mem: BaibaiMemory, d: StoredDelta, leaf: { id: strin
     }
   }
 
-  // 生活小档案:add(去重)→ update → archive → remove。id 确定性:detail:${leafId}#序号,重放幂等
+  // Hồ sơ nhỏ đời sống: add (khử trùng) → update → archive → remove. id tất định: detail:${leafId}#số thứ tự, phát lại bất biến
   if (d.lifeDetails) {
     (d.lifeDetails.add ?? []).forEach((add, i) => {
       const text = add.text?.trim();
       if (!text) return;
-      // 同人物的同规范化文本已存在 → 不产生重复行;但把新带的 topics/anchors/until 合并进既有条(补充信息不丢)
+      // Cùng một nhân vật và văn bản chuẩn hóa giống nhau đã tồn tại → không tạo dòng trùng lặp; nhưng gộp topics/anchors/until mới mang theo vào mục đã có (không làm mất thông tin bổ sung)
       const dup = mem.lifeDetails.find(x => sameLifeDetail(x, add));
       if (dup) {
         if (add.topics?.length) dup.topics = add.topics.slice(0, 3);
@@ -1510,7 +1510,7 @@ function applyStoredDeltaTo(mem: BaibaiMemory, d: StoredDelta, leaf: { id: strin
       if (upd.text?.trim()) det.text = upd.text.trim();
       if (upd.topics) det.topics = upd.topics.slice(0, 3);
       if (upd.anchors) det.anchors = upd.anchors.slice(0, 5);
-      if (upd.until !== undefined) det.until = upd.until.trim() || undefined; // 空串=清除时效
+      if (upd.until !== undefined) det.until = upd.until.trim() || undefined; // Chuỗi rỗng = xóa thời hiệu
       if (upd.tier) det.tier = upd.tier;
     }
     for (const id of d.lifeDetails.archive ?? []) {
@@ -1523,48 +1523,48 @@ function applyStoredDeltaTo(mem: BaibaiMemory, d: StoredDelta, leaf: { id: strin
     }
   }
 
-  // 了解清单:有序日志按原顺序施加,id 按操作序号确定,重放幂等
+  // Danh sách hiểu biết: nhật ký có thứ tự áp dụng theo nguyên thứ tự, id xác định theo số thứ tự thao tác, phát lại bất biến
   if (d.knowledge?.length) applyKnowledgeOps(mem.knowledge, d.knowledge, { id: leaf.id, createdAt: t, time: logTime });
 
-  // 自定义变量:按顺序把本楼路径命令施加到 JSON 状态
+  // Biến tùy chỉnh: áp dụng tuần tự các lệnh đường dẫn của tầng này vào trạng thái JSON
   if (d.varOps?.length) applyVarOps(mem.vars, d.varOps);
 }
 
 /**
- * 从 chat 重放出结构化状态。
- * 按**楼层物理顺序**扫 chat,对每条有效叶子 fold 其 delta(楼层序即叙事序,删消息后天然正确)。
- * 压缩节点只压文本、不带 delta、不参与重放。
- * @param upToExclusive 仅重放索引 < 该值的楼层(截断到被分析楼之前;省略=全部)。
+ * Phát lại trạng thái có cấu trúc từ chat.
+ * Quét chat theo **thứ tự vật lý của tầng lầu**, gấp (fold) delta cho từng lá hợp lệ (thứ tự tầng chính là thứ tự tự sự, sau khi xóa tin nhắn tự nhiên vẫn đúng).
+ * Nút nén chỉ nén văn bản, không mang delta, không tham gia phát lại.
+ * @param upToExclusive Chỉ phát lại các tầng có chỉ mục < giá trị này (cắt đến trước tầng đang phân tích; lược bỏ = toàn bộ).
  */
 export function deriveMemory(
   chat: STMessage[] | null,
   upToExclusive?: number,
 ): Pick<BaibaiMemory, 'state' | 'protagonist' | 'items' | 'plans' | 'scenes' | 'npcs' | 'itemLog' | 'lifeDetails' | 'knowledge' | 'vars'> {
   const mem = createEmptyMemory();
-  // 变量从三层合并模板起算(无 chat 也返回初始状态);seed 时展开模板里的 ST 宏({{user}} 等)
+  // Biến tính bắt đầu từ khuôn mẫu gộp ba tầng (không có chat cũng trả về trạng thái ban đầu); khi seed mở rộng các macro ST ({{user}} v.v.) trong khuôn mẫu
   mem.vars = expandVarMacros(mergeTemplates(memory.varTemplates));
   if (!chat) return { state: mem.state, protagonist: mem.protagonist, items: mem.items, plans: mem.plans, scenes: mem.scenes, npcs: mem.npcs, itemLog: mem.itemLog, lifeDetails: mem.lifeDetails, knowledge: mem.knowledge, vars: mem.vars };
   const end = typeof upToExclusive === 'number' ? Math.min(upToExclusive, chat.length) : chat.length;
   for (let i = 0; i < end; i++) {
-    if (chat[i]?.extra?.bbs_omit) continue; // 番外楼:不参与派生重放
+    if (chat[i]?.extra?.bbs_omit) continue; // Tầng ngoại truyện: không tham gia phát lại dẫn xuất
     if (!leafValid(chat[i])) continue;
     const leaf = getLeaf(chat[i])!;
-    // 日志用「故事内时间」:结束时间优先(本段最后时刻),缺则起始,再缺旧 timeLabel,最后空串
+    // Nhật ký dùng "thời gian trong truyện": ưu tiên thời gian kết thúc (thời khắc cuối của đoạn này), thiếu thì lấy bắt đầu, thiếu nữa lấy timeLabel cũ, cuối cùng là chuỗi rỗng
     const time = optText(leaf.timeEnd) || optText(leaf.timeStart) || optText(leaf.timeLabel) || '';
     applyStoredDeltaTo(mem, leaf.delta, { id: leaf.id, createdAt: leaf.createdAt, time });
   }
-  // 只留最近若干条变动(注入/喂模型够用即可,省 token)
+  // Chỉ giữ lại một số mục biến động gần nhất (đủ dùng cho tiêm / nạp mô hình là được, tiết kiệm token)
   if (mem.itemLog.length > ITEM_LOG_KEEP) mem.itemLog = mem.itemLog.slice(-ITEM_LOG_KEEP);
   return { state: mem.state, protagonist: mem.protagonist, items: mem.items, plans: mem.plans, scenes: mem.scenes, npcs: mem.npcs, itemLog: mem.itemLog, lifeDetails: mem.lifeDetails, knowledge: mem.knowledge, vars: mem.vars };
 }
 
-/** 变动日志保留的最近条数(注入与喂摘要共用)。 */
+/** Số mục gần nhất được giữ lại của nhật ký biến động (dùng chung cho tiêm và nạp tóm tắt). */
 export const ITEM_LOG_KEEP = 8;
 
 /**
- * 算「单条 delta 相对给定先前物品状态」产生的物品变动条目(供写进该楼正文)。
- * 复用 applyStoredDeltaTo:用先前物品播种一个临时 mem,只施加这一条 delta,
- * 捕获其 itemLog 即本楼净变动(带 from→to)。time 由调用方传入(本楼故事结束时间)。
+ * Tính các mục biến động vật phẩm do "một delta đơn lẻ so với trạng thái vật phẩm trước đó đã cho" tạo ra (để ghi vào chính văn tầng đó).
+ * Tái sử dụng applyStoredDeltaTo: gieo một mem tạm thời bằng các vật phẩm trước đó, chỉ áp dụng một delta này,
+ * bắt lấy itemLog của nó chính là biến động ròng của tầng này (kèm from→to). time do bên gọi truyền vào (thời gian kết thúc câu chuyện của tầng này).
  */
 export function itemChangesOf(
   delta: StoredDelta,
@@ -1572,28 +1572,28 @@ export function itemChangesOf(
   time: string,
 ): ItemLogEntry[] {
   const mem = createEmptyMemory();
-  // 深拷贝先前物品作起点(避免污染调用方);只关心 items,plans/state 不影响 itemLog
+  // Sao chép sâu các vật phẩm trước đó làm điểm xuất phát (tránh làm bẩn bên gọi); chỉ quan tâm items, plans/state không ảnh hưởng itemLog
   mem.items = priorItems.map(i => ({ ...i }));
   applyStoredDeltaTo(mem, { items: delta.items }, { id: 'tmp', createdAt: 0, time });
   return mem.itemLog;
 }
 
-/* ============ <bbs_items> 旁注 ↔ delta 反向同步(用户改正文) ============ */
+/* ============ Chú thích <bbs_items> ↔ delta đồng bộ ngược (người dùng sửa chính văn) ============ */
 
 /**
- * 解析 <bbs_items> 块的「动词式」多行文本 → 带符号物品增量。
- * 每行:`<动词> <名字> [数量]`。动词:获得=+,消耗/失去=-。缺数量默认 1。
- * 名字可含空格(取动词后、末尾可选数字前的全部);非法行忽略。
- * 返回 add 形式(qty 带符号,复用 applyStoredDeltaTo 的带符号累加 + ≤0 移除语义)。
+ * Phân tích văn bản nhiều dòng "kiểu động từ" của khối <bbs_items> → lượng tăng thêm vật phẩm có dấu.
+ * Mỗi dòng: `<động từ> <tên> [số lượng]`. Động từ: Nhận=+, Tiêu hao/Mất=-. Thiếu số lượng mặc định là 1.
+ * Tên có thể chứa khoảng trắng (lấy toàn bộ phần sau động từ và trước con số tùy chọn ở cuối); dòng không hợp lệ bỏ qua.
+ * Trả về dạng add (qty có dấu, tái sử dụng ngữ nghĩa cộng dồn có dấu + ≤0 gỡ bỏ của applyStoredDeltaTo).
  */
 export function parseItemLogText(text: string): { name: string; qty: number }[] {
   const out: { name: string; qty: number }[] = [];
   for (const raw of String(text ?? '').split('\n')) {
     const line = raw.trim();
     if (!line) continue;
-    const m = line.match(/^(获得|消耗|失去)\s+(.+?)(?:\s+(\d+))?$/);
+    const m = line.match(/^(Nhận|Tiêu hao|Mất|\u83b7\u5f97|\u6d88\u8017|\u5931\u53bb)\s+(.+?)(?:\s+(\d+))?$/);
     if (!m) continue;
-    const sign = m[1] === '获得' ? 1 : -1;
+    const sign = m[1] === 'Nhận' || m[1] === '\u83b7\u5f97' ? 1 : -1;
     const name = m[2].trim();
     if (!name) continue;
     const n = m[3] ? Number(m[3]) : 1;
@@ -1604,34 +1604,34 @@ export function parseItemLogText(text: string): { name: string; qty: number }[] 
 }
 
 /**
- * 用户编辑了某楼正文后,把其中 <bbs_items> 旁注的改动反向同步回该楼叶子的 delta.items。
+ * Sau khi người dùng chỉnh sửa chính văn một tầng, đồng bộ ngược thay đổi của chú thích <bbs_items> trong đó về lại delta.items của lá tầng đó.
  *
- * 一致性判定走「同一渲染管线」:把叶子现有 delta 渲染成规范旁注,与正文里的旁注比对;
- * 相等 → 用户没动物品(只改了别处正文)→ 跳过,不碰 delta、不重写正文(避免误改/抖动)。
- * 不等 → 以正文为准:解析成带符号 add,**替换**该叶子 delta 的 items 部分(time/location/plans 保留),
- *        重算派生、删坏链,并把正文旁注重写成规范格式(顺手清掉用户的非规范写法),最后落盘。
+ * Phán đoán tính nhất quán đi qua "cùng một đường ống kết xuất": kết xuất delta hiện có của lá thành chú thích chuẩn, đem đối chiếu với chú thích trong chính văn;
+ * Bằng nhau → người dùng không đụng vào vật phẩm (chỉ sửa chính văn chỗ khác) → bỏ qua, không đụng delta, không ghi lại chính văn (tránh sửa nhầm / rung lắc).
+ * Không bằng → lấy chính văn làm chuẩn: phân tích thành add có dấu, **thay thế** phần items trong delta của lá đó (giữ lại time/location/plans),
+ *              tính lại dữ liệu dẫn xuất, xóa chuỗi hỏng, và viết lại chú thích chính văn thành định dạng chuẩn (tiện tay dọn sạch cách viết không chuẩn của người dùng), cuối cùng lưu đĩa.
  *
- * 注:旁注不承载描述/数量绝对值,反解析按「增量」表达;故用户改旁注会丢失原 delta 里的 desc(可接受,
- * 描述请走物品列表编辑)。无 <bbs_items> 块(用户删了整块)→ 视作清空该楼物品变动。
- * 返回是否发生了改写。
+ * Lưu ý: chú thích không mang mô tả / giá trị tuyệt đối của số lượng, phân tích ngược biểu đạt theo "lượng tăng thêm"; nên người dùng sửa chú thích sẽ làm mất desc trong delta gốc (chấp nhận được,
+ * muốn sửa mô tả xin vào danh sách vật phẩm chỉnh sửa). Không có khối <bbs_items> (người dùng xóa cả khối) → coi như xóa trống biến động vật phẩm của tầng đó.
+ * Trả về có xảy ra ghi lại hay không.
  */
 export function syncItemLogFromMessage(index: number): boolean {
   const chat = getContext()?.chat;
   const leaf = getLeaf(chat?.[index]);
   if (!chat || !leaf || !leaf.delta) return false;
 
-  // 该楼之前的物品状态(用于把 delta 渲染成与正文同口径的旁注做比对)
+  // Trạng thái vật phẩm trước tầng đó (dùng để kết xuất delta thành chú thích cùng tiêu chuẩn với chính văn để đối chiếu)
   const prior = deriveMemory(chat, index).items;
   const time = optText(leaf.timeEnd) || optText(leaf.timeStart) || optText(leaf.timeLabel) || '';
   const currentInline = fmtItemLogInline(itemChangesOf(leaf.delta, prior, time));
 
-  const tagText = readItemsTagText(chat[index].mes); // null = 无块
+  const tagText = readItemsTagText(chat[index].mes); // null = không có khối
   const editedInline = tagText === null ? '' : fmtItemLogInline(parsedToLog(parseItemLogText(tagText), prior));
 
-  if (currentInline === editedInline) return false; // 物品旁注未变,跳过
+  if (currentInline === editedInline) return false; // Chú thích vật phẩm không đổi, bỏ qua
 
-  // 以正文为准:解析成带符号 add,替换 delta 的 items 部分。
-  // 旁注不承载随身/地点,按物品名从旧 delta 的 add/update 里继承回来,避免改数量误清空间信息。
+  // Lấy chính văn làm chuẩn: phân tích thành add có dấu, thay thế phần items của delta.
+  // Chú thích không mang thông tin mang theo người / địa điểm, kế thừa lại theo tên vật phẩm từ add/update của delta cũ, tránh việc sửa số lượng làm xóa nhầm thông tin không gian.
   const placeBefore = new Map<string, { carried?: boolean; location?: string }>();
   for (const e of [...(leaf.delta.items?.add ?? []), ...(leaf.delta.items?.update ?? [])]) {
     if (e.carried !== undefined || e.location !== undefined) {
@@ -1650,7 +1650,7 @@ export function syncItemLogFromMessage(index: number): boolean {
 
   chat[index].extra = { ...(chat[index].extra ?? {}), bbs_leaf: leaf };
 
-  // 正文旁注重写成规范格式(用规范化后的 delta 重新渲染)
+  // Viết lại chú thích chính văn thành định dạng chuẩn (kết xuất lại bằng delta sau khi chuẩn hóa)
   if (!apiSettings.summaryOnlyMode) {
     const canonical = fmtItemLogInline(itemChangesOf(leaf.delta, prior, time));
     setMessageText(chat[index], writeItemLogTag(chat[index].mes, canonical));
@@ -1662,15 +1662,15 @@ export function syncItemLogFromMessage(index: number): boolean {
   return true;
 }
 
-/** 把解析出的带符号增量套用到先前状态,得到 ItemLogEntry[](供渲染比对,与 itemChangesOf 同口径)。 */
+/** Áp dụng lượng tăng thêm có dấu đã phân tích ra vào trạng thái trước đó, thu được ItemLogEntry[] (phục vụ kết xuất đối chiếu, cùng tiêu chuẩn với itemChangesOf). */
 function parsedToLog(parsed: { name: string; qty: number }[], prior: BaibaiMemory['items']): ItemLogEntry[] {
   if (!parsed.length) return [];
   return itemChangesOf({ items: { add: parsed.map(p => ({ name: p.name, qty: p.qty })) } }, prior, '');
 }
 
-/* ============ AI delta → 固化 StoredDelta ============ */
+/* ============ AI delta → Cố định thành StoredDelta ============ */
 
-/** 解析 "p3" / "3" / "P3" -> 3 */
+/** Phân tích "p3" / "3" / "P3" -> 3 */
 function parseShortRef(ref: string): number | null {
   const m = String(ref).trim().match(/^p?(\d+)$/i);
   if (!m) return null;
@@ -1679,9 +1679,9 @@ function parseShortRef(ref: string): number | null {
 }
 
 /**
- * 把 AI 返回的 SummaryDelta 固化成可持久化的 StoredDelta。
- * 关键:plans.resolve 的运行期短序号(p1/p2…)按 openPlansOrdered 翻译成**稳定 plan id**。
- * knowledge:了解清单的上下文(提示词里展示的 k1/k2… 顺序 + 名册角色名);不给=功能关闭,AI 输出的了解一律丢弃。
+ * Cố định SummaryDelta do AI trả về thành StoredDelta có thể lưu bền vững.
+ * Then chốt: số thứ tự ngắn lúc chạy (p1/p2…) của plans.resolve được dịch thành **id plan ổn định** theo openPlansOrdered.
+ * knowledge: ngữ cảnh của danh sách hiểu biết (thứ tự k1/k2… hiển thị trong prompt + tên nhân vật trong danh sách); không đưa = tính năng tắt, hiểu biết do AI xuất ra nhất loạt hủy bỏ.
  */
 export function finalizeDelta(
   delta: SummaryDelta,
@@ -1694,8 +1694,8 @@ export function finalizeDelta(
   const location = optText(delta.location);
   if (time) out.time = time;
   if (location) out.location = location;
-  // 权威定位路径:随 location 一起显式给 [] 表示「无法对应已知节点」→ 清除旧锚点,而不是保留旧归属。
-  // 单独出现的 null/""/[] 不算清除:模型常把未用字段写成空值,锚点一丢,NPC 在场判定就退回模糊匹配。
+  // Đường dẫn định vị có thẩm quyền: đưa tường minh [] cùng lúc với location biểu thị "không thể ứng với nút đã biết" → xóa mốc neo cũ, thay vì giữ lại quy thuộc cũ.
+  // null/""/[] xuất hiện riêng lẻ không tính là xóa: mô hình thường viết trường không dùng thành giá trị rỗng, hễ mất mốc neo là phán đoán có mặt của NPC lùi về khớp mờ ngay.
   if (delta.locationPath != null) {
     const lp = cleanPath(delta.locationPath);
     if (lp.length || (location && Array.isArray(delta.locationPath))) out.locationPath = lp;
@@ -1717,7 +1717,7 @@ export function finalizeDelta(
   }
 
   if (isRecord(delta.scenes)) {
-    // 规范化路径;add 可不带 desc(只建节点),update 须带 desc(空串=清除描述)。
+    // Chuẩn hóa đường dẫn; add có thể không kèm desc (chỉ tạo nút), update bắt buộc kèm desc (chuỗi rỗng = xóa mô tả).
     const scenes: NonNullable<StoredDelta['scenes']> = {};
     const add = cleanSceneList(delta.scenes.add, 'add');
     const update = cleanSceneList(delta.scenes.update, 'update');
@@ -1729,7 +1729,7 @@ export function finalizeDelta(
   }
 
   if (isRecord(delta.npcs)) {
-    // 规范化:add/update 必须有名字才保留(无名 NPC 不记)
+    // Chuẩn hóa: add/update bắt buộc phải có tên mới giữ lại (NPC vô danh không ghi)
     const npcs: NonNullable<StoredDelta['npcs']> = {};
     const add = cleanNpcList(delta.npcs.add);
     const update = cleanNpcList(delta.npcs.update);
@@ -1747,14 +1747,14 @@ export function finalizeDelta(
     if (arr(delta.plans.resolve).length) {
       const out: PlanResolveItem[] = [];
       for (const ref of arr(delta.plans.resolve)) {
-        // 短序号可能是裸字符串 "p2" 或带结局的对象 { id:"p2", outcome, reason }
+        // Số thứ tự ngắn có thể là chuỗi trần "p2" hoặc đối tượng mang kết cục { id:"p2", outcome, reason }
         const shortRef = namedText(ref, ['id', 'ref', 'planId']);
         const n = parseShortRef(shortRef);
         if (n === null) continue;
         const target = openPlansOrdered[n - 1];
         if (!target) continue;
         if (!isRecord(ref)) {
-          out.push(target.id); // 旧格式:只翻译成稳定 id
+          out.push(target.id); // Định dạng cũ: chỉ dịch thành id ổn định
         } else {
           const entry: PlanResolveItem = { id: target.id };
           if (ref.outcome === 'done' || ref.outcome === 'cancelled' || ref.outcome === 'failed') entry.outcome = ref.outcome;
@@ -1766,7 +1766,7 @@ export function finalizeDelta(
       if (out.length) plans.resolve = out;
     }
     if (arr(delta.plans.update).length) {
-      // 短序号 p1/p2… 按 openPlansOrdered 翻译成稳定 id;content/targetTime 至少给一个
+      // Số thứ tự ngắn p1/p2… dịch thành id ổn định theo openPlansOrdered; content/targetTime đưa ít nhất một cái
       const out: PlanUpdateItem[] = [];
       for (const ref of arr(delta.plans.update)) {
         if (!isRecord(ref)) continue;
@@ -1788,7 +1788,7 @@ export function finalizeDelta(
   }
 
   if (isRecord(delta.lifeDetails)) {
-    // 短序号 d1/d2… 按「提示词里展示的当前档案顺序」翻译成稳定 id;已是 detail: 稳定 id 的原样保留
+    // Số thứ tự ngắn d1/d2… dịch thành id ổn định theo "thứ tự hồ sơ hiện tại hiển thị trong prompt"; đã là id ổn định detail: thì giữ nguyên
     const resolveDetailRef = (ref: unknown): string | null => {
       const t = namedText(ref, ['id', 'ref', 'detailId']);
       if (!t) return null;
@@ -1804,7 +1804,7 @@ export function finalizeDelta(
     const update = cleanLifeDetailUpdateList(delta.lifeDetails.update)
       .map(u => {
         const id = resolveDetailRef(u.id);
-        // AI 路径剥离 tier:层级是手动投放控制,prompt 从未提供该字段;幻觉输出不得绕过「置顶手动专属」
+        // Đường dẫn AI bóc tách tier: cấp độ là điều khiển phân phối thủ công, prompt chưa từng cung cấp trường này; đầu ra ảo giác không được vượt qua quy tắc "ghim đầu chỉ dành riêng cho thủ công"
         if (!id) return null;
         const { tier: _tier, ...rest } = u;
         return { ...rest, id };
@@ -1819,7 +1819,7 @@ export function finalizeDelta(
   }
 
   if (knowledge) {
-    // 本楼新登场的角色也算名册:初见当场得知的事要能记上
+    // Nhân vật mới xuất hiện ở tầng này cũng tính vào danh sách: việc biết được ngay tại chỗ trong lần đầu gặp mặt phải ghi vào được
     const names = [...knowledge.npcNames, ...(out.npcs?.add ?? []).map(n => n.name)];
     const ops = finalizeKnowledge(delta.knowledge, knowledge.shown, names);
     if (ops.length) out.knowledge = ops;
@@ -1832,9 +1832,9 @@ export function finalizeDelta(
   return out;
 }
 
-/* ============ 写入压缩节点(森林) ============ */
+/* ============ Ghi vào nút nén (rừng) ============ */
 
-/** 追加一条压缩节点(level≥1)。叶子不走这里(在消息 extra 上)。 */
+/** Nối thêm một nút nén (level≥1). Lá không đi qua đây (nằm trên extra của tin nhắn). */
 export function addSummary(
   s: Omit<MemSummary, 'id' | 'createdAt'> & Partial<Pick<MemSummary, 'id' | 'createdAt'>>,
 ): MemSummary {
@@ -1857,9 +1857,9 @@ export function addSummary(
   return rec;
 }
 
-/* ============ 叶子(在消息 extra 上) ============ */
+/* ============ Lá (trên extra của tin nhắn) ============ */
 
-/** 最新一条有效叶子(chat 里最后一条 leafValid 的消息);无则 null */
+/** Một lá hợp lệ mới nhất (tin nhắn có leafValid cuối cùng trong chat); không có thì null */
 export function latestLeaf(): { index: number; leaf: LeafExtra } | null {
   const chat = getContext()?.chat ?? [];
   for (let i = chat.length - 1; i >= 0; i--) {
@@ -1869,10 +1869,10 @@ export function latestLeaf(): { index: number; leaf: LeafExtra } | null {
 }
 
 /**
- * 把一段手动 op 合并进「最新有效叶子」的 delta,改内存 extra → 重算 + 落盘(chat 文件)。
- * 无有效叶子时返回 false(页面据此禁用手动添加)。
- * resolve/reopen 互斥去重:对同一 plan,后一次操作覆盖前一次(同叶子内 last-write-wins)。
- * 只改 delta,不改变叶子的结构与 swipe 归属,故不影响 leafValid。
+ * Gộp một đoạn op thủ công vào delta của "lá hợp lệ mới nhất", sửa extra trong bộ nhớ → tính lại + lưu đĩa (file chat).
+ * Khi không có lá hợp lệ trả về false (trang giao diện dựa vào đó vô hiệu hóa thêm thủ công).
+ * resolve/reopen loại trừ lẫn nhau và khử trùng: đối với cùng một plan, thao tác sau ghi đè thao tác trước (last-write-wins trong cùng lá).
+ * Chỉ sửa delta, không làm thay đổi cấu trúc và quyền sở hữu swipe của lá, nên không ảnh hưởng leafValid.
  */
 export function appendOpToLatestLeaf(op: StoredDelta): boolean {
   const found = latestLeaf();
@@ -1894,19 +1894,19 @@ export function appendOpToLatestLeaf(op: StoredDelta): boolean {
   }
   if (op.items) {
     if (op.items.add?.length || op.items.update?.length || op.items.remove?.length) changed = true;
-    // 关键:同名物品在 add/update 与 remove 之间必须互斥(跨桶抵消),否则改名(remove旧+add新)
-    // 往返会让 remove 桶残留旧名,而重放固定按 add→update→remove 分组——最后的 remove 会把刚
-    // add 回来的同名物品删掉(物品离奇消失)。add 桶内仍保留 push 累加,不动「手动+1」语义。
+    // Then chốt: vật phẩm cùng tên giữa add/update và remove bắt buộc phải loại trừ lẫn nhau (triệt tiêu xuyên nhóm), nếu không việc đổi tên (remove cũ + add mới)
+    // qua lại sẽ làm nhóm remove còn sót tên cũ, mà việc phát lại cố định gom nhóm theo add→update→remove —— remove ở cuối sẽ xóa mất
+    // vật phẩm cùng tên vừa mới add quay lại (vật phẩm biến mất kỳ lạ). Bên trong nhóm add vẫn giữ push cộng dồn, không đụng tới ngữ nghĩa "+1 thủ công".
     const di = (d.items ??= {});
     for (const name of op.items.remove ?? []) {
       const id = itemId(name);
-      // 删除压倒本叶子内对该名的 add/update;再登记待删(去重,prior 叶子的该物品靠它删除)
+      // Việc xóa áp đảo add/update đối với tên đó bên trong lá này; sau đó đăng ký chờ xóa (khử trùng, vật phẩm đó ở các lá trước dựa vào nó để xóa)
       if (di.add) di.add = di.add.filter(a => itemId(a.name) !== id);
       if (di.update) di.update = di.update.filter(u => itemId(u.name) !== id);
       di.remove = [...(di.remove ?? []).filter(n => itemId(n) !== id), name];
     }
     for (const a of op.items.add ?? []) {
-      if (di.remove) di.remove = di.remove.filter(n => itemId(n) !== itemId(a.name)); // 撤销同名待删
+      if (di.remove) di.remove = di.remove.filter(n => itemId(n) !== itemId(a.name)); // Hoàn tác chờ xóa cùng tên
       (di.add ??= []).push(a);
     }
     for (const u of op.items.update ?? []) {
@@ -1919,8 +1919,8 @@ export function appendOpToLatestLeaf(op: StoredDelta): boolean {
   }
   if (op.npcs) {
     if (op.npcs.add?.length || op.npcs.update?.length || op.npcs.remove?.length) changed = true;
-    // 与物品同款跨桶互斥:同名 NPC 在 add/update 与 remove 之间不能并存,
-    // 否则改名(remove旧+add新)往返会让 remove 桶残留旧名,重放按 add→update→remove 把刚 add 的删掉。
+    // Loại trừ xuyên nhóm cùng kiểu với vật phẩm: NPC cùng tên giữa add/update và remove không thể cùng tồn tại,
+    // nếu không đổi tên (remove cũ + add mới) qua lại sẽ làm nhóm remove còn sót tên cũ, phát lại theo add→update→remove sẽ xóa mất cái vừa add.
     const dn = (d.npcs ??= {});
     for (const name of op.npcs.remove ?? []) {
       const id = npcId(name);
@@ -1960,17 +1960,17 @@ export function appendOpToLatestLeaf(op: StoredDelta): boolean {
     const dp = (d.plans ??= {});
     if (op.plans.add?.length) (dp.add ??= []).push(...op.plans.add);
     for (const u of op.plans.update ?? []) {
-      // 同叶子内按 id 合并:先改内容再改期限时,后一次不能把前一次冲掉
+      // Trong cùng một lá gộp theo id: khi sửa nội dung trước rồi sửa thời hạn sau, lần sau không được xóa mất lần trước
       const prev = dp.update?.find(x => x.id === u.id);
       dp.update = [...(dp.update ?? []).filter(x => x.id !== u.id), { ...prev, ...u }];
     }
     for (const r of op.plans.resolve ?? []) {
       const rid = resolveEntryId(r);
-      dp.reopen = (dp.reopen ?? []).filter(x => x !== rid); // 互斥
+      dp.reopen = (dp.reopen ?? []).filter(x => x !== rid); // Loại trừ lẫn nhau
       dp.resolve = [...(dp.resolve ?? []).filter(x => resolveEntryId(x) !== rid), r];
     }
     for (const id of op.plans.reopen ?? []) {
-      dp.resolve = (dp.resolve ?? []).filter(x => resolveEntryId(x) !== id); // 互斥
+      dp.resolve = (dp.resolve ?? []).filter(x => resolveEntryId(x) !== id); // Loại trừ lẫn nhau
       dp.reopen = [...(dp.reopen ?? []).filter(x => x !== id), id];
     }
     for (const id of op.plans.remove ?? []) {
@@ -1982,19 +1982,19 @@ export function appendOpToLatestLeaf(op: StoredDelta): boolean {
     : undefined;
   if (mergeLifeDetailsOp(d, op.lifeDetails, { leafId: leaf.id, existingDetails: existingLifeDetails })) changed = true;
   if (op.knowledge?.length) {
-    // 有序日志直接追加:重放严格按先后施加,不需要跨桶抵消
+    // Nhật ký có thứ tự nối thêm trực tiếp: phát lại áp dụng nghiêm ngặt theo thứ tự trước sau, không cần triệt tiêu xuyên nhóm
     (d.knowledge ??= []).push(...op.knowledge);
     changed = true;
   }
   if (op.varOps?.length) {
-    // 追加本次命令到最新叶子(按顺序,后施加者覆盖前者)
+    // Nối thêm lệnh lần này vào lá mới nhất (theo thứ tự, cái áp dụng sau ghi đè cái trước)
     (d.varOps ??= []).push(...op.varOps);
     changed = true;
   }
 
   if (!changed) return false;
 
-  // 重设 extra 引用以确保持久化带上改动
+  // Đặt lại tham chiếu extra để đảm bảo việc lưu bền vững mang theo thay đổi
   chat[index].extra = { ...(chat[index].extra ?? {}), bbs_leaf: leaf };
 
   recomputeDerived();
@@ -2004,63 +2004,63 @@ export function appendOpToLatestLeaf(op: StoredDelta): boolean {
 }
 
 /**
- * 手动把整棵变量状态设为 newJson(派生数据,写回最新叶子的一条根 set 命令)。
- * 供变量页「编辑当前值(JSON)」用:用户直接编辑整份 JSON,存成 set('', newJson)。
- * 无有效叶子返回 false。
+ * Đặt toàn bộ trạng thái biến thành newJson באופן thủ công (dữ liệu dẫn xuất, ghi về lá mới nhất bằng một lệnh set ở gốc).
+ * Dùng cho "Chỉnh sửa giá trị hiện tại (JSON)" ở trang biến: người dùng chỉnh sửa trực tiếp toàn bộ JSON, lưu thành set('', newJson).
+ * Không có lá hợp lệ trả về false.
  */
 export function setVarsRoot(newJson: Record<string, JsonValue>): boolean {
   return appendOpToLatestLeaf({ varOps: [{ op: 'set', path: '', value: newJson }] });
 }
 
-/** 手动覆盖主角当前档案。空字符串会清除对应旧值。 */
+/** Ghi đè thủ công hồ sơ hiện tại của nhân vật chính. Chuỗi rỗng sẽ xóa giá trị cũ tương ứng. */
 export function setProtagonist(patch: ProtagonistDelta): boolean {
   const clean = cleanProtagonistDelta(patch);
   return clean ? appendOpToLatestLeaf({ protagonist: clean }) : false;
 }
 
-/** 手动添加一条生活细节(挂在最新叶子;新条目进 active 层)。无有效叶子时返回 false。 */
+/** Thêm thủ công một chi tiết đời sống (gắn ở lá mới nhất; mục mới đi vào tầng active). Khi không có lá hợp lệ trả về false. */
 export function addLifeDetail(input: LifeDetailAdd): boolean {
   const clean = cleanLifeDetailAdd(input);
   return clean ? appendOpToLatestLeaf({ lifeDetails: { add: [clean] } }) : false;
 }
 
-/** 手动更新一条生活细节(文案/标签/时效/层级)。置顶/沉降/恢复都走这里。无有效叶子时返回 false。 */
+/** Cập nhật thủ công một chi tiết đời sống (văn bản/nhãn/thời hiệu/cấp độ). Ghim đầu / lắng đọng / khôi phục đều đi qua đây. Khi không có lá hợp lệ trả về false. */
 export function updateLifeDetail(id: string, patch: Omit<LifeDetailUpdate, 'id'> & { tier?: 'pinned' | 'active' | 'archive' }): boolean {
   const clean = cleanLifeDetailUpdate({ ...patch, id });
   return clean ? appendOpToLatestLeaf({ lifeDetails: { update: [clean] } }) : false;
 }
 
-/** 手动删除一条生活细节。无有效叶子时返回 false。 */
+/** Xóa thủ công một chi tiết đời sống. Khi không có lá hợp lệ trả về false. */
 export function removeLifeDetail(id: string): boolean {
   return appendOpToLatestLeaf({ lifeDetails: { remove: [id] } });
 }
 
-/** 手动给某角色添一条了解(老熟人的底子靠这里补;可写反向条目,如「不知道主角是王子」)。无有效叶子时返回 false。 */
+/** Thêm thủ công một mục hiểu biết cho một nhân vật (nền tảng của người quen cũ dựa vào đây để bù đắp; có thể viết mục ngược, như "Không biết nhân vật chính là hoàng tử"). Khi không có lá hợp lệ trả về false. */
 export function addKnowledge(subject: string, text: string): boolean {
   const s = subject.trim();
   const t = text.trim();
   return s && t ? appendOpToLatestLeaf({ knowledge: [{ op: 'add', subject: s, text: t }] }) : false;
 }
 
-/** 手动改写一条了解(揭穿/纠正认知)。无有效叶子时返回 false。 */
+/** Sửa thủ công một mục hiểu biết (vạch trần / đính chính nhận thức). Khi không có lá hợp lệ trả về false. */
 export function updateKnowledge(id: string, text: string): boolean {
   const t = text.trim();
   return t ? appendOpToLatestLeaf({ knowledge: [{ op: 'update', id, text: t }] }) : false;
 }
 
-/** 手动删除一条了解。无有效叶子时返回 false。 */
+/** Xóa thủ công một mục hiểu biết. Khi không có lá hợp lệ trả về false. */
 export function removeKnowledge(id: string): boolean {
   return appendOpToLatestLeaf({ knowledge: [{ op: 'remove', id }] });
 }
 
 /**
- * 手动编辑一个物品(派生数据,写回最新叶子的 delta)。
- *  - 改名:物品 id 按规范化名确定,改名等于换 id → 用 remove(旧名) + add(新名,带 qty/desc/位置) 表达。
- *  - 仅改 qty/desc/位置:用 update(按原名匹配,设为新值)。
- * 两种都经 appendOpToLatestLeaf 落到最新叶子。无有效叶子时返回 false。
+ * Chỉnh sửa thủ công một vật phẩm (dữ liệu dẫn xuất, ghi về delta của lá mới nhất).
+ *  - Đổi tên: id vật phẩm xác định theo tên chuẩn hóa, đổi tên đồng nghĩa đổi id → biểu đạt bằng remove(tên cũ) + add(tên mới, kèm qty/desc/vị trí).
+ *  - Chỉ sửa qty/desc/vị trí: dùng update (khớp theo tên gốc, đặt thành giá trị mới).
+ * Cả hai đều đi qua appendOpToLatestLeaf hạ cánh vào lá mới nhất. Khi không có lá hợp lệ trả về false.
  *
- * 位置(carried/location):patch 未显式给时,改名场景从派生的旧物品继承——否则改个名字
- * 就把「在武器库」这类存放信息丢了(用 add 重建会丢非 add 字段)。
+ * Vị trí (carried/location): khi patch không đưa tường minh, kịch bản đổi tên sẽ kế thừa từ vật phẩm cũ dẫn xuất —— nếu không chỉ đổi cái tên
+ * là mất luôn thông tin cất giữ kiểu "ở kho vũ khí" (dùng add dựng lại sẽ mất các trường không có trong add).
  */
 export function editItem(
   oldName: string,
@@ -2070,18 +2070,18 @@ export function editItem(
   const desc = patch.desc?.trim() || undefined;
   const qty = typeof patch.qty === 'number' && Number.isFinite(patch.qty) ? patch.qty : undefined;
 
-  // 位置:patch 明确给了用 patch 的;否则从旧物品继承(改名不丢存放地)
+  // Vị trí: patch đưa rõ ràng thì dùng của patch; nếu không kế thừa từ vật phẩm cũ (đổi tên không mất nơi cất)
   const prev = memory.items.find(i => i.id === itemId(oldName));
   const carried = patch.carried !== undefined ? patch.carried : prev?.carried;
   const location = patch.location !== undefined ? (patch.location.trim() || undefined) : prev?.location;
 
   if (norm(newName) !== norm(oldName)) {
-    // 改名:删旧名 + 以新名重建。
-    // add 是「累加」语义,只有当新名在所有叶子里都不存在时才等于「设为该值」;
-    // 但改名往返(A→B→A)时,A 往往在更早的叶子里已被 add 过,remove 只作用于本次删的旧名,
-    // 拦不住早期叶子对 A 的累加 —— 会把数量叠上去(3 改回后变 4)。
-    // 故再补一条 update:重放序 add→update,add 先建身份/描述/位置(哪怕误累加),
-    // update 把数量「设为绝对值」,与物品源自哪条叶子无关。qty 未给(留空=不计数)时不发 update。
+    // Đổi tên: xóa tên cũ + dựng lại bằng tên mới.
+    // add mang ngữ nghĩa "cộng dồn", chỉ khi tên mới chưa từng tồn tại ở tất cả các lá thì mới bằng "đặt thành giá trị đó";
+    // nhưng khi đổi tên qua lại (A→B→A), A thường đã từng được add ở các lá sớm hơn, remove chỉ tác dụng lên tên cũ bị xóa lần này,
+    // không chặn được việc cộng dồn vào A của lá sớm hơn —— sẽ chồng số lượng lên (3 đổi về lại thành 4).
+    // Do đó bù thêm một lệnh update: thứ tự phát lại add→update, add tạo danh tính/mô tả/vị trí trước (cho dù cộng dồn nhầm),
+    // update đặt số lượng "thành giá trị tuyệt đối", không liên quan vật phẩm bắt nguồn từ lá nào. Khi không đưa qty (để trống = không đếm) thì không gửi update.
     return appendOpToLatestLeaf({
       items: {
         remove: [oldName],
@@ -2090,13 +2090,13 @@ export function editItem(
       },
     });
   }
-  // 同名:更新数量/描述/位置(update 是「设为新值」)
+  // Cùng tên: cập nhật số lượng / mô tả / vị trí (update là "đặt thành giá trị mới")
   return appendOpToLatestLeaf({ items: { update: [{ name: newName, qty, desc, carried, location }] } });
 }
 
-/* ============ NPC 手动 op(写回最新叶子,与 editItem 同范式) ============ */
+/* ============ Op thủ công NPC (ghi về lá mới nhất, cùng mô hình với editItem) ============ */
 
-/** 手动新增一个 NPC。无有效叶子返回 false。 */
+/** Thêm mới thủ công một NPC. Không có lá hợp lệ trả về false. */
 export function upsertNpc(
   fields: NpcAffinity & {
     name: string;
@@ -2141,11 +2141,11 @@ export function upsertNpc(
 }
 
 /**
- * 手动编辑一个 NPC(派生数据,写回最新叶子的 delta),与 editItem 同范式。
- *  - 改名:NPC id 按规范化名确定,改名等于换 id → remove(旧名) + add(新名,带全字段)。
- *  - 仅改字段:update(按原名匹配,设为新值)。
- * 随行/所在地(follow/location):patch 未显式给时,改名场景从派生的旧 NPC 继承(改名不丢位置)。
- * 无有效叶子返回 false。
+ * Chỉnh sửa thủ công một NPC (dữ liệu dẫn xuất, ghi về delta của lá mới nhất), cùng mô hình với editItem.
+ *  - Đổi tên: id NPC xác định theo tên chuẩn hóa, đổi tên đồng nghĩa đổi id → remove(tên cũ) + add(tên mới, kèm toàn bộ trường).
+ *  - Chỉ sửa trường: update (khớp theo tên gốc, đặt thành giá trị mới).
+ * Đi cùng / nơi ở (follow/location): khi patch không đưa tường minh, kịch bản đổi tên sẽ kế thừa từ NPC cũ dẫn xuất (đổi tên không mất vị trí).
+ * Không có lá hợp lệ trả về false.
  */
 export function editNpc(
   oldName: string,
@@ -2166,7 +2166,7 @@ export function editNpc(
   },
 ): boolean {
   const newName = patch.name?.trim() || oldName;
-  // 档案层同样保留空字符串:用户删空=明确清除。旧逻辑洗成 undefined,删空保存后旧值原样留着
+  // Tầng hồ sơ cũng giữ lại chuỗi rỗng: người dùng xóa trống = xóa rõ ràng. Logic cũ rửa thành undefined, xóa trống lưu xong giá trị cũ vẫn nằm nguyên
   const gender = patch.gender?.trim();
   const relation = patch.relation?.trim();
   const ties = patch.ties?.trim();
@@ -2174,23 +2174,23 @@ export function editNpc(
   const desc = patch.desc?.trim();
   const personality = patch.personality?.trim();
 
-  // 位置 / 即时层:patch 明确给了用 patch 的;否则从旧 NPC 继承(改名不丢所在地/随行/状态/重要性)。
-  // location 保留空字符串(用户清空输入=所在不明),不能像旧逻辑那样被洗成 undefined 而清不掉。
+  // Vị trí / tầng tức thời: patch đưa rõ ràng thì dùng của patch; nếu không kế thừa từ NPC cũ (đổi tên không mất nơi ở/đi cùng/trạng thái/tầm quan trọng).
+  // location giữ lại chuỗi rỗng (người dùng xóa trống ô nhập = không rõ nơi ở), không thể bị rửa thành undefined như logic cũ làm không xóa được.
   const prev = memory.npcs.find(n => n.id === npcId(oldName));
   const follow = patch.follow !== undefined ? patch.follow : prev?.follow;
   const location = patch.location !== undefined ? patch.location.trim() : (prev?.location ?? '');
-  // 即时层(outfit/condition)是覆盖型快照:空字符串=明确清空,与 AI 端的 patchText 语义一致。
-  // 旧逻辑把空串洗成 undefined,重放时 applyNpcState 只认 string,于是「清空状态/脱下着装」永远不生效。
+  // Tầng tức thời (outfit/condition) là ảnh chụp kiểu ghi đè: chuỗi rỗng = xóa trống rõ ràng, nhất quán với ngữ nghĩa patchText phía AI.
+  // Logic cũ rửa chuỗi rỗng thành undefined, khi phát lại applyNpcState chỉ nhận string, thế là "xóa trống trạng thái / cởi bỏ trang phục" không bao giờ có hiệu lực.
   const outfit = patch.outfit !== undefined ? patch.outfit.trim() : prev?.outfit;
   const condition = patch.condition !== undefined ? patch.condition.trim() : prev?.condition;
   const important = patch.important !== undefined ? patch.important : prev?.important;
 
-  // 年龄:值没变(或未提供)时必须连旧锚点一起带上,否则重放会把锚点错误刷新到本叶子时间(等于冻龄);
-  // 用户真改了年龄才留空 ageTime,让重放盖上当前故事时间作新锚点。删空保留空串,applyAge 连锚点一起清。
+  // Tuổi tác: khi giá trị không đổi (hoặc không cung cấp) bắt buộc phải mang theo cả mốc neo cũ, nếu không khi phát lại sẽ làm mới nhầm mốc neo sang thời gian lá này (tương đương đóng băng tuổi);
+  // chỉ khi người dùng thực sự sửa tuổi mới để trống ageTime, cho việc phát lại đóng dấu thời gian câu chuyện hiện tại làm mốc neo mới. Xóa trống thì giữ chuỗi rỗng, applyAge xóa luôn cả mốc neo.
   const age = patch.age !== undefined ? patch.age.trim() : prev?.age;
   const ageTime = age && age === prev?.age ? prev?.ageTime : undefined;
 
-  // 改名也保留两侧和说明;未传不动,显式 null/空串可恢复未知/清空说明。
+  // Đổi tên cũng giữ lại hai phía và giải thích; không truyền thì giữ nguyên, null/chuỗi rỗng tường minh có thể khôi phục chưa rõ / xóa trống giải thích.
   const affinity: NpcAffinity = {};
   if (prev && norm(newName) !== norm(oldName)) applyNpcAffinity(affinity, prev);
   applyNpcAffinity(affinity, patch);
@@ -2198,11 +2198,11 @@ export function editNpc(
   if (norm(newName) !== norm(oldName)) {
     return appendOpToLatestLeaf({
       npcs: { remove: [oldName], add: [{ name: newName, ...fields }] },
-      // 改名同步归属,不改正文或稳定 id;删除角色本身则保留其历史生活档案。
+      // Đổi tên đồng bộ quy thuộc, không sửa chính văn hay id ổn định; còn xóa bản thân nhân vật thì giữ lại hồ sơ đời sống lịch sử của họ.
       lifeDetails: { update: memory.lifeDetails
         .filter(d => lifeDetailSubject(d) !== 'user' && norm(lifeDetailSubject(d)) === norm(oldName))
         .map(d => ({ id: d.id, subject: newName })) },
-      // 了解清单同理:按名字挂在角色身上,改名不跟过去就成了孤儿
+      // Danh sách hiểu biết cũng tương tự: gắn trên người nhân vật theo tên, đổi tên không đi theo sẽ thành mồ côi
       knowledge: knowledgeOf(memory.knowledge, oldName).map(k => ({ op: 'update' as const, id: k.id, subject: newName })),
     });
   }
@@ -2210,9 +2210,9 @@ export function editNpc(
 }
 
 /**
- * 切换某 NPC 的随行状态(同伴/取消同伴)。
- *  - follow=true:标记随行(applyNpcPlacement 会清掉 location)。
- *  - follow=false:取消随行;可选传入 location 指定「留在哪」,不传则保留原所在地。
+ * Chuyển đổi trạng thái đi cùng của một NPC (đồng hành / bỏ đồng hành).
+ *  - follow=true: đánh dấu đi cùng (applyNpcPlacement sẽ xóa location).
+ *  - follow=false: bỏ đi cùng; có thể tùy chọn truyền vào location chỉ định "ở lại đâu", không truyền thì giữ nguyên nơi ở cũ.
  */
 export function setNpcFollow(name: string, follow: boolean, location?: string): boolean {
   const nm = name.trim();
@@ -2221,30 +2221,30 @@ export function setNpcFollow(name: string, follow: boolean, location?: string): 
   return appendOpToLatestLeaf({ npcs: { update: [{ name: nm, follow, location: loc }] } });
 }
 
-/** 切换某 NPC 的「主要角色」标记(升/降重要性);与 setNpcFollow 同范式,写回最新叶子。 */
+/** Chuyển đổi nhãn "Nhân vật chính yếu" của một NPC (nâng / hạ tầm quan trọng); cùng mô hình với setNpcFollow, ghi về lá mới nhất. */
 export function setNpcImportant(name: string, important: boolean): boolean {
   const nm = name.trim();
   if (!nm) return false;
   return appendOpToLatestLeaf({ npcs: { update: [{ name: nm, important }] } });
 }
 
-/** 手动删除一个 NPC(退场)。 */
+/** Xóa thủ công một NPC (rút lui khỏi truyện). */
 export function removeNpc(name: string): boolean {
   const nm = name.trim();
   if (!nm) return false;
   return appendOpToLatestLeaf({ npcs: { remove: [nm] } });
 }
 
-/* ============ 场景手动 op(写回最新叶子,与 editItem 同范式) ============ */
+/* ============ Op thủ công bối cảnh (ghi về lá mới nhất, cùng mô hình với editItem) ============ */
 
-/** 手动新增/补全一个地点(逐级地理路径)。无有效叶子返回 false。 */
+/** Thêm mới / bổ sung thủ công một địa điểm (đường dẫn địa lý từng cấp). Không có lá hợp lệ trả về false. */
 export function upsertScene(path: string[], desc?: string): boolean {
   const clean = normScenePath(path);
   if (!clean.length) return false;
   return appendOpToLatestLeaf({ scenes: { ops: [{ op: 'add', path: clean, desc: desc?.trim() || undefined }] } });
 }
 
-/** 手动更新一个地点的描述(覆盖;空串=清除描述,节点保留)。 */
+/** Cập nhật thủ công mô tả của một địa điểm (ghi đè; chuỗi rỗng = xóa mô tả, giữ lại nút). */
 export function editSceneDesc(path: string[], desc: string): boolean {
   const clean = normScenePath(path);
   if (!clean.length) return false;
@@ -2252,16 +2252,16 @@ export function editSceneDesc(path: string[], desc: string): boolean {
 }
 
 /**
- * 改某地点的名字(连子树一起改)。改名 = 同父下换末段名 = reparent 的一个情形:
- * newPath 保留原上级、只换末段,reparentScenePath 会把整棵子树平移到新名下,子节点不丢失。
- * 名字没变则只更新描述(若给了)。
+ * Đổi tên một địa điểm (sửa kèm cả cây con). Đổi tên = đổi tên đoạn cuối dưới cùng một cha = một trường hợp của reparent:
+ * newPath giữ nguyên cấp trên cũ, chỉ đổi đoạn cuối, reparentScenePath sẽ dịch chuyển toàn bộ cây con sang dưới tên mới, không mất nút con.
+ * Tên không đổi thì chỉ cập nhật mô tả (nếu có đưa).
  */
 export function renameScene(oldPath: string[], newName: string, desc?: string): boolean {
   const clean = normScenePath(oldPath);
   const nm = newName.trim();
   if (!clean.length || !nm) return false;
   if (norm(nm) === norm(clean[clean.length - 1])) {
-    return desc !== undefined ? editSceneDesc(clean, desc) : false; // 名没变,只改描述
+    return desc !== undefined ? editSceneDesc(clean, desc) : false; // Tên không đổi, chỉ sửa mô tả
   }
   const newPath = [...clean.slice(0, -1), nm];
   const descs = desc?.trim() ? { [nm]: desc.trim() } : undefined;
@@ -2269,19 +2269,19 @@ export function renameScene(oldPath: string[], newName: string, desc?: string): 
 }
 
 /**
- * 手动重设父级 / 改名 / 插层(连子树平移),用一条 reparent 表达。
- *  - newPath:目标完整路径(末段可与原名不同 = 顺带改名;前缀即新上级,空前缀=顶级)。
- *  - descs:newPath 上各级的描述(键=该级地名),用于补建父级 + 更新被移动节点自身的描述;
- *    被移动节点给空串 = 清除其原描述。
- * 复用与 AI 同一套 reparent 重放逻辑。
+ * Đặt lại cấp cha / đổi tên / chèn tầng thủ công (dịch chuyển cả cây con), biểu đạt bằng một lệnh reparent.
+ *  - newPath: đường dẫn đầy đủ mục tiêu (đoạn cuối có thể khác tên gốc = tiện tay đổi tên; tiền tố chính là cấp trên mới, tiền tố rỗng = cấp cao nhất).
+ *  - descs: mô tả của từng cấp trên newPath (khóa = tên địa danh cấp đó), dùng để tạo bù cấp cha + cập nhật mô tả của chính nút bị di chuyển;
+ *    nút bị di chuyển đưa chuỗi rỗng = xóa mô tả gốc của nó.
+ * Tái sử dụng cùng một bộ logic phát lại reparent với AI.
  */
 export function reparentScene(nodePath: string[], newPath: string[], descs?: Record<string, string>): boolean {
   const node = normScenePath(nodePath);
   const to = normScenePath(newPath);
   if (!node.length || !to.length) return false;
-  if (sceneId(to) === sceneId(node)) return false; // 路径没变
+  if (sceneId(to) === sceneId(node)) return false; // Đường dẫn không đổi
   const ops: SceneOp[] = [{ op: 'reparent', node, newPath: to, descs }];
-  // reparent 只认非空描述;清除就在同一批里紧跟一条 update,一次写完,不会树移了描述却没清成
+  // reparent chỉ nhận mô tả khác rỗng; việc xóa thì nối sát một lệnh update ngay trong cùng đợt, ghi xong một lần, không xảy ra chuyện cây đã chuyển mà mô tả chưa xóa được
   const own = descs?.[to[to.length - 1]];
   if (own !== undefined && !own.trim() && memory.scenes.find(s => s.id === sceneId(node))?.desc) {
     ops.push({ op: 'update', path: to, desc: '' });
@@ -2289,14 +2289,14 @@ export function reparentScene(nodePath: string[], newPath: string[], descs?: Rec
   return appendOpToLatestLeaf({ scenes: { ops } });
 }
 
-/** 手动删除一个地点(连带其后代)。 */
+/** Xóa thủ công một địa điểm (kèm theo hậu duệ của nó). */
 export function removeScene(path: string[]): boolean {
   const clean = normScenePath(path);
   if (!clean.length) return false;
   return appendOpToLatestLeaf({ scenes: { ops: [{ op: 'remove', path: clean }] } });
 }
 
-/** 删除某条消息上的叶子(清 extra),然后级联删坏链 + 重算 + 落盘 */
+/** Xóa lá trên một tin nhắn (xóa extra), sau đó xóa dây chuyền chuỗi hỏng + tính lại + lưu đĩa */
 export function deleteLeafAt(index: number): boolean {
   const chat = getContext()?.chat;
   if (!chat || !chat[index]?.extra?.bbs_leaf) return false;
@@ -2304,15 +2304,15 @@ export function deleteLeafAt(index: number): boolean {
   recomputeDerived();
   pruneBrokenComps();
   scheduleLeafFlush();
-  invalidateRecallCache(); // 叶子没了 → 召回不该再命中含它的旧结果
-  scheduleVectorIndex(); // 叶子没了 → 对账删掉它的向量,免得被继续召回
+  invalidateRecallCache(); // Lá mất rồi → truy xuất không nên trúng kết quả cũ có chứa nó nữa
+  scheduleVectorIndex(); // Lá mất rồi → đối chiếu xóa vector của nó đi, tránh việc tiếp tục bị truy xuất
   return true;
 }
 
 /**
- * 手动编辑某条消息上的叶子:摘要正文 + 故事内起止时间。
- * 摘要字段不是 leafValid 的判据,编辑后叶子仍有效。
- * timeEnd 同步写进 delta.time(覆盖型当前状态,重放即生效);编辑后清掉旧的 timeLabel(已被起止取代)。
+ * Chỉnh sửa thủ công lá trên một tin nhắn: chính văn tóm tắt + thời gian bắt đầu và kết thúc trong truyện.
+ * Trường tóm tắt không phải là tiêu chuẩn phán đoán của leafValid, sau khi chỉnh sửa lá vẫn hợp lệ.
+ * timeEnd ghi đồng bộ vào delta.time (trạng thái hiện tại kiểu ghi đè, phát lại là có hiệu lực ngay); sau khi chỉnh sửa thì xóa timeLabel cũ (đã được thay thế bởi bắt đầu-kết thúc).
  */
 export function editLeafAt(index: number, text: string, timeStart: string, timeEnd: string): boolean {
   const chat = getContext()?.chat;
@@ -2323,25 +2323,25 @@ export function editLeafAt(index: number, text: string, timeStart: string, timeE
   const e = timeEnd.trim();
   leaf.timeStart = s || undefined;
   leaf.timeEnd = e || undefined;
-  leaf.timeLabel = undefined; // 起止已是权威,旧合并串作废
+  leaf.timeLabel = undefined; // Bắt đầu-kết thúc đã là thẩm quyền, chuỗi gộp cũ hủy bỏ
   leaf.delta = leaf.delta ?? {};
-  // 覆盖型当前时间取结束时间;两端皆空才清除
+  // Thời gian hiện tại kiểu ghi đè lấy thời gian kết thúc; cả hai đầu đều trống mới xóa
   if (e) leaf.delta.time = e;
   else if (s) leaf.delta.time = s;
   else delete leaf.delta.time;
   chat[index].extra = { ...(chat[index].extra ?? {}), bbs_leaf: leaf };
   recomputeDerived();
   scheduleLeafFlush();
-  invalidateRecallCache(); // 摘要变了 → 召回结果会变,先失效再重算
-  scheduleVectorIndex(); // 正文变了 → docHash 变,防抖重 embed,召回及时用上新内容
+  invalidateRecallCache(); // Tóm tắt thay đổi → kết quả truy xuất sẽ đổi, vô hiệu hóa trước rồi tính lại sau
+  scheduleVectorIndex(); // Chính văn thay đổi → docHash đổi, chống rung embed lại, truy xuất kịp thời dùng nội dung mới
   return true;
 }
 
 /**
- * 楼内面板专用:整体编辑某楼叶子(摘要正文 + 起止时间 + 结构化 delta)。
- * 与 editLeafAt 的区别:连 delta 一起替换,一次重放。供楼内面板「改关键字段 / 删条目」用。
- * delta 由调用方在克隆上改好后整体传入(只改现有条目值 / 删条目,不涉及跨桶抵消逻辑,故直接替换即可)。
- * 时间处理与 editLeafAt 一致:timeEnd(缺则 timeStart)覆盖写进 delta.time;两端皆空则清除。
+ * Chuyên dùng cho bảng trong tầng: chỉnh sửa tổng thể lá của một tầng (chính văn tóm tắt + thời gian bắt đầu-kết thúc + delta có cấu trúc).
+ * Khác biệt với editLeafAt: thay thế luôn cả delta, phát lại một lần. Phục vụ việc "sửa trường then chốt / xóa mục" của bảng trong tầng.
+ * delta do bên gọi sửa xong trên bản sao rồi truyền tổng thể vào (chỉ sửa giá trị mục hiện có / xóa mục, không liên quan logic triệt tiêu xuyên nhóm, nên thay thế trực tiếp là được).
+ * Xử lý thời gian nhất quán với editLeafAt: timeEnd (thiếu thì lấy timeStart) ghi đè vào delta.time; cả hai đầu đều trống thì xóa.
  */
 export function editLeafFull(
   index: number,
@@ -2355,27 +2355,27 @@ export function editLeafFull(
   const e = patch.timeEnd.trim();
   leaf.timeStart = s || undefined;
   leaf.timeEnd = e || undefined;
-  leaf.timeLabel = undefined; // 起止已是权威,旧合并串作废
+  leaf.timeLabel = undefined; // Bắt đầu-kết thúc đã là thẩm quyền, chuỗi gộp cũ hủy bỏ
   const delta: StoredDelta = { ...patch.delta };
-  // 覆盖型当前时间取结束时间;两端皆空才清除(与 editLeafAt 同口径)
+  // Thời gian hiện tại kiểu ghi đè lấy thời gian kết thúc; cả hai đầu đều trống mới xóa (cùng tiêu chuẩn với editLeafAt)
   if (e) delta.time = e;
   else if (s) delta.time = s;
   else delete delta.time;
   leaf.delta = delta;
   chat[index].extra = { ...(chat[index].extra ?? {}), bbs_leaf: leaf };
-  // 编辑改了 delta → 同步重写该楼正文的 <bbs_items>/<bbs_vars> 旁注(否则旁注停留在上次摘要的旧值),
-  // 与 applyLeafForFloor 落叶时同口径:物品净变动以「本楼之前状态」为基准算 from→to,变量直接渲染命令。
+  // Chỉnh sửa đã làm đổi delta → viết lại đồng bộ chú thích <bbs_items>/<bbs_vars> trong chính văn tầng đó (nếu không chú thích sẽ dừng ở giá trị cũ của lần tóm tắt trước),
+  // cùng tiêu chuẩn với lúc applyLeafForFloor hạ cánh lá: biến động ròng của vật phẩm lấy "trạng thái trước tầng này" làm chuẩn để tính from→to, biến số kết xuất trực tiếp câu lệnh.
   rewriteFloorTags(chat, index, delta);
   recomputeDerived();
   scheduleLeafFlush();
-  invalidateRecallCache(); // 摘要正文/时间变了 → 失效旧召回
-  scheduleVectorIndex(); // 正文变了 → docHash 变,防抖重 embed
+  invalidateRecallCache(); // Chính văn / thời gian tóm tắt đã đổi → vô hiệu hóa truy xuất cũ
+  scheduleVectorIndex(); // Chính văn đã đổi → docHash đổi, chống rung embed lại
   return true;
 }
 
 /**
- * 用叶子当前 delta 重写该楼正文的 <bbs_items>/<bbs_vars> 旁注(供楼内编辑后同步正文)。
- * 基准物品状态 = 本楼之前(deriveMemory 到 index,不含本楼),与摘要落叶时一致。
+ * Dùng delta hiện tại của lá để viết lại chú thích <bbs_items>/<bbs_vars> trong chính văn tầng đó (phục vụ đồng bộ chính văn sau khi chỉnh sửa trong tầng).
+ * Trạng thái vật phẩm làm chuẩn = trước tầng này (deriveMemory đến index, không gồm tầng này), nhất quán với lúc tóm tắt hạ cánh lá.
  */
 function rewriteFloorTags(chat: STMessage[], index: number, delta: StoredDelta): void {
   if (apiSettings.summaryOnlyMode) return;
@@ -2389,9 +2389,9 @@ function rewriteFloorTags(chat: STMessage[], index: number, delta: StoredDelta):
 }
 
 /**
- * 编辑一条计划/悬念:改 content / createdTime / targetTime。
- * 计划 id = `plan:${叶子id}#${在该叶子 add 数组里的序号}`,据此定位到产生它的叶子的 delta.plans.add[idx]。
- * 只改叶子 delta,叶子仍有效;改完重算派生 + 落盘。
+ * Chỉnh sửa một kế hoạch / nghi vấn: sửa content / createdTime / targetTime.
+ * ID kế hoạch = `plan:${id lá}#${số thứ tự trong mảng add tại lá đó}`, dựa vào đó định vị tới delta.plans.add[idx] của lá đã tạo ra nó.
+ * Chỉ sửa delta của lá, lá vẫn hợp lệ; sửa xong tính lại dữ liệu dẫn xuất + lưu đĩa.
  */
 export function editPlan(
   planIdStr: string,
@@ -2404,7 +2404,7 @@ export function editPlan(
   const chat = getContext()?.chat;
   if (!chat) return false;
 
-  // 找到 id 匹配的有效叶子
+  // Tìm lá hợp lệ có id khớp
   let index = -1;
   for (let i = 0; i < chat.length; i++) {
     const lf = getLeaf(chat[i]);
@@ -2424,7 +2424,7 @@ export function editPlan(
 
   chat[index].extra = { ...(chat[index].extra ?? {}), bbs_leaf: leaf };
   recomputeDerived();
-  // 后续楼层 AI 的 plans.update 重放时会盖掉原地修改;真被盖掉了才在最新叶子追加一条 update 兜住
+  // Khi phát lại plans.update của AI ở các tầng sau sẽ đè mất việc sửa tại chỗ; khi thực sự bị đè mất mới nối thêm một lệnh update ở lá mới nhất để đỡ hộ
   const cur = memory.plans.find(p => p.id === planIdStr);
   const update: PlanUpdateItem = { id: planIdStr };
   if (cur && add.content && cur.content !== add.content) update.content = add.content;
@@ -2435,8 +2435,8 @@ export function editPlan(
 }
 
 /**
- * 编辑一个压缩节点(总结)的正文。总结只压文本、不含结构化数据,
- * 故只改 text 字段即可,无需 recompute。
+ * Chỉnh sửa chính văn của một nút nén (tổng kết). Tổng kết chỉ nén văn bản, không chứa dữ liệu có cấu trúc,
+ * nên chỉ cần sửa trường text là được, không cần recompute.
  */
 export function editSummary(id: string, text: string): boolean {
   const comp = memory.summaries.find(s => s.id === id);
@@ -2446,13 +2446,13 @@ export function editSummary(id: string, text: string): boolean {
   return true;
 }
 
-/* ============ 删除 / 拆封 ============ */
+/* ============ Xóa / Mở niêm phong ============ */
 
 /**
- * 删除一个压缩节点。
- *  - 从所有父节点的 childIds 摘除本 id;
- *  - 数组删除本节点。其子节点因父引用断开,自动变回「散装根」。
- * 注意:删压缩节点不影响结构化数据(只压文本),无需 recompute,但要刷新注入。
+ * Xóa một nút nén.
+ *  - Gỡ bỏ id này khỏi childIds của tất cả các nút cha;
+ *  - Xóa nút này khỏi mảng. Các nút con của nó vì đứt tham chiếu cha sẽ tự động biến lại thành "gốc rời".
+ * Lưu ý: xóa nút nén không ảnh hưởng dữ liệu có cấu trúc (chỉ nén văn bản), không cần recompute, nhưng phải làm mới phần tiêm.
  */
 export function deleteSummary(id: string): boolean {
   const idx = memory.summaries.findIndex(s => s.id === id);
@@ -2466,22 +2466,22 @@ export function deleteSummary(id: string): boolean {
 }
 
 export interface DeleteSummarySubtreesResult {
-  /** 实际删除的逐楼叶子摘要数。 */
+  /** Số lượng tóm tắt lá từng tầng thực tế đã xóa. */
   leaves: number;
-  /** 实际删除的总结节点数(含因子节点消失而一并失效的祖先)。 */
+  /** Số lượng nút tổng kết thực tế đã xóa (bao gồm cả các tổ tiên mất hiệu lực theo vì nút con biến mất). */
   summaries: number;
-  /** 被删除的导入历史数;大于 0 时调用方需同步正文隐藏状态。 */
+  /** Số lượng lịch sử nhập vào bị xóa; khi lớn hơn 0 bên gọi cần đồng bộ trạng thái ẩn chính văn. */
   imported: number;
 }
 
 /**
- * 批量删除若干森林子树。
+ * Xóa hàng loạt một số cây con trong rừng.
  *
- * 摘要页的多选只展示「代表一段历史的根节点」；若根是总结，仅删根本身会把下层摘要
- * 重新展开，无法实现「全选 → 一次清空」。因此批量删除把每个选中节点及其全部后代
- * 视作一个删除范围：压缩节点从 metadata 移除，叶子从对应消息 extra 移除。
+ * Chế độ chọn nhiều ở trang tóm tắt chỉ hiển thị "các nút gốc đại diện cho một đoạn lịch sử"; nếu gốc là tổng kết, chỉ xóa bản thân gốc sẽ làm các tóm tắt tầng dưới
+ * bung ra trở lại, không thể thực hiện được việc "Chọn tất cả → Xóa sạch một lần". Do đó xóa hàng loạt coi mỗi nút được chọn cùng toàn bộ hậu duệ của nó
+ * là một phạm vi xóa: nút nén gỡ khỏi metadata, lá gỡ khỏi extra của tin nhắn tương ứng.
  *
- * 与 deleteLeafAt 一样，删叶子后会按剩余叶子重算结构化状态、清理失效祖先并防抖落盘。
+ * Giống như deleteLeafAt, sau khi xóa lá sẽ tính lại trạng thái có cấu trúc theo các lá còn lại, dọn dẹp tổ tiên mất hiệu lực và chống rung lưu đĩa.
  */
 export function deleteSummarySubtrees(rootIds: string[]): DeleteSummarySubtreesResult {
   const roots = new Set(rootIds.filter(Boolean));
@@ -2526,22 +2526,22 @@ export function deleteSummarySubtrees(rootIds: string[]): DeleteSummarySubtreesR
     memory.summaries = memory.summaries.filter(summary => !summaryIds.has(summary.id));
   }
   if (leaves > 0) recomputeDerived();
-  // 选中的节点通常是根；这里仍清理潜在失效祖先，兼容视图因坏链降级后选到子节点的情况。
+  // Các nút được chọn thường là gốc; ở đây vẫn dọn dẹp các tổ tiên tiềm ẩn mất hiệu lực, tương thích với trường hợp khung nhìn bị hạ cấp do chuỗi hỏng nên chọn trúng nút con.
   pruneBrokenComps();
   const summaries = summariesBefore - memory.summaries.length;
 
   if (summaries > 0) saveMemory();
   if (leaves > 0) scheduleLeafFlush();
-  if (leaves > 0) invalidateRecallCache(); // 叶子被删 → 失效召回缓存
+  if (leaves > 0) invalidateRecallCache(); // Lá bị xóa → vô hiệu hóa bộ nhớ đệm truy xuất
   if (leaves > 0) scheduleVectorIndex();
   return { leaves, summaries, imported };
 }
 
 /**
- * 删除递归包含某个子节点的全部祖先压缩节点。
+ * Xóa đệ quy toàn bộ các nút nén tổ tiên có chứa một nút con nào đó.
  *
- * 叶子重新生成时会保留原 id,因此 pruneBrokenComps 无法识别上层总结文本已经过时。
- * 这里从 childId 向上找父节点并移除整条祖先链;未被任何总结收纳的叶子不会造成改动。
+ * Khi lá được tạo lại sẽ giữ nguyên id gốc, do đó pruneBrokenComps không thể nhận biết văn bản tổng kết tầng trên đã lỗi thời.
+ * Ở đây tìm ngược từ childId lên các nút cha và gỡ bỏ toàn bộ chuỗi tổ tiên; lá chưa được bất kỳ tổng kết nào thu nạp sẽ không gây ra thay đổi.
  */
 export function invalidateSummaryAncestors(childId: string): number {
   if (!childId) return 0;
@@ -2566,13 +2566,13 @@ export function invalidateSummaryAncestors(childId: string): number {
 }
 
 /**
- * 祖先链整删:某叶子 id 不再有效(被删/陈旧/换新 id)时,凡是(递归)包含它的压缩节点全删。
- * 判定:一个压缩节点「完好」⟺ 它的每个 child 要么是现存有效叶子 id、要么是完好的压缩节点;
- * 否则「损坏」,删除。memoized DFS。删除后 saveMemory(若有变化)。
+ * Xóa trọn chuỗi tổ tiên: khi một id lá không còn hợp lệ (bị xóa / lỗi thời / đổi id mới), phàm là nút nén có chứa nó (theo đệ quy) đều xóa hết.
+ * Phán đoán: một nút nén "nguyên vẹn" ⟺ mỗi child của nó hoặc là id lá hợp lệ đang tồn tại, hoặc là nút nén nguyên vẹn;
+ * nếu không thì là "hỏng", xóa bỏ. DFS có ghi nhớ (memoized). Sau khi xóa thì saveMemory (nếu có thay đổi).
  *
- * ⚠️ 这里用 leafIntact 而非 leafValid:叶子「存活」只看物理存在(id+delta),**不看页码归属**。
- * 翻页到没摘过的 swipe 时,被压缩进 L1 的叶子虽对当前页 leafValid=false,但它仍物理存在于
- * 自己那一页的 extra 里(翻回去就显示)——绝不能因「当前不在这页」就删掉它所属的压缩链。
+ * ⚠️ Ở đây dùng leafIntact thay vì leafValid: lá "còn sống" chỉ xét sự tồn tại vật lý (id+delta), **không xét quyền sở hữu số trang**.
+ * Khi lật sang swipe chưa tóm tắt, lá đã được nén vào L1 tuy có leafValid=false đối với trang hiện tại, nhưng nó vẫn tồn tại vật lý ở
+ * trong extra của trang riêng nó (lật quay lại là hiển thị) —— tuyệt đối không được vì "hiện tại không ở trang này" mà xóa mất chuỗi nén chứa nó.
  */
 export function pruneBrokenComps(): boolean {
   const chat = getContext()?.chat ?? null;
@@ -2588,9 +2588,9 @@ export function pruneBrokenComps(): boolean {
   const isIntact = (id: string, stack: Set<string>): boolean => {
     if (verdict.has(id)) return verdict.get(id)!;
     const comp = byId.get(id);
-    if (!comp) return liveLeafIds.has(id); // 不是压缩节点:看是不是现存有效叶子
-    if (comp.imported) return true; // 导入历史是无 child 的原子节点,楼层范围直接代表其完整性
-    if (stack.has(id)) return false; // 防环
+    if (!comp) return liveLeafIds.has(id); // Không phải nút nén: xem có phải lá hợp lệ đang tồn tại hay không
+    if (comp.imported) return true; // Lịch sử nhập vào là nút nguyên tử không có child, phạm vi tầng lầu trực tiếp đại diện cho tính nguyên vẹn của nó
+    if (stack.has(id)) return false; // Chống vòng lặp
     stack.add(id);
     let ok = comp.childIds.length > 0;
     for (const c of comp.childIds) {
@@ -2611,7 +2611,7 @@ export function pruneBrokenComps(): boolean {
   return changed;
 }
 
-/** 测试辅助:重置 id 序列 */
+/** Hỗ trợ kiểm thử: đặt lại chuỗi id */
 export function __resetIdSeq(): void {
   idSeq = 0;
 }

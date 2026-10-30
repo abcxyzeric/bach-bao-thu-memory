@@ -7,26 +7,26 @@ import Summary from './summary/index.vue';
 import Vars from './vars/index.vue';
 
 export interface PageDef {
-  /** 唯一 id,存进 ui.activePage / localStorage;同时作为 Icon 的 name */
+  /** id duy nhất, lưu vào ui.activePage / localStorage; đồng thời làm name của Icon */
   id: string;
-  /** 导航栏全称 */
+  /** Tên đầy đủ trên thanh điều hướng */
   label: string;
   component: Component;
 }
 
 /**
- * 分页注册表 —— 新增一页:建一个 pages/<id>/index.vue,再往这里加一行,
- * 并在 Icon.vue 的 PATHS 里加一条同 id 的图标。顺序即导航顺序,设置放最末。
+ * Bảng đăng ký phân trang —— thêm một trang mới: tạo một pages/<id>/index.vue, rồi thêm một dòng vào đây,
+ * đồng thời thêm một biểu tượng cùng id vào PATHS của Icon.vue. Thứ tự chính là thứ tự điều hướng, Cài đặt đặt ở cuối cùng.
  *
- * 计划/悬念已并入摘要页(上方),不再单独成页。
+ * Kế hoạch / Nghi vấn đã được gộp vào trang Tóm tắt (phía trên), không tách thành trang riêng nữa.
  */
 export const PAGES: PageDef[] = [
-  { id: 'summary', label: '摘要', component: Summary },
-  { id: 'items', label: '物品', component: Items },
-  { id: 'scenes', label: '场景', component: Scenes },
-  { id: 'npcs', label: '角色', component: Npcs },
-  { id: 'vars', label: '变量', component: Vars },
-  { id: 'settings', label: '设置', component: Settings },
+  { id: 'summary', label: 'Tóm tắt', component: Summary },
+  { id: 'items', label: 'Vật phẩm', component: Items },
+  { id: 'scenes', label: 'Khung cảnh', component: Scenes },
+  { id: 'npcs', label: 'Nhân vật', component: Npcs },
+  { id: 'vars', label: 'Biến số', component: Vars },
+  { id: 'settings', label: 'Cài đặt', component: Settings },
 ];
 
 export function getPage(id: string): PageDef {

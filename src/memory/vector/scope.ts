@@ -1,22 +1,22 @@
 /**
- * 向量库的「选库 + 选 scope」逻辑。
+ * Logic "chọn kho + chọn scope" của kho vector.
  *
- * 角色隔离 = 每角色一个独立 <database>.sqlite:库名由角色 avatar(稳定唯一键)算出。
- * 删角色 = 删那一个库文件,不牵连其他角色。
- * 库内用 scope 区分集合:
- *   'chat:<chatId>'    当前聊天边玩边索引
- *   'bundle:<hash>'    带数据建新聊天冻结的快照(写在 metadata.bbs_bundles)
+ * Cô lập nhân vật = mỗi nhân vật một file <database>.sqlite độc lập: tên kho tính ra từ avatar nhân vật (khóa duy nhất ổn định).
+ * Xóa nhân vật = xóa một file kho đó, không liên lụy nhân vật khác.
+ * Trong kho dùng scope để phân biệt tập hợp:
+ *   'chat:<chatId>'    cuộc trò chuyện hiện tại vừa chơi vừa lập chỉ mục
+ *   'bundle:<hash>'    ảnh chụp đóng băng khi tạo cuộc trò chuyện mới kèm dữ liệu (ghi ở metadata.bbs_bundles)
  */
 
 import { getContext } from '@/st/context';
 
-/** metadata 上存哈希包列表的字段名(随 chat 文件走,ST 原生分支会物理拷贝) */
+/** Tên trường lưu danh sách gói mã băm trên metadata (đi theo file chat, nhánh gốc của ST sẽ sao chép vật lý) */
 export const BUNDLES_META_KEY = 'bbs_bundles';
 
 /**
- * 把任意字符串(角色 avatar)折成合法库名。
- * 后端 DATABASE_NAME_RE = /^[a-z0-9][a-z0-9._-]{0,79}$/,avatar 含中文/大写/斜杠过不了,故 hash。
- * 用 FNV-1a(无需 crypto,前端同步算):稳定、同 avatar 永远同库。
+ * Gấp chuỗi bất kỳ (avatar nhân vật) thành tên kho hợp lệ.
+ * Backend DATABASE_NAME_RE = /^[a-z0-9][a-z0-9._-]{0,79}$/, avatar chứa chữ Unicode / chữ hoa / dấu gạch chéo sẽ không qua được, nên băm (hash).
+ * Dùng FNV-1a (không cần crypto, frontend tính đồng bộ): ổn định, cùng avatar luôn ra cùng một kho.
  */
 function avatarToDbName(avatar: string): string {
   let h = 0x811c9dc5;
@@ -24,16 +24,16 @@ function avatarToDbName(avatar: string): string {
     h ^= avatar.charCodeAt(i);
     h = Math.imul(h, 0x01000193);
   }
-  // 再掺入长度做轻量去碰撞;转无符号 16 进制
+  // Trộn thêm độ dài để khử va chạm gọn nhẹ; chuyển sang hệ thập lục phân không dấu
   const hex = ((h >>> 0).toString(16) + (avatar.length & 0xffff).toString(16)).padStart(8, '0');
   return `bbs_vec_${hex}`;
 }
 
-/** 当前角色对应的向量库名;群聊/未进入角色时返回 null(不索引)。 */
+/** Tên kho vector tương ứng với nhân vật hiện tại; khi trò chuyện nhóm / chưa vào nhân vật thì trả về null (không lập chỉ mục). */
 export function currentVectorDb(): string | null {
   const ctx = getContext();
   if (!ctx) return null;
-  if (ctx.groupId) return null; // 群聊暂不支持
+  if (ctx.groupId) return null; // Trò chuyện nhóm tạm thời chưa hỗ trợ
   const idx = ctx.characterId;
   if (idx === undefined || idx === null || idx === '') return null;
   const ch = ctx.characters?.[Number(idx)];
@@ -42,19 +42,19 @@ export function currentVectorDb(): string | null {
   return avatarToDbName(avatar);
 }
 
-/** 当前聊天 id;未进入聊天返回 null。 */
+/** ID cuộc trò chuyện hiện tại; chưa vào cuộc trò chuyện trả về null. */
 export function currentChatId(): string | null {
   const ctx = getContext();
   return ctx?.getCurrentChatId?.() ?? null;
 }
 
-/** 当前聊天自己的 scope('chat:<chatId>');未进入聊天返回 null。 */
+/** Scope riêng của cuộc trò chuyện hiện tại ('chat:<chatId>'); chưa vào cuộc trò chuyện trả về null. */
 export function currentChatScope(): string | null {
   const id = currentChatId();
   return id ? `chat:${id}` : null;
 }
 
-/** 读当前聊天 metadata 上的哈希包列表(去重),无则空数组。 */
+/** Đọc danh sách gói mã băm trên metadata của cuộc trò chuyện hiện tại (khử trùng), không có thì mảng rỗng. */
 export function currentBundleHashes(): string[] {
   const ctx = getContext();
   const meta = ctx?.chatMetadata as Record<string, unknown> | undefined;
@@ -65,7 +65,7 @@ export function currentBundleHashes(): string[] {
   return [...seen];
 }
 
-/** 召回范围 scopes = 当前聊天 + 各 bundle。未进入聊天返回空数组。 */
+/** Phạm vi truy xuất scopes = cuộc trò chuyện hiện tại + các bundle. Chưa vào cuộc trò chuyện trả về mảng rỗng. */
 export function recallScopes(): string[] {
   const self = currentChatScope();
   if (!self) return [];
@@ -73,8 +73,8 @@ export function recallScopes(): string[] {
 }
 
 /**
- * 在当前聊天 metadata 上追加一个 bundle 哈希(累加、去重),并触发持久化。
- * 用于「带数据建新聊天」写入新聊天那一刻。
+ * Nối thêm một mã băm bundle vào metadata của cuộc trò chuyện hiện tại (cộng dồn, khử trùng), và kích hoạt lưu bền vững.
+ * Dùng vào khoảnh khắc ghi vào cuộc trò chuyện mới khi "Tạo cuộc trò chuyện mới kèm dữ liệu".
  */
 export function appendBundleHash(metadata: Record<string, unknown>, parentHashes: string[], newHash: string): void {
   const merged = new Set<string>([...parentHashes, newHash].filter(Boolean));

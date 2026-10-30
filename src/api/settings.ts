@@ -4,268 +4,268 @@ import { reactive, watch } from 'vue';
 import { DEFAULT_RECALL_INJECTION_DEPTH, normalizeRecallInjectionDepth } from '@/memory/vector/depth';
 
 /**
- * 副 API 设置(全局,跨聊天)。存进 ST 的 extension_settings(→ 服务器 settings.json),
- * 因而跨设备同步:手机/局域网另一端打开同一 ST 账户即可见到同一份设置。
- * (旧版本曾存浏览器 localStorage,只在本机生效;见 hydrateSettings 的一次性迁移。)
- * 渠道可配多个;两类摘要任务各指派一个渠道:summary=摘要,resummary=总结。
+ * Cài đặt API phụ (toàn cục, xuyên suốt các cuộc trò chuyện). Lưu vào extension_settings của ST (→ settings.json trên máy chủ),
+ * nhờ đó đồng bộ xuyên thiết bị: mở cùng một tài khoản ST trên điện thoại / đầu bên kia mạng LAN là thấy ngay cùng một bản cài đặt.
+ * (Phiên bản cũ từng lưu ở localStorage của trình duyệt, chỉ có hiệu lực trên máy cục bộ; xem phần di chuyển một lần ở hydrateSettings.)
+ * Có thể cấu hình nhiều kênh; hai loại tác vụ tóm tắt mỗi loại chỉ định một kênh: summary=tóm tắt, resummary=tổng kết.
  */
 
 export interface ApiChannel {
   id: string;
-  /** 显示名 */
+  /** Tên hiển thị */
   name: string;
-  /** OpenAI 兼容的 base url,如 https://api.openai.com/v1 */
+  /** Base url tương thích OpenAI, như https://api.openai.com/v1 */
   url: string;
-  /** 密钥 */
+  /** Khóa API */
   key: string;
-  /** 模型名 */
+  /** Tên mô hình */
   model: string;
-  /** 采样温度 */
+  /** Nhiệt độ lấy mẫu */
   temperature: number;
-  /** 最大输出 token */
+  /** Token đầu ra tối đa */
   maxTokens: number;
-  /** 单次请求超时(秒)。超过后主动中断;每个渠道独立配置,默认 180 秒。 */
+  /** Giới hạn thời gian một yêu cầu đơn lẻ (giây). Quá thời gian sẽ chủ động ngắt; mỗi kênh cấu hình độc lập, mặc định 180 giây. */
   timeoutSec: number;
-  /** 流式传输(默认关);开启后按 SSE 增量拼接 */
+  /** Truyền tải dạng luồng (stream, mặc định tắt); sau khi bật sẽ ghép tăng thêm theo SSE */
   stream: boolean;
-  /** 排除参数:这些字段名会在构造请求体时从 body 中删除,
-   *  用于规避不接受某些参数(如 temperature/max_tokens)的兼容端点报错。 */
+  /** Tham số loại trừ: các tên trường này sẽ bị xóa khỏi body khi xây dựng thân yêu cầu,
+   *  dùng để tránh báo lỗi ở các điểm cuối tương thích không chấp nhận một số tham số (như temperature/max_tokens). */
   excludeParams: string[];
   /**
-   * 思考强度(推理模型的 reasoning_effort)。空串 = auto = 不发这个参数(默认,老渠道即此值)。
+   * Cường độ suy nghĩ (reasoning_effort của mô hình suy luận). Chuỗi rỗng = auto = không gửi tham số này (mặc định, các kênh cũ mang giá trị này).
    *
-   * 取值不做白名单校验,原样发给端点:各家词汇不统一(OpenAI 的 minimal/low/medium/high/xhigh、
-   * 部分中转站的 max/none……),中转站比我们更清楚自己的模型吃什么,校验只会误伤。
+   * Giá trị lấy vào không kiểm tra danh sách trắng, gửi nguyên bản cho điểm cuối: từ vựng của các bên không thống nhất (minimal/low/medium/high/xhigh của OpenAI,
+   * max/none của một số trạm trung chuyển……), trạm trung chuyển hiểu rõ hơn chúng ta về việc mô hình của họ nhận giá trị gì, kiểm tra chỉ gây chặn nhầm.
    *
-   * 非空时整条请求改走 custom 源(见 api/client.ts 的 buildRequestBody):
-   * ST 代理对 openai 源的 reasoning_effort 有**模型名白名单**(src/constants.js 的
-   * OPENAI_REASONING_EFFORT_MODELS,精确匹配 o1/o3/gpt-5 那批),模型名对不上就**静默丢弃且照样返回 200**——
-   * 用户设了却毫无效果、还看不出来。custom 源的 custom_include_body 是纯 merge,不过白名单。
+   * Khi khác rỗng toàn bộ yêu cầu đổi sang đi qua nguồn custom (xem buildRequestBody của api/client.ts):
+   * Proxy ST đối với reasoning_effort của nguồn openai có **danh sách trắng tên mô hình** (OPENAI_REASONING_EFFORT_MODELS
+   * trong src/constants.js, chỉ khớp chính xác nhóm o1/o3/gpt-5), tên mô hình không khớp là **âm thầm vứt bỏ mà vẫn trả về 200 như thường** ——
+   * người dùng đặt nhưng hoàn toàn không có tác dụng mà cũng không nhìn ra. custom_include_body của nguồn custom là gộp thuần túy, không qua danh sách trắng.
    *
-   * 跨插件:与柏宝绘/柏宝砚共享同一份渠道(baibai_api_channels),三家字段名一致。
+   * Xuyên plugin: dùng chung cùng một danh sách kênh (baibai_api_channels) với Bách Bảo Hội / Bách Bảo Nghiên, tên trường của cả ba bên nhất quán.
    */
   reasoningEffort: string;
 }
 
 export type TaskType = 'summary' | 'resummary';
 
-/** 自定义提示词:空串表示沿用 prompts.ts 内置模板,非空则整体覆盖该任务的模板。 */
+/** Prompt tùy chỉnh: chuỗi rỗng biểu thị tiếp tục dùng khuôn mẫu tích hợp sẵn trong prompts.ts, khác rỗng thì ghi đè tổng thể khuôn mẫu của tác vụ đó. */
 export interface CustomPrompts {
   summary: string;
-  /** 普通总结(L0 叶子 → L1):把多条楼层摘要压成一条 L1 总结。 */
+  /** Tổng kết thông thường (lá L0 → L1): nén nhiều tóm tắt tầng lầu thành một tổng kết L1. */
   resummary: string;
-  /** 二次总结(L1+ → 更上层):把多条总结再压一层,字数按输入规模动态放宽以少丢信息。 */
+  /** Tổng kết lần hai (L1+ → tầng cao hơn): nén nhiều bản tổng kết thêm một tầng nữa, số chữ nới lỏng động theo quy mô đầu vào để ít mất thông tin hơn. */
   resummary2: string;
-  /** 破限提示词:附加在摘要/总结请求里;空串=不附加。 */
+  /** Prompt vượt giới hạn: đính kèm trong yêu cầu tóm tắt / tổng kết; chuỗi rỗng = không đính kèm. */
   jailbreak: string;
-  /** 固定提示词(时间标签):注入**主对话**模型,要求每条正文前后输出时间标签;空=用内置默认。 */
+  /** Prompt cố định (thẻ thời gian): tiêm vào mô hình **đối thoại chính**, yêu cầu trước và sau mỗi chính văn xuất thẻ thời gian; trống = dùng mặc định tích hợp sẵn. */
   timeTag: string;
 }
 
 /**
- * 单个向量角色的端点配置(扁平:自带地址+密钥+模型,不再经「渠道」中转)。
- * embedding 为基准必填;rerank/queryRewrite 的 url 留空 = 整体复用 embedding 的端点与模型。
+ * Cấu hình điểm cuối của một vai trò vector đơn lẻ (phẳng: tự mang địa chỉ + khóa + mô hình, không còn trung chuyển qua "kênh").
+ * embedding là mốc chuẩn bắt buộc điền; url của rerank/queryRewrite để trống = tái sử dụng tổng thể điểm cuối của embedding.
  */
 export interface VectorEndpoint {
-  /** OpenAI 兼容 base url(如 https://api.openai.com/v1);rerank/query 留空=复用 embedding */
+  /** Base url tương thích OpenAI (như https://api.openai.com/v1); rerank/query để trống = tái sử dụng embedding */
   url: string;
-  /** API 密钥 */
+  /** Khóa API */
   key: string;
-  /** 模型名 */
+  /** Tên mô hình */
   model: string;
-  /** 单次请求超时(秒)。超时即中断该次请求;各角色默认不同(见 defaults),不随地址复用回落。 */
+  /** Giới hạn thời gian một yêu cầu đơn lẻ (giây). Quá thời gian là ngắt ngay yêu cầu lần đó; mặc định của mỗi vai trò khác nhau (xem defaults), không lùi về theo việc tái sử dụng địa chỉ. */
   timeoutSec: number;
-  /** 失败自动重试次数:仅超时/网络异常/服务端 5xx/限流 429 才重试;4xx 不重试。非负整数。 */
+  /** Số lần tự động thử lại khi thất bại: chỉ quá thời gian / lỗi mạng bất thường / máy chủ 5xx / giới hạn tần suất 429 mới thử lại; 4xx không thử lại. Số nguyên không âm. */
   retries: number;
 }
 
 /**
- * 召回参数。召回管线:
- *  ① 所有向量索引各算一次 embedding 相似度,**纯按得分排序取前 N(rerankCandidates)进入 rerank**——
- *     这一步不套 embedding 阈值,哪怕前 N 全是低分(0.4/0.3…)也照样进候选;阈值只在 ② 的摘要档准入用。
- *  ② rerank 打分后分两档:
- *     · 全文档 = rerank 得分 ≥ rerankThreshold,取前 fullTextCount 条(发原文全文);
- *     · 摘要档 = rerank 得分 < rerankThreshold 但 embedding 得分 ≥ embeddingThreshold(发叶子摘要);
- *  ③ 最终召回条数 ≤ finalRecallCount(上限):先放全文档,不足再用摘要档补,补不满也无妨。
+ * Tham số truy xuất. Đường ống truy xuất:
+ *  ① Tất cả các chỉ mục vector mỗi cái tính một lần độ tương đồng embedding, **thuần túy sắp xếp theo điểm lấy N mục đầu (rerankCandidates) đưa vào rerank** ——
+ *     bước này không áp ngưỡng embedding, cho dù N mục đầu toàn là điểm thấp (0.4/0.3…) cũng vẫn vào ứng viên như thường; ngưỡng chỉ dùng cho việc xét duyệt vào mức tóm tắt ở bước ②.
+ *  ② Sau khi rerank chấm điểm thì chia làm hai mức:
+ *     · Mức toàn văn = điểm rerank ≥ rerankThreshold, lấy fullTextCount mục đầu (gửi nguyên văn toàn bộ);
+ *     · Mức tóm tắt = điểm rerank < rerankThreshold nhưng điểm embedding ≥ embeddingThreshold (gửi tóm tắt lá);
+ *  ③ Số lượng mục truy xuất cuối cùng ≤ finalRecallCount (trần giới hạn): đặt mức toàn văn trước, chưa đủ mới dùng mức tóm tắt bù vào, bù không đầy cũng không sao.
  */
 export interface VectorRecallSettings {
-  /** 召回内容注入深度:D0 最贴近最新输入,数字越大越靠前。 */
+  /** Độ sâu tiêm nội dung truy xuất: D0 bám sát đầu vào mới nhất nhất, con số càng lớn càng nằm về phía trước. */
   injectionDepth: number;
-  /** 进入 rerank 的候选数:纯按 embedding 相似度取 top-N(不套阈值过滤) */
+  /** Số lượng ứng viên đưa vào rerank: thuần túy lấy top-N theo độ tương đồng embedding (không áp ngưỡng lọc) */
   rerankCandidates: number;
-  /** embedding 相似度阈值:仅用于 ② 摘要档准入门槛(低于此连摘要都不召回);不影响 ① 取候选 */
+  /** Ngưỡng độ tương đồng embedding: chỉ dùng làm ngưỡng xét duyệt mức tóm tắt ở bước ② (thấp hơn mức này thì ngay cả tóm tắt cũng không truy xuất); không ảnh hưởng việc lấy ứng viên ở bước ① */
   embeddingThreshold: number;
-  /** rerank 得分阈值:≥ 进全文档,< 退摘要档 */
+  /** Ngưỡng điểm rerank: ≥ đi vào mức toàn văn, < lùi về mức tóm tắt */
   rerankThreshold: number;
-  /** 召回全文数:全文档取前 N 条(发原文) */
+  /** Số lượng toàn văn truy xuất: mức toàn văn lấy N mục đầu (gửi nguyên văn) */
   fullTextCount: number;
-  /** 最终召回条数(上限):全文档 + 摘要档合计不超过它 */
+  /** Số lượng mục truy xuất cuối cùng (trần giới hạn): tổng cộng mức toàn văn + mức tóm tắt không vượt quá nó */
   finalRecallCount: number;
   /**
-   * 召回起始 AI 楼数:当前聊天 AI 消息数少于此值时**不触发召回**(0=不限制)。
-   * 用 AI 消息数计(与 keepRecent 同口径),避免和「楼层」混淆。
-   * 早期剧情还没多少旧记忆可召,跳过可省额度/延迟;「带数据建新对话」的旧档不受此限(始终召回)。
+   * Số tầng AI bắt đầu truy xuất: khi số lượng tin nhắn AI của cuộc trò chuyện hiện tại ít hơn giá trị này thì **không kích hoạt truy xuất** (0 = không giới hạn).
+   * Tính bằng số lượng tin nhắn AI (cùng tiêu chuẩn với keepRecent), tránh nhầm lẫn với "tầng lầu".
+   * Cốt truyện giai đoạn đầu chưa có bao nhiêu ký ức cũ để truy xuất, bỏ qua giúp tiết kiệm hạn mức / độ trễ; bản lưu cũ của "Tạo cuộc trò chuyện mới kèm dữ liệu" không chịu giới hạn này (luôn truy xuất).
    */
   minAiFloors: number;
 }
 
-/** 向量记忆设置。embedding 为基准,rerank/queryRewrite 的 url 留空则整体复用 embedding。 */
+/** Cài đặt trí nhớ vector. embedding làm chuẩn, url của rerank/queryRewrite để trống thì tái sử dụng của embedding. */
 export interface VectorSettings {
-  /** 向量记忆开关 */
+  /** Công tắc trí nhớ vector */
   enabled: boolean;
-  /** 文本向量化端点(基准,必填) */
+  /** Điểm cuối vector hóa văn bản (mốc chuẩn, bắt buộc điền) */
   embedding: VectorEndpoint;
-  /** 重排端点;url 留空复用 embedding */
+  /** Điểm cuối xếp hạng lại (rerank); url để trống thì tái sử dụng embedding */
   rerank: VectorEndpoint;
-  /** 查询重写端点;url 留空复用 embedding */
+  /** Điểm cuối viết lại truy vấn; url để trống thì tái sử dụng embedding */
   queryRewrite: VectorEndpoint;
-  /** 查询重写单次最大输出 token(三角色里仅它生成文本;够放 INTENT + 多条 Q 即可,偏小会截断)。默认 8192。 */
+  /** Token đầu ra tối đa một lần của viết lại truy vấn (trong ba vai trò chỉ có nó là sinh văn bản; đủ chỗ đặt INTENT + nhiều Q là được, hơi nhỏ sẽ bị cắt cụt). Mặc định 8192. */
   queryRewriteMaxTokens: number;
-  /** 召回参数(候选数/阈值/条数) */
+  /** Tham số truy xuất (số ứng viên/ngưỡng/số lượng mục) */
   recall: VectorRecallSettings;
 }
 
-/** 界面偏好里要跨设备同步的部分(主题/导航位置);activePage 等纯本机临时态不在此。 */
+/** Phần cần đồng bộ xuyên thiết bị trong tùy chọn giao diện (giao diện chủ đề / vị trí điều hướng); trạng thái tạm thời thuần trên máy như activePage không nằm ở đây. */
 export interface UiPrefs {
-  /** 主题名(合法值见 state/ui.ts 的 THEMES;这里只存字符串,避免 settings 反向依赖 ui) */
+  /** Tên giao diện chủ đề (giá trị hợp lệ xem THEMES trong state/ui.ts; ở đây chỉ lưu chuỗi, tránh việc settings phụ thuộc ngược vào ui) */
   theme: string;
-  /** 导航位置:top/bottom/auto */
+  /** Vị trí điều hướng: top/bottom/auto */
   navPosition: string;
-  /** 移动端:再点当前页导航按钮即关闭整窗。默认开;怕误触的用户可关。 */
+  /** Thiết bị di động: bấm lại nút điều hướng của trang hiện tại sẽ đóng toàn bộ cửa sổ. Mặc định bật; người dùng sợ chạm nhầm có thể tắt. */
   navTapClose: boolean;
-  /** 在 ST 顶栏注入一个快速打开按钮(魔杖菜单入口照旧保留)。默认关。 */
+  /** Tiêm một nút mở nhanh vào thanh trên cùng của ST (lối vào menu đũa phép vẫn giữ nguyên như cũ). Mặc định tắt. */
   showTopBar: boolean;
-  /** 在聊天框上方注入「快速回复」式按钮,点击打开柏宝书。默认关。 */
+  /** Tiêm nút kiểu "Trả lời nhanh" ở phía trên khung trò chuyện, bấm vào để mở Bách Bảo Thư. Mặc định tắt. */
   showQuickReply: boolean;
-  /** 在每条 AI 楼层内注入摘要锚点(查看该楼摘要数据 + 标记番外)。默认关。 */
+  /** Tiêm mốc neo tóm tắt vào bên trong mỗi tầng lầu AI (xem dữ liệu tóm tắt tầng đó + đánh dấu ngoại truyện). Mặc định tắt. */
   showFloorPanel: boolean;
-  /** 屏幕边缘悬浮球,点击打开柏宝书。默认关。 */
+  /** Quả cầu nổi ở mép màn hình, bấm vào để mở Bách Bảo Thư. Mặc định tắt. */
   showOrb: boolean;
-  /** 悬浮球自定义图标:ST 服务器图片路径(saveBase64AsFile 返回的短串);空=用默认书签图标。跨设备同步。 */
+  /** Biểu tượng tùy chỉnh của quả cầu nổi: đường dẫn ảnh trên máy chủ ST (chuỗi ngắn do saveBase64AsFile trả về); trống = dùng biểu tượng dấu trang mặc định. Đồng bộ xuyên thiết bị. */
   orbImage: string;
-  /** 悬浮球形状:bookmark 书签(默认)/ circle 圆 / square 方。 */
+  /** Hình dạng quả cầu nổi: bookmark dấu trang (mặc định) / circle tròn / square vuông. */
   orbShape: string;
-  /** 悬浮球静止时不透明度(百分比 20–100,默认 62)。唤起/拖动时一律全显。 */
+  /** Độ mờ của quả cầu nổi khi đứng yên (phần trăm 20–100, mặc định 62). Khi gọi lên / kéo đi đều hiển thị rõ hoàn toàn. */
   orbOpacity: number;
-  /** 悬浮球基准尺寸(px,32–80,默认 48)。书签按比例放宽高,圆/方为等边边长。 */
+  /** Kích thước cơ sở của quả cầu nổi (px, 32–80, mặc định 48). Dấu trang phóng rộng cao theo tỷ lệ, tròn/vuông là độ dài cạnh đều. */
   orbSize: number;
 }
 
-/** 字数详尽档位:detailed=详细(默认),concise=精简(摘要/总结/二次总结字数一并降低)。仅影响内置模板。 */
+/** Mức độ chi tiết số chữ: detailed=chi tiết (mặc định), concise=tinh giản (số chữ tóm tắt/tổng kết/tổng kết lần hai cùng giảm xuống). Chỉ ảnh hưởng khuôn mẫu tích hợp sẵn. */
 export type Verbosity = 'detailed' | 'concise';
 
 /**
- * 注入设置:各状态块是否注入**主模型**(生成正文的请求)。
- * 只影响 buildStateInjectionText;副 API 摘要始终看到全量状态、照常记录(防重复记录),不受此影响。
- * 依赖关系:NPC 名册的在场分档与物品清单的可达判定都走场景树,
- * 故 scenes 关闭时 npcs/items 实际不注入(界面同步置灰);主角状态自包含,不依赖场景。
+ * Cài đặt tiêm: các khối trạng thái có được tiêm vào **mô hình chính** (yêu cầu sinh chính văn) hay không.
+ * Chỉ ảnh hưởng buildStateInjectionText; tóm tắt API phụ luôn nhìn thấy toàn bộ trạng thái và ghi chép như thường (chống ghi trùng lặp), không bị ảnh hưởng bởi cài đặt này.
+ * Quan hệ phụ thuộc: phân mức có mặt của danh sách NPC và phán đoán khả năng tiếp cận của danh sách vật phẩm đều đi qua cây bối cảnh,
+ * nên khi tắt scenes thì thực tế npcs/items cũng không được tiêm (giao diện đồng bộ làm xám); trạng thái nhân vật chính tự khép kín, không phụ thuộc bối cảnh.
  */
 export interface InjectionSections {
-  /** 眼下局势(sceneFocus 互动局势卡) */
+  /** Cục diện trước mắt (thẻ cục diện tương tác sceneFocus) */
   sceneFocus: boolean;
-  /** 主角及主要角色的生活细节(仅控制注入;记录始终开启,无开关——不注入时记多少都不影响正文) */
+  /** Chi tiết đời sống của nhân vật chính và nhân vật chính yếu (chỉ kiểm soát việc tiêm; việc ghi chép luôn bật, không có công tắc —— khi không tiêm thì ghi bao nhiêu cũng không ảnh hưởng chính văn) */
   lifeDetails: boolean;
-  /** 主角当前状态(性别/年龄/外貌/着装/状态) */
+  /** Trạng thái hiện tại của nhân vật chính (giới tính/tuổi/ngoại hình/trang phục/trạng thái) */
   protagonist: boolean;
-  /** NPC 名册(依赖场景信息) */
+  /** Danh sách NPC (phụ thuộc thông tin bối cảnh) */
   npcs: boolean;
-  /** NPC 名册内的五档好感估计(内心好感/外在态度/说明);关闭后名册照发,只是不附带好感。
-   *  适合角色卡自带好感系统、不想两套并行的场合。仅控制注入,记录与页面展示始终开启。 */
+  /** Ước lượng hảo cảm 5 mức bên trong danh sách NPC (hảo cảm nội tâm/thái độ bên ngoài/giải thích); sau khi tắt danh sách vẫn gửi như thường, chỉ là không kèm theo hảo cảm.
+   *  Phù hợp với trường hợp thẻ nhân vật đã có sẵn hệ thống hảo cảm, không muốn hai bộ chạy song song. Chỉ kiểm soát việc tiêm, việc ghi chép và hiển thị trên trang luôn bật. */
   npcAffinity: boolean;
-  /** 物品清单(依赖场景信息) */
+  /** Danh sách vật phẩm (phụ thuộc thông tin bối cảnh) */
   items: boolean;
-  /** 场景信息(当前地点+祖先链+其他已知地点);关闭后 NPC/物品随之不注入 */
+  /** Thông tin bối cảnh (địa điểm hiện tại + chuỗi tổ tiên + các địa điểm đã biết khác); sau khi tắt thì NPC/vật phẩm cũng theo đó không tiêm */
   scenes: boolean;
-  /** 角色对主角的了解清单。与其他项不同,它同时管「记录」:关掉就连副 API 的规则一起省掉(零 token),已有清单保留。
-   *  不依赖场景注入——在场判定读的是记忆数据,不是注入文本。 */
+  /** Danh sách hiểu biết của nhân vật về nhân vật chính. Khác với các mục khác, nó đồng thời quản lý cả việc "ghi chép": tắt đi là tiết kiệm luôn cả quy tắc ở API phụ (0 token), danh sách đã có được giữ lại.
+   *  Không phụ thuộc việc tiêm bối cảnh —— phán đoán có mặt đọc dữ liệu bộ nhớ, chứ không phải văn bản tiêm. */
   knowledge: boolean;
 }
 
 export interface ApiSettings {
-  /** 插件总开关。关闭后停止一切自动注入/摘要/总结/隐藏;ST 菜单入口仍在,可重新打开界面再开启。 */
+  /** Công tắc tổng của plugin. Sau khi tắt sẽ dừng mọi việc tự động tiêm/tóm tắt/tổng kết/ẩn; lối vào menu ST vẫn còn, có thể mở lại giao diện để bật lại. */
   enabled: boolean;
-  /** 界面偏好(主题/导航位置),随设置存进 extension_settings → 跨设备同步 */
+  /** Tùy chọn giao diện (chủ đề/vị trí điều hướng), lưu vào extension_settings cùng cài đặt → đồng bộ xuyên thiết bị */
   ui: UiPrefs;
-  /** 自定义提示词模板(空=用内置) */
+  /** Khuôn mẫu prompt tùy chỉnh (trống = dùng tích hợp sẵn) */
   prompts: CustomPrompts;
-  /** 内置模板的字数详尽档位:详细/精简。自定义模板不受影响。 */
+  /** Mức độ chi tiết số chữ của khuôn mẫu tích hợp sẵn: chi tiết/tinh giản. Khuôn mẫu tùy chỉnh không bị ảnh hưởng. */
   verbosity: Verbosity;
-  /** 向量记忆配置 */
+  /** Cấu hình trí nhớ vector */
   vector: VectorSettings;
   channels: ApiChannel[];
-  /** 各任务指派的渠道 id */
+  /** ID kênh được chỉ định cho từng tác vụ */
   assignments: Record<TaskType, string>;
-  /** 自动摘要开关。开启即一并启用:自动隐藏、正文时间标签、积压拦截(不再各自独立开关)。 */
+  /** Công tắc tự động tóm tắt. Bật lên là kích hoạt cùng lúc: tự động ẩn, thẻ thời gian chính văn, chặn tồn đọng (không còn tách công tắc riêng lẻ nữa). */
   autoSummaryEnabled: boolean;
   /**
-   * 仅摘要模式。继续分析、保存结构化状态,但不向主模型注入当前状态,
-   * 也不再把物品/变量变动旁注写回正文。已有正文旁注不主动清理。
+   * Chế độ chỉ tóm tắt. Tiếp tục phân tích, lưu trạng thái có cấu trúc, nhưng không tiêm trạng thái hiện tại vào mô hình chính,
+   * và cũng không còn ghi chú thích biến động vật phẩm / biến số trở lại chính văn nữa. Các chú thích chính văn đã có không chủ động dọn dẹp.
    */
   summaryOnlyMode: boolean;
-  /** 注入设置:各状态块是否注入主模型(仅摘要模式开启时整组不生效) */
+  /** Cài đặt tiêm: các khối trạng thái có tiêm vào mô hình chính hay không (khi bật chế độ chỉ tóm tắt thì cả nhóm không có hiệu lực) */
   injection: InjectionSections;
-  /** 保留最近 N 条 AI 消息发全文(滑动窗口);更早的自动摘要并隐藏 */
+  /** Giữ lại N tin nhắn AI gần nhất gửi toàn văn (cửa sổ trượt); các tin nhắn sớm hơn tự động tóm tắt và ẩn đi */
   keepRecent: number;
-  /** 排除的角色名:这些名字(含重名卡)的聊天里,记忆系统所有功能都不生效 */
+  /** Tên nhân vật bị loại trừ: trong cuộc trò chuyện của những tên này (gồm cả thẻ trùng tên), mọi tính năng của hệ thống trí nhớ đều không có hiệu lực */
   excludedChars: string[];
-  /** 摘要/总结时**整本排除**的世界书文件名:这些书的所有激活条目都不进摘要上下文。
-   *  用于全局挂载的附加知识书等——它们对当前剧情摘要无用,排除可省 token。仅影响副API。 */
+  /** Tên file sách thế giới **loại trừ cả cuốn** khi tóm tắt/tổng kết: mọi mục kích hoạt của những cuốn sách này đều không đi vào ngữ cảnh tóm tắt.
+   *  Dùng cho các sách kiến thức phụ gắn toàn cục v.v. —— chúng vô ích đối với việc tóm tắt cốt truyện hiện tại, loại trừ giúp tiết kiệm token. Chỉ ảnh hưởng API phụ. */
   excludedWorldNames: string[];
-  /** 摘要/总结时按**条目名(comment)**过滤的规则:命中任一规则的条目不进摘要上下文。
-   *  每条当正则编译(普通名字天然=包含匹配),编译失败降级为字面子串包含。仅影响副API。 */
+  /** Quy tắc lọc theo **tên mục (comment)** khi tóm tắt/tổng kết: mục trúng bất kỳ quy tắc nào sẽ không đi vào ngữ cảnh tóm tắt.
+   *  Mỗi mục được biên dịch như regex (tên thông thường tự nhiên = khớp bao hàm), biên dịch thất bại thì hạ cấp thành bao hàm chuỗi con nguyên văn. Chỉ ảnh hưởng API phụ. */
   excludedWorldInfoPatterns: string[];
-  /** 内置默认条目名规则是否已「播种」进上面的列表(见 DEFAULT_WI_PATTERNS / hydrateSettings)。
-   *  只发放一次:老用户首次载入时补进默认规则并置 true;之后用户删空也不再补回,尊重其选择。 */
+  /** Quy tắc tên mục mặc định tích hợp sẵn đã được "gieo hạt" vào danh sách bên trên hay chưa (xem DEFAULT_WI_PATTERNS / hydrateSettings).
+   *  Chỉ cấp phát một lần: người dùng cũ lần đầu tải sẽ được bù quy tắc mặc định và đặt thành true; về sau người dùng có xóa trống cũng không tự nhét lại nữa, tôn trọng lựa chọn của họ. */
   wiPatternsSeeded: boolean;
-  /** 渲染世界书模板(默认开):摘要副 API 取世界书条目前,先展开 {{宏}} 并执行 ST-Prompt-Template 的
-   *  EJS(<% %>),让「按好感度切换人设」等动态条目拿到成品而非原文。副作用:含写变量的 EJS 每次摘要
-   *  都会额外执行一次,污染变量状态——遇到这类世界书可关掉。未装 ST-Prompt-Template 时仅展开宏。 */
+  /** Kết xuất khuôn mẫu sách thế giới (mặc định bật): trước khi API phụ tóm tắt lấy mục sách thế giới, mở rộng {{macro}} trước và thực thi EJS (<% %>) của
+   *  ST-Prompt-Template, để các mục động như "chuyển đổi thiết lập theo độ hảo cảm" nhận được thành phẩm thay vì nguyên văn. Tác dụng phụ: EJS có chứa ghi biến mỗi lần tóm tắt
+   *  đều sẽ thực thi thêm một lần, làm bẩn trạng thái biến —— gặp loại sách thế giới này có thể tắt đi. Khi chưa cài ST-Prompt-Template thì chỉ mở rộng macro. */
   renderWorldInfoTemplates: boolean;
-  /** 叶子摘要积累到 N 条时,压成一条 L1 总结(L0→L1 阈值,0=关闭) */
+  /** Khi tóm tắt lá tích lũy đến N mục, nén thành một tổng kết L1 (ngưỡng L0→L1, 0 = tắt) */
   leafBatchThreshold: number;
   /**
-   * 总结时**在叶子层保留最近 N 条摘要不压缩**(仅 L0→L1 生效,不影响更高层)。
-   * 作用:压缩把一批叶子塌成一段 L1 后,注入端只走「根」——被收纳的叶子不再单独注入,
-   * 细颗粒会一次性丢失(用户实测的「断崖」)。留一截最新叶子当根,注入端始终有细节兜底。
-   * 机制:触发门槛抬到 `leafBatchThreshold + leafKeepRecent`,但每次仍只压最旧的
-   * `leafBatchThreshold` 条(不改总结质量),newest 的 N 条自然留下。
-   * 0=保持旧行为(攒够即全压);默认 3。设太大 = 迟迟不压、叶子堆积。 */
+   * Khi tổng kết **giữ lại N tóm tắt gần nhất ở tầng lá không nén** (chỉ có hiệu lực với L0→L1, không ảnh hưởng tầng cao hơn).
+   * Tác dụng: sau khi việc nén gộp một loạt lá thành một đoạn L1, đầu tiêm chỉ đi theo "gốc" —— các lá đã được thu nạp không còn tiêm riêng lẻ nữa,
+   * độ chi tiết hạt mịn sẽ mất đi một lượt ("vách đá" mà người dùng thực tế gặp phải). Chừa lại một đoạn lá mới nhất làm gốc, đầu tiêm luôn có chi tiết đỡ đáy.
+   * Cơ chế: ngưỡng kích hoạt nâng lên thành `leafBatchThreshold + leafKeepRecent`, nhưng mỗi lần vẫn chỉ nén `leafBatchThreshold` mục
+   * cũ nhất (không làm đổi chất lượng tổng kết), N mục mới nhất tự nhiên được giữ lại.
+   * 0 = giữ hành vi cũ (tích lũy đủ là nén hết); mặc định 3. Đặt quá lớn = mãi không nén, lá chất đống. */
   leafKeepRecent: number;
-  /** L1 每积累到 N 条时,压成一条 L2 总结(L1→L2 阈值,0=关闭) */
+  /** Mỗi khi L1 tích lũy đến N mục, nén thành một tổng kết L2 (ngưỡng L1→L2, 0 = tắt) */
   resummaryThreshold: number;
-  /** L2 及以上每积累到 N 条时,压成上一层总结(L≥2→L+1 阈值,0=关闭) */
+  /** Mỗi khi L2 trở lên tích lũy đến N mục, nén thành một tổng kết tầng ngay trên (ngưỡng L≥2→L+1, 0 = tắt) */
   higherResummaryThreshold: number;
-  /** 状态快照里附带「近期已完成计划/悬念」的条数:**计划、悬念各取最近 N 条**(0=不附带)。
-   *  防 AI 把刚了结的计划当未完成又去推进/重新 add;注入与副API摘要两端同口径附带。 */
+  /** Số lượng mục "kế hoạch/nghi vấn đã hoàn thành gần đây" đính kèm trong ảnh chụp trạng thái: **kế hoạch, nghi vấn mỗi loại lấy N mục gần nhất** (0 = không đính kèm).
+   *  Chống việc AI coi kế hoạch vừa khép lại là chưa hoàn thành rồi lại đi thúc đẩy / add lại; hai đầu tiêm và tóm tắt API phụ đính kèm cùng tiêu chuẩn. */
   recentResolvedPlansCount: number;
-  /** 摘要/总结失败(请求报错或 JSON 解析失败)的最大重试次数。0=不重试;默认 1(最多再试一次)。 */
+  /** Số lần thử lại tối đa khi tóm tắt/tổng kết thất bại (yêu cầu báo lỗi hoặc phân tích JSON thất bại). 0 = không thử lại; mặc định 1 (thử lại tối đa một lần). */
   summaryMaxRetries: number;
-  /** 批量补摘:每批最大正文字符数(清洗后)。攒够即切块,控制单次请求规模(防 AI 注意力涣散)。 */
+  /** Tóm tắt bù hàng loạt: số ký tự chính văn tối đa mỗi đợt (sau khi làm sạch). Tích lũy đủ là cắt khối, kiểm soát quy mô một yêu cầu đơn lẻ (chống việc AI bị phân tán sự chú ý). */
   batchMaxChars: number;
-  /** 批量补摘:每批最大楼数兜底。即便字符没到上限,楼数到此也切块。 */
+  /** Tóm tắt bù hàng loạt: trần số tầng tối đa mỗi đợt làm dự phòng. Cho dù số ký tự chưa chạm trần, số tầng đến mức này cũng cắt khối. */
   batchMaxFloors: number;
   /**
-   * 用户自定义「整块删除」标签名(只填标签名,不带尖括号,如 snow)。清洗正文时
-   * `<snow>…</snow>` 连同内部内容一并删掉。用于剔除其它插件/世界书写进正文的状态栏、
-   * 旁注等格式。改动对**召回时**即时生效(向量库存的是原文,召回再清洗),无需重建索引。
+   * Tên thẻ "xóa nguyên khối" do người dùng tùy chỉnh (chỉ điền tên thẻ, không kèm ngoặc nhọn, như snow). Khi làm sạch chính văn
+   * `<snow>…</snow>` cùng nội dung bên trong sẽ bị xóa bỏ luôn. Dùng để loại bỏ các định dạng thanh trạng thái,
+   * chú thích bên lề v.v. do plugin / sách thế giới khác ghi vào chính văn. Thay đổi có hiệu lực tức thì **vào lúc truy xuất** (kho vector lưu nguyên văn, khi truy xuất mới làm sạch), không cần dựng lại chỉ mục.
    */
   customStripTags: string[];
-  /** 全局变量模板:所有角色所有聊天共享的初始 JSON 结构 + 说明(值仍每聊天独立)。见 memory 的 VarTier。 */
+  /** Khuôn mẫu biến toàn cục: cấu trúc JSON ban đầu + hướng dẫn dùng chung cho mọi nhân vật mọi cuộc trò chuyện (giá trị vẫn độc lập theo từng cuộc trò chuyện). Xem VarTier của memory. */
   varsGlobalTemplate: VarTemplate;
-  /** 角色变量模板:键=角色卡 avatar 文件名,值=该角色所有聊天共享的初始模板(值仍每聊天独立)。 */
+  /** Khuôn mẫu biến nhân vật: khóa = tên file avatar thẻ nhân vật, giá trị = khuôn mẫu ban đầu dùng chung cho mọi cuộc trò chuyện của nhân vật đó (giá trị vẫn độc lập theo từng cuộc trò chuyện). */
   varsTemplateByChar: Record<string, VarTemplate>;
 }
 
-// extension_settings 里的命名空间键;localStorage 是旧版残留,仅用于一次性迁移。
+// Khóa không gian tên trong extension_settings; localStorage là tàn dư bản cũ, chỉ dùng để di chuyển một lần.
 const SETTINGS_KEY = 'baibai_book';
 const SHARED_CHANNELS_KEY = 'baibai_api_channels';
 const SHARED_CHANNELS_EVENT = 'st-baibai-api-channels:changed';
 const SHARED_CHANNELS_SCHEMA_VERSION = 1;
 
-/* —— 排除设置共享存储:与柏宝绘等「柏宝」插件共用同一份排除名单(渠道同款协议) ——
-   真身存在 extensionSettings[SHARED_EXCLUDES_KEY](带 revision),各插件的设置里只留镜像。
-   任一端写入后广播事件,其他端收到后从 extensionSettings 重读并应用,实现跨插件实时同步。
-   双端语义一致:排除角色=功能停用、整本/条目名排除=副API世界书过滤、清洗标签=正文整块删除。 */
+/* —— Lưu trữ dùng chung cài đặt loại trừ: dùng chung cùng một danh sách loại trừ với các plugin "Bách Bảo" như Bách Bảo Hội (cùng giao thức với kênh) ——
+   Bản gốc lưu ở extensionSettings[SHARED_EXCLUDES_KEY] (kèm revision), trong cài đặt của từng plugin chỉ giữ bản sao gương.
+   Sau khi bất kỳ đầu nào ghi vào sẽ phát quảng bá sự kiện, các đầu khác nhận được sẽ đọc lại từ extensionSettings và áp dụng, thực hiện đồng bộ thời gian thực xuyên plugin.
+   Ngữ nghĩa hai đầu nhất quán: nhân vật loại trừ = ngừng tính năng, loại trừ cả cuốn/tên mục = lọc sách thế giới API phụ, thẻ làm sạch = xóa nguyên khối trong chính văn. */
 const SHARED_EXCLUDES_KEY = 'baibai_exclude_settings';
 const SHARED_EXCLUDES_EVENT = 'st-baibai-exclude-settings:changed';
 const SHARED_EXCLUDES_SCHEMA_VERSION = 1;
@@ -285,14 +285,14 @@ interface SharedExcludesStore {
   customStripTags: string[];
 }
 
-/** 条目名过滤的内置默认规则:首次载入时「播种」进用户列表(见 hydrateSettings),之后用户可自由增删。
- *  \[mvu…\] = 过滤变量框架 MVU 的机制条目(对剧情摘要是纯噪音)。大小写不敏感(engine 编译带 i)。 */
+/** Quy tắc mặc định tích hợp sẵn của lọc tên mục: khi tải lần đầu sẽ "gieo hạt" vào danh sách người dùng (xem hydrateSettings), về sau người dùng có thể tự do thêm xóa.
+ *  \[mvu…\] = lọc các mục cơ chế của framework biến số MVU (đối với tóm tắt cốt truyện là nhiễu thuần túy). Không phân biệt hoa thường (engine biên dịch kèm cờ i). */
 const DEFAULT_WI_PATTERNS = ['\\[mvu[\\s\\S]*?\\]'];
 const LEGACY_STORAGE_KEY = 'bbs.api.v1';
-// 旧版界面偏好(主题/导航位置/分页)曾单独存这里;现把主题+导航迁进 ui,分页仍留本机(见 state/ui.ts)。
+// Tùy chọn giao diện bản cũ (chủ đề/vị trí điều hướng/phân trang) từng lưu riêng tại đây; nay chuyển chủ đề + điều hướng vào ui, phân trang vẫn để lại trên máy (xem state/ui.ts).
 const LEGACY_UI_STORAGE_KEY = 'bbs.ui.v1';
 
-/** 从旧 localStorage(bbs.ui.v1)取出主题/导航位置,填进 target.ui。仅在 server 尚无 ui 时调用一次。 */
+/** Lấy chủ đề / vị trí điều hướng từ localStorage cũ (bbs.ui.v1), điền vào target.ui. Chỉ gọi một lần khi trên server chưa có ui. */
 function migrateLegacyUiPrefs(target: ApiSettings): void {
   try {
     const raw = localStorage.getItem(LEGACY_UI_STORAGE_KEY);
@@ -301,7 +301,7 @@ function migrateLegacyUiPrefs(target: ApiSettings): void {
     if (typeof obj.theme === 'string') target.ui.theme = obj.theme;
     if (typeof obj.navPosition === 'string') target.ui.navPosition = obj.navPosition;
   } catch {
-    /* 解析失败则维持默认,不阻断 */
+    /* Phân tích thất bại thì giữ nguyên mặc định, không chặn */
   }
 }
 
@@ -325,8 +325,8 @@ function defaults(): ApiSettings {
     verbosity: 'detailed',
     vector: {
       enabled: false,
-      // 默认填硅基流动地址 + 各角色模型,用户只需在 embedding 填一次 key 即可跑通:
-      // rerank/queryRewrite 的 url/key 留空会回落复用 embedding 的(见 resolveVectorModel)。
+      // Mặc định điền địa chỉ SiliconFlow + mô hình từng vai trò, người dùng chỉ cần điền key một lần ở embedding là chạy thông suốt:
+      // url/key của rerank/queryRewrite để trống sẽ lùi về tái sử dụng của embedding (xem resolveVectorModel).
       embedding: { url: 'https://api.siliconflow.cn/v1', key: '', model: 'Qwen/Qwen3-Embedding-8B', timeoutSec: 10, retries: 1 },
       rerank: { url: '', key: '', model: 'Qwen/Qwen3-Reranker-4B', timeoutSec: 20, retries: 1 },
       queryRewrite: { url: '', key: '', model: 'Qwen/Qwen3.5-27B', timeoutSec: 90, retries: 1 },
@@ -349,8 +349,8 @@ function defaults(): ApiSettings {
     keepRecent: 3,
     excludedChars: [],
     excludedWorldNames: [],
-    // 空起步:内置默认规则(DEFAULT_WI_PATTERNS)由 hydrateSettings「播种」发放,只发一次。
-    // 这样老用户(已存过空数组)也能补到默认,且用户删空后不会被反复塞回。
+    // Khởi đầu trống: quy tắc mặc định tích hợp sẵn (DEFAULT_WI_PATTERNS) do hydrateSettings "gieo hạt" cấp phát, chỉ cấp một lần.
+    // Như vậy người dùng cũ (đã lưu mảng rỗng) cũng được bù mặc định, và sau khi người dùng xóa trống sẽ không bị nhét lại nhiều lần.
     excludedWorldInfoPatterns: [],
     wiPatternsSeeded: false,
     renderWorldInfoTemplates: true,
@@ -368,14 +368,14 @@ function defaults(): ApiSettings {
   };
 }
 
-/** 把任意来源的原始对象并入默认值,容错缺字段/类型不符。 */
+/** Gộp đối tượng thô từ nguồn bất kỳ vào giá trị mặc định, chịu lỗi thiếu trường / sai kiểu dữ liệu. */
 function normalize(raw: unknown): ApiSettings {
   if (!raw || typeof raw !== 'object') return defaults();
   const d = defaults();
   const merged = { ...d, ...(raw as Partial<ApiSettings>) };
-  // prompts 是嵌套对象,展开合并不会补全缺字段,单独兜底(老数据没有 prompts 键时回退默认)
+  // prompts là đối tượng lồng nhau, gộp trải phẳng sẽ không bổ sung đủ các trường bị thiếu, dự phòng riêng (khi dữ liệu cũ không có khóa prompts thì lùi về mặc định)
   merged.prompts = { ...d.prompts, ...((raw as Partial<ApiSettings>).prompts ?? {}) };
-  // ui 同为嵌套对象,逐字段兜底(老数据没有 ui 键时回退默认,值非字符串时丢弃)
+  // ui cũng là đối tượng lồng nhau, dự phòng từng trường (khi dữ liệu cũ không có khóa ui thì lùi về mặc định, giá trị không phải chuỗi thì bỏ)
   const ru = ((raw as Partial<ApiSettings>).ui ?? {}) as Partial<UiPrefs>;
   merged.ui = {
     theme: typeof ru.theme === 'string' ? ru.theme : d.ui.theme,
@@ -387,34 +387,34 @@ function normalize(raw: unknown): ApiSettings {
     showOrb: typeof ru.showOrb === 'boolean' ? ru.showOrb : d.ui.showOrb,
     orbImage: typeof ru.orbImage === 'string' ? ru.orbImage : d.ui.orbImage,
     orbShape: typeof ru.orbShape === 'string' ? ru.orbShape : d.ui.orbShape,
-    // 透明度:钳到 20–100,缺失/非法回退默认(太低会看不见,设 20 下限)
+    // Độ mờ: kẹp vào khoảng 20–100, thiếu / không hợp lệ lùi về mặc định (thấp quá sẽ không nhìn thấy, đặt cận dưới là 20)
     orbOpacity:
       typeof ru.orbOpacity === 'number' && Number.isFinite(ru.orbOpacity)
         ? Math.min(100, Math.max(20, Math.round(ru.orbOpacity)))
         : d.ui.orbOpacity,
-    // 尺寸:钳到 32–80,缺失/非法回退默认
+    // Kích thước: kẹp vào khoảng 32–80, thiếu / không hợp lệ lùi về mặc định
     orbSize:
       typeof ru.orbSize === 'number' && Number.isFinite(ru.orbSize)
         ? Math.min(80, Math.max(32, Math.round(ru.orbSize)))
         : d.ui.orbSize,
   };
-  // excludedChars 必须是字符串数组,旧值类型不符时回退空数组
+  // excludedChars bắt buộc phải là mảng chuỗi, khi giá trị cũ sai kiểu thì lùi về mảng rỗng
   merged.excludedChars = Array.isArray(merged.excludedChars)
     ? merged.excludedChars.filter((x): x is string => typeof x === 'string')
     : [];
-  // 排除世界书/条目名规则:字符串数组,去空,旧数据缺失/非法回退空数组
+  // Loại trừ sách thế giới / quy tắc tên mục: mảng chuỗi, bỏ rỗng, dữ liệu cũ thiếu / không hợp lệ lùi về mảng rỗng
   merged.excludedWorldNames = Array.isArray(merged.excludedWorldNames)
     ? merged.excludedWorldNames.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
     : [];
   merged.excludedWorldInfoPatterns = Array.isArray(merged.excludedWorldInfoPatterns)
     ? merged.excludedWorldInfoPatterns.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
     : [];
-  // 播种标记:布尔,缺失(老数据无此键)回退 false,让 hydrateSettings 首次补发默认规则
+  // Nhãn gieo hạt: boolean, thiếu (dữ liệu cũ không có khóa này) lùi về false, để hydrateSettings cấp phát bù quy tắc mặc định trong lần đầu
   merged.wiPatternsSeeded = typeof merged.wiPatternsSeeded === 'boolean' ? merged.wiPatternsSeeded : false;
-  // 渲染世界书模板:布尔,缺失(老数据无此键)回退 true(默认开,让动态世界书条目拿到成品)
+  // Kết xuất khuôn mẫu sách thế giới: boolean, thiếu (dữ liệu cũ không có khóa này) lùi về true (mặc định bật, để các mục sách thế giới động nhận được thành phẩm)
   merged.renderWorldInfoTemplates =
     typeof merged.renderWorldInfoTemplates === 'boolean' ? merged.renderWorldInfoTemplates : true;
-  // 注入设置:嵌套对象,逐字段兜底(老数据没有 injection 键时全回退 true = 老行为不变)
+  // Cài đặt tiêm: đối tượng lồng nhau, dự phòng từng trường (khi dữ liệu cũ không có khóa injection thì tất cả lùi về true = hành vi cũ không đổi)
   const ri = ((raw as Partial<ApiSettings>).injection ?? {}) as Partial<InjectionSections>;
   merged.injection = {
     sceneFocus: typeof ri.sceneFocus === 'boolean' ? ri.sceneFocus : true,
@@ -426,9 +426,9 @@ function normalize(raw: unknown): ApiSettings {
     scenes: typeof ri.scenes === 'boolean' ? ri.scenes : true,
     knowledge: typeof ri.knowledge === 'boolean' ? ri.knowledge : true,
   };
-  // vector 同为嵌套对象(且内含子对象),逐层兜底,老数据缺字段时回退默认。
-  // 注:旧结构曾有 vector.channels + {channel,model};扁平化后弃用,逐角色按 url/key/model 兜底,
-  // 老数据缺这些字段会回退空串(等于「未配置」,用户重填一次即可)。
+  // vector cũng là đối tượng lồng nhau (và bên trong có chứa đối tượng con), dự phòng từng tầng, dữ liệu cũ thiếu trường thì lùi về mặc định.
+  // Lưu ý: cấu trúc cũ từng có vector.channels + {channel,model}; sau khi làm phẳng đã bỏ dùng, dự phòng từng vai trò theo url/key/model,
+  // dữ liệu cũ thiếu các trường này sẽ lùi về chuỗi rỗng (đồng nghĩa "chưa cấu hình", người dùng điền lại một lần là được).
   const rv = ((raw as Partial<ApiSettings>).vector ?? {}) as Partial<VectorSettings>;
   merged.vector = {
     ...d.vector,
@@ -438,43 +438,43 @@ function normalize(raw: unknown): ApiSettings {
     queryRewrite: normalizeVectorEndpoint(rv.queryRewrite, d.vector.queryRewrite),
     recall: { ...d.vector.recall, ...(rv.recall ?? {}) },
   };
-  // 召回注入深度:非负整数;老配置缺失、非法或输入框暂时为空时回退 D0。
+  // Độ sâu tiêm truy xuất: số nguyên không âm; cấu hình cũ thiếu, không hợp lệ hoặc ô nhập tạm thời để trống thì lùi về D0.
   merged.vector.recall.injectionDepth = normalizeRecallInjectionDepth(merged.vector.recall.injectionDepth);
-  // 召回起始 AI 楼数:非负整数,缺失/非法回退 0(不限制)
+  // Số tầng AI bắt đầu truy xuất: số nguyên không âm, thiếu / không hợp lệ lùi về 0 (không giới hạn)
   merged.vector.recall.minAiFloors =
     Number.isFinite(merged.vector.recall.minAiFloors) && merged.vector.recall.minAiFloors >= 0
       ? Math.floor(merged.vector.recall.minAiFloors)
       : 0;
-  // 查询重写最大输出 token:正整数,下限 256(太小会截断 INTENT/Q),缺失/非法回退默认 8192
+  // Token đầu ra tối đa của viết lại truy vấn: số nguyên dương, cận dưới 256 (nhỏ quá sẽ cắt cụt INTENT/Q), thiếu / không hợp lệ lùi về mặc định 8192
   merged.vector.queryRewriteMaxTokens =
     Number.isFinite(merged.vector.queryRewriteMaxTokens) && merged.vector.queryRewriteMaxTokens >= 256
       ? Math.floor(merged.vector.queryRewriteMaxTokens)
       : 8192;
-  // 副 API 渠道:逐个补全新加的字段(老数据没有 timeoutSec/stream/excludeParams),并校验类型
+  // Kênh API phụ: bổ sung đầy đủ các trường mới thêm cho từng kênh (dữ liệu cũ không có timeoutSec/stream/excludeParams), và kiểm tra kiểu dữ liệu
   merged.channels = (Array.isArray(merged.channels) ? merged.channels : []).map(normalizeChannel);
-  // 字数档位:仅两个合法值,旧数据缺失/非法回退详细(= 老用户行为不变)
+  // Mức số chữ: chỉ có hai giá trị hợp lệ, dữ liệu cũ thiếu / không hợp lệ lùi về chi tiết (= hành vi người dùng cũ không đổi)
   merged.verbosity = merged.verbosity === 'concise' ? 'concise' : 'detailed';
-  // 叶子层保留条数:非负整数,缺失/非法回退默认 3(0=旧行为攒够即全压)
+  // Số lượng mục giữ lại ở tầng lá: số nguyên không âm, thiếu / không hợp lệ lùi về mặc định 3 (0 = hành vi cũ tích lũy đủ là nén hết)
   merged.leafKeepRecent =
     Number.isFinite(merged.leafKeepRecent) && merged.leafKeepRecent >= 0
       ? Math.floor(merged.leafKeepRecent)
       : 3;
-  // 高层总结阈值:老配置没有该字段时补 3,避免 L2 继续按 7 条堆积成长文本
+  // Ngưỡng tổng kết tầng cao: khi cấu hình cũ không có trường này thì bù 3, tránh việc L2 tiếp tục chất đống theo mốc 7 mục thành văn bản quá dài
   merged.higherResummaryThreshold =
     Number.isFinite(merged.higherResummaryThreshold) && merged.higherResummaryThreshold >= 0
       ? Math.floor(merged.higherResummaryThreshold)
       : 3;
-  // 近期已完成计划条数:非负整数,缺失/非法回退默认 5(计划/悬念各取 N;0=不附带)
+  // Số lượng mục kế hoạch đã hoàn thành gần đây: số nguyên không âm, thiếu / không hợp lệ lùi về mặc định 5 (kế hoạch/nghi vấn mỗi loại lấy N; 0 = không đính kèm)
   merged.recentResolvedPlansCount =
     Number.isFinite(merged.recentResolvedPlansCount) && merged.recentResolvedPlansCount >= 0
       ? Math.floor(merged.recentResolvedPlansCount)
       : 5;
-  // 重试次数:非负整数,旧数据缺失/非法回退默认 1
+  // Số lần thử lại: số nguyên không âm, dữ liệu cũ thiếu / không hợp lệ lùi về mặc định 1
   merged.summaryMaxRetries =
     Number.isFinite(merged.summaryMaxRetries) && merged.summaryMaxRetries >= 0
       ? Math.floor(merged.summaryMaxRetries)
       : 1;
-  // 批量补摘参数:正整数,缺失/非法回退默认值(下限 1,避免 0 导致永不切块/死循环)
+  // Tham số tóm tắt bù hàng loạt: số nguyên dương, thiếu / không hợp lệ lùi về giá trị mặc định (cận dưới 1, tránh số 0 dẫn đến không bao giờ cắt khối / vòng lặp vô tận)
   merged.batchMaxChars =
     Number.isFinite(merged.batchMaxChars) && merged.batchMaxChars >= 500
       ? Math.floor(merged.batchMaxChars)
@@ -483,8 +483,8 @@ function normalize(raw: unknown): ApiSettings {
     Number.isFinite(merged.batchMaxFloors) && merged.batchMaxFloors >= 1
       ? Math.floor(merged.batchMaxFloors)
       : 10;
-  // 自定义清洗标签:容错用户连尖括号/斜杠一起填进来(<snow> / </snow>),只留合法标签名字符;
-  // 去空、去重,缺失/非数组回退空数组。
+  // Thẻ làm sạch tùy chỉnh: chịu lỗi khi người dùng điền cả dấu ngoặc nhọn / gạch chéo vào (<snow> / </snow>), chỉ giữ lại các ký tự tên thẻ hợp lệ;
+  // bỏ rỗng, khử trùng, thiếu / không phải mảng thì lùi về mảng rỗng.
   merged.customStripTags = Array.isArray(merged.customStripTags)
     ? Array.from(
       new Set(
@@ -495,14 +495,14 @@ function normalize(raw: unknown): ApiSettings {
       ),
     )
     : [];
-  // 变量模板:全局深规整;角色按 avatar 键逐份规整(丢弃空模板的键,保持存储干净)
+  // Khuôn mẫu biến: chuẩn hóa sâu toàn cục; theo nhân vật chuẩn hóa từng bản theo khóa avatar (hủy bỏ khóa của khuôn mẫu rỗng, giữ lưu trữ sạch sẽ)
   merged.varsGlobalTemplate = normalizeTemplate((raw as Partial<ApiSettings>).varsGlobalTemplate);
   const rawByChar = (raw as Partial<ApiSettings>).varsTemplateByChar;
   const byChar: Record<string, VarTemplate> = {};
   if (rawByChar && typeof rawByChar === 'object') {
     for (const [k, v] of Object.entries(rawByChar)) {
       const tpl = normalizeTemplate(v);
-      if (Object.keys(tpl.json).length || tpl.meaning.trim() || tpl.rule.trim()) byChar[k] = tpl; // 非空才留
+      if (Object.keys(tpl.json).length || tpl.meaning.trim() || tpl.rule.trim()) byChar[k] = tpl; // Khác rỗng mới giữ lại
     }
   }
   merged.varsTemplateByChar = byChar;
@@ -510,20 +510,20 @@ function normalize(raw: unknown): ApiSettings {
 }
 
 /**
- * 把用户输入规整成可安全拼进正则的标签名。
- * 用黑名单(而非白名单)剔除会破坏标签语法/正则的危险字符:尖括号、斜杠、空白、正则元字符;
- * 中文及其它 unicode 字母一律保留(用户可能写 <雪><状态栏> 这类中文标签)。
+ * Chuẩn hóa đầu vào của người dùng thành tên thẻ có thể ghép an toàn vào regex.
+ * Dùng danh sách đen (thay vì danh sách trắng) loại bỏ các ký tự nguy hiểm sẽ phá hỏng cú pháp thẻ / regex: ngoặc nhọn, gạch chéo, khoảng trắng, siêu ký tự regex;
+ * các chữ cái Unicode nhất loạt giữ lại (người dùng có thể viết thẻ tiếng Việt hoặc Unicode khác).
  */
 export function sanitizeTagName(raw: string): string {
   return String(raw ?? '')
     .trim()
-    .replace(/^<\/?/, '') // 开头的 < 或 </
-    .replace(/>$/, '') // 结尾的 >
+    .replace(/^<\/?/, '') // < hoặc </ ở đầu
+    .replace(/>$/, '') // > ở cuối
     .trim()
-    .replace(/[<>/\\\s.*+?^${}()|[\]]/g, ''); // 剔除尖括号/斜杠/空白/正则元字符,中文等保留
+    .replace(/[<>/\\\s.*+?^${}()|[\]]/g, ''); // Loại bỏ ngoặc nhọn/gạch chéo/khoảng trắng/siêu ký tự regex, chữ cái giữ lại
 }
 
-/** 补全单个向量端点的字段并校验类型(缺失/类型不符回退空串)。 */
+/** Bổ sung đầy đủ các trường của một điểm cuối vector đơn lẻ và kiểm tra kiểu dữ liệu (thiếu / sai kiểu lùi về chuỗi rỗng). */
 function normalizeVectorEndpoint(
   e: Partial<VectorEndpoint> | undefined,
   def: Pick<VectorEndpoint, 'timeoutSec' | 'retries'>,
@@ -533,8 +533,8 @@ function normalizeVectorEndpoint(
     url: typeof o.url === 'string' ? o.url : '',
     key: typeof o.key === 'string' ? o.key : '',
     model: typeof o.model === 'string' ? o.model : '',
-    // 超时/重试老数据可能缺:各角色默认值不同(embedding 10s / rerank 20s / query 90s),
-    // 必须按传入的角色默认回退,不能统一回退一个值。
+    // Quá thời gian / thử lại ở dữ liệu cũ có thể thiếu: giá trị mặc định của mỗi vai trò khác nhau (embedding 10s / rerank 20s / query 90s),
+    // bắt buộc phải lùi về theo mặc định vai trò được truyền vào, không thể lùi thống nhất về một giá trị.
     timeoutSec:
       typeof o.timeoutSec === 'number' && Number.isFinite(o.timeoutSec) && o.timeoutSec > 0
         ? o.timeoutSec
@@ -546,11 +546,11 @@ function normalizeVectorEndpoint(
   };
 }
 
-/** 补全单个渠道的缺失字段(timeoutSec/stream/excludeParams 是后加的),并校验类型。 */
+/** Bổ sung các trường còn thiếu của một kênh đơn lẻ (timeoutSec/stream/excludeParams được thêm vào sau), và kiểm tra kiểu dữ liệu. */
 function normalizeChannel(c: Partial<ApiChannel>): ApiChannel {
   return {
     id: typeof c.id === 'string' ? c.id : `ch_${Date.now()}_${++chanSeq}`,
-    name: typeof c.name === 'string' ? c.name : '新渠道',
+    name: typeof c.name === 'string' ? c.name : 'Kênh mới',
     url: typeof c.url === 'string' ? c.url : '',
     key: typeof c.key === 'string' ? c.key : '',
     model: typeof c.model === 'string' ? c.model : '',
@@ -564,15 +564,15 @@ function normalizeChannel(c: Partial<ApiChannel>): ApiChannel {
     excludeParams: Array.isArray(c.excludeParams)
       ? c.excludeParams.filter((x): x is string => typeof x === 'string')
       : [],
-    // 后加字段:老渠道无此键 → 空串(auto,不发参数),行为与加字段前完全一致
+    // Trường thêm vào sau: kênh cũ không có khóa này → chuỗi rỗng (auto, không gửi tham số), hành vi hoàn toàn nhất quán với trước khi thêm trường
     reasoningEffort: typeof c.reasoningEffort === 'string' ? c.reasoningEffort.trim() : '',
   };
 }
 
-// import 阶段 ST 往往尚未就绪,先以默认值建 reactive;真实值由 hydrateSettings 灌入。
+// Ở giai đoạn import thường ST chưa sẵn sàng, tạo reactive bằng giá trị mặc định trước; giá trị thực sẽ do hydrateSettings rót vào.
 export const apiSettings = reactive<ApiSettings>(defaults());
 
-// 守门标志:hydrate 完成前不回写,避免「默认值」覆盖服务器上已存的设置。
+// Cờ gác cổng: trước khi hydrate hoàn tất thì không ghi trả lại, tránh việc "giá trị mặc định" ghi đè mất cài đặt đã lưu trên máy chủ.
 let ready = false;
 let sharedChannelsFingerprint = '';
 let sharedChannelsRevision = 0;
@@ -581,8 +581,8 @@ let sharedExcludesFingerprint = '';
 let sharedExcludesRevision = 0;
 let sharedExcludesListenerBound = false;
 
-// hydrate 完成后要通知的订阅者(如 ui.ts:settings 就绪后才能拿到同步过来的主题/导航位置)。
-// 若订阅时已就绪则立刻回调,避免错过时序。
+// Các bên đăng ký cần được thông báo sau khi hydrate hoàn tất (như ui.ts: sau khi settings sẵn sàng mới lấy được chủ đề / vị trí điều hướng đồng bộ sang).
+// Nếu lúc đăng ký đã sẵn sàng rồi thì gọi lại ngay lập tức, tránh lỡ nhịp thời gian.
 const readyCbs: Array<() => void> = [];
 export function onSettingsReady(cb: () => void): void {
   if (ready) cb();
@@ -698,7 +698,7 @@ function hydrateSharedChannels(legacyChannels: ApiChannel[]): void {
   bindSharedChannelsListener();
 }
 
-/* ============ 排除设置共享存储(与柏宝绘共用,协议与渠道完全同构) ============ */
+/* ============ Lưu trữ dùng chung cài đặt loại trừ (dùng chung với Bách Bảo Hội, giao thức đồng cấu hoàn toàn với kênh) ============ */
 
 function excludesFingerprint(ex: Pick<ApiSettings, 'excludedChars' | 'excludedWorldNames' | 'excludedWorldInfoPatterns' | 'customStripTags'>): string {
   return JSON.stringify([
@@ -709,7 +709,7 @@ function excludesFingerprint(ex: Pick<ApiSettings, 'excludedChars' | 'excludedWo
   ]);
 }
 
-/** 判断名单里除内置默认条目名规则(mvu)外,是否还有任何用户数据。 */
+/** Phán đoán xem trong danh sách ngoài quy tắc tên mục mặc định tích hợp sẵn (mvu) ra, có còn bất kỳ dữ liệu người dùng nào khác hay không. */
 function excludesHasUserData(ex: Pick<ApiSettings, 'excludedChars' | 'excludedWorldNames' | 'excludedWorldInfoPatterns' | 'customStripTags'>): boolean {
   const patterns = ex.excludedWorldInfoPatterns.filter(p => !DEFAULT_WI_PATTERNS.includes(p));
   return (
@@ -720,7 +720,7 @@ function excludesHasUserData(ex: Pick<ApiSettings, 'excludedChars' | 'excludedWo
   );
 }
 
-/** 从共享存储原样读出四名单,逐名单按本地 normalize 同口径清洗(缺字段/类型不符回退空数组)。 */
+/** Đọc nguyên bản bốn danh sách từ lưu trữ dùng chung, làm sạch từng danh sách theo cùng tiêu chuẩn với normalize cục bộ (thiếu trường / sai kiểu lùi về mảng rỗng). */
 function readSharedExcludes(raw: unknown): SharedExcludesStore | null {
   if (!raw || typeof raw !== 'object') return null;
   const store = raw as Partial<SharedExcludesStore>;
@@ -797,15 +797,15 @@ function bindSharedExcludesListener(): void {
 }
 
 /**
- * 排除设置共享存储接管:存在则以共享为准覆盖本插件镜像;
- * 不存在则以本插件当前名单(老用户已配置 + 已播种的默认规则)为种子写入。
- * 播种只在「无存储」时发生,天然满足「只发一次、删了不补回」,无需额外标记。
+ * Tiếp quản lưu trữ dùng chung cài đặt loại trừ: nếu tồn tại thì lấy bản dùng chung làm chuẩn ghi đè bản sao gương của plugin này;
+ * nếu không tồn tại thì lấy danh sách hiện tại của plugin này (người dùng cũ đã cấu hình + quy tắc mặc định đã gieo hạt) làm hạt giống để ghi vào.
+ * Việc gieo hạt chỉ xảy ra khi "chưa có lưu trữ", tự nhiên thỏa mãn nguyên tắc "chỉ cấp một lần, xóa rồi không bù lại", không cần nhãn phụ.
  *
- * 自愈守卫:共享存储存在但完全没有用户数据(疑似早期版本的「空种子」遗留——
- * 没有数据的插件曾经也会创建共享存储,导致双方互相同步成空),
- * 而本插件名单里还有用户数据时 → 不领养空 store,以本插件为准回写共享存储并广播,
- * 把真实数据修复回去。注意:用户在任一端有意清空名单后,store 里的清空结果
- * 会与本地一致(fingerprint 相同),不会误判。
+ * Cổng bảo vệ tự phục hồi: lưu trữ dùng chung tồn tại nhưng hoàn toàn không có dữ liệu người dùng (nghi là tàn dư "hạt giống rỗng" của phiên bản sớm ——
+ * plugin không có dữ liệu trước kia cũng tạo lưu trữ dùng chung, dẫn đến hai bên đồng bộ lẫn nhau thành trống trơn),
+ * trong khi danh sách của plugin này vẫn còn dữ liệu người dùng → không nhận nuôi store rỗng, lấy plugin này làm chuẩn ghi trả lại vào lưu trữ dùng chung và phát quảng bá,
+ * khôi phục dữ liệu thực sự về lại. Lưu ý: sau khi người dùng chủ động xóa trống danh sách ở bất kỳ đầu nào, kết quả xóa trống trong store
+ * sẽ nhất quán với cục bộ (cùng fingerprint), sẽ không phán đoán nhầm.
  */
 function hydrateSharedExcludes(): void {
   const ctx = getContext();
@@ -824,33 +824,33 @@ function hydrateSharedExcludes(): void {
   bindSharedExcludesListener();
 }
 
-/** 写回 extension_settings 并防抖落盘到服务器(跨设备同步的关键)。 */
+/** Ghi trả lại vào extension_settings và chống rung lưu đĩa lên máy chủ (mấu chốt của đồng bộ xuyên thiết bị). */
 function persist(): void {
   const ctx = getContext();
   if (!ctx?.extensionSettings) return;
   ctx.extensionSettings[SETTINGS_KEY] = JSON.parse(JSON.stringify(apiSettings));
   const fingerprint = channelFingerprint(apiSettings.channels);
   if (fingerprint !== sharedChannelsFingerprint) writeSharedChannels();
-  // 排除名单有改动 → 同步写共享存储并广播(指纹比对防回环)
+  // Danh sách loại trừ có thay đổi → ghi đồng bộ vào lưu trữ dùng chung và phát quảng bá (đối chiếu dấu vân tay chống vòng lặp)
   const exFingerprint = excludesFingerprint(apiSettings);
   if (exFingerprint !== sharedExcludesFingerprint) writeSharedExcludes();
   ctx.saveSettingsDebounced?.();
 }
 
 /**
- * ST 就绪后调用:从 extension_settings 载入真实设置;
- * 若那里还没有、但 localStorage 有旧值,则迁移过去(老用户不丢配置),迁移后清掉旧键。
- * 完成后放行 watch 回写。可安全重复调用(只在首次真正 hydrate)。
+ * Gọi sau khi ST sẵn sàng: tải cài đặt thực từ extension_settings;
+ * nếu ở đó chưa có, nhưng localStorage có giá trị cũ, thì di chuyển sang (người dùng cũ không mất cấu hình), di chuyển xong xóa khóa cũ.
+ * Sau khi hoàn tất thì cho phép watch ghi trả lại. Có thể gọi lặp lại an toàn (chỉ thực sự hydrate ở lần đầu tiên).
  */
 export function hydrateSettings(): void {
   if (ready) return;
   const ctx = getContext();
-  if (!ctx?.extensionSettings) return; // ST 未就绪,稍后重试
+  if (!ctx?.extensionSettings) return; // ST chưa sẵn sàng, thử lại sau
 
   const stored = ctx.extensionSettings[SETTINGS_KEY];
   if (stored && typeof stored === 'object') {
     applyInto(apiSettings, normalize(stored));
-    // 老用户:server 已有 api 设置但还没同步过界面偏好 → 把旧 localStorage 的主题/导航迁进来并落盘一次
+    // Người dùng cũ: trên server đã có cài đặt api nhưng chưa từng đồng bộ tùy chọn giao diện → chuyển chủ đề/điều hướng từ localStorage cũ vào và lưu đĩa một lần
     if (!('ui' in (stored as object))) {
       migrateLegacyUiPrefs(apiSettings);
       ctx.extensionSettings[SETTINGS_KEY] = JSON.parse(JSON.stringify(apiSettings));
@@ -862,7 +862,7 @@ export function hydrateSettings(): void {
       /* ignore */
     }
   } else {
-    // 迁移:extension_settings 里没有 → 尝试搬运旧 localStorage
+    // Di chuyển: trong extension_settings chưa có → thử chuyển từ localStorage cũ sang
     let migrated: ApiSettings | null = null;
     try {
       const raw = localStorage.getItem(LEGACY_STORAGE_KEY);
@@ -871,9 +871,9 @@ export function hydrateSettings(): void {
       /* ignore */
     }
     if (migrated) applyInto(apiSettings, migrated);
-    // 界面偏好同样从旧 localStorage 迁入(新装用户没有此键则维持默认)
+    // Tùy chọn giao diện cũng chuyển từ localStorage cũ vào (người dùng mới cài không có khóa này thì giữ nguyên mặc định)
     migrateLegacyUiPrefs(apiSettings);
-    // 把当前值(迁移来的或默认)写进 extension_settings,确立同步源
+    // Ghi giá trị hiện tại (chuyển sang hoặc mặc định) vào extension_settings, xác lập nguồn đồng bộ
     ctx.extensionSettings[SETTINGS_KEY] = JSON.parse(JSON.stringify(apiSettings));
     ctx.saveSettingsDebounced?.();
     try {
@@ -886,8 +886,8 @@ export function hydrateSettings(): void {
 
   hydrateSharedChannels(apiSettings.channels);
 
-  // 播种内置默认条目名规则:仅当从未发放过(老用户/新用户首次)才补进列表,并置标记 + 落盘。
-  // 只发一次——用户之后删空也不会被反复塞回。追加而非覆盖,不动用户已有的自定义规则。
+  // Gieo hạt quy tắc tên mục mặc định tích hợp sẵn: chỉ khi chưa từng cấp phát (người dùng cũ / người dùng mới lần đầu) mới bù vào danh sách, đồng thời đặt nhãn + lưu đĩa.
+  // Chỉ cấp một lần —— về sau người dùng có xóa trống cũng không bị nhét lại nhiều lần. Nối thêm chứ không ghi đè, không đụng tới quy tắc tùy chỉnh đã có của người dùng.
   if (!apiSettings.wiPatternsSeeded) {
     for (const pat of DEFAULT_WI_PATTERNS) {
       if (!apiSettings.excludedWorldInfoPatterns.includes(pat)) apiSettings.excludedWorldInfoPatterns.push(pat);
@@ -897,7 +897,7 @@ export function hydrateSettings(): void {
     ctx.saveSettingsDebounced?.();
   }
 
-  // 排除名单共享存储接管(在播种之后:老用户名单/新播种规则作为种子写入)
+  // Tiếp quản lưu trữ dùng chung danh sách loại trừ (sau bước gieo hạt: danh sách người dùng cũ / quy tắc mới gieo hạt được ghi vào làm hạt giống)
   hydrateSharedExcludes();
 
   ready = true;
@@ -905,7 +905,7 @@ export function hydrateSettings(): void {
     try {
       cb();
     } catch {
-      /* 订阅者自身异常不阻断后续 */
+      /* Lỗi bất thường của riêng bên đăng ký không chặn các bước tiếp theo */
     }
   }
 }
@@ -913,7 +913,7 @@ export function hydrateSettings(): void {
 watch(
   apiSettings,
   () => {
-    if (!ready) return; // hydrate 前不回写,防止默认值覆盖服务器设置
+    if (!ready) return; // Trước khi hydrate không ghi trả lại, ngăn giá trị mặc định ghi đè cài đặt trên máy chủ
     persist();
   },
   { deep: true },
@@ -924,7 +924,7 @@ export function newChannel(): ApiChannel {
   chanSeq += 1;
   return {
     id: `ch_${Date.now()}_${chanSeq}`,
-    name: '新渠道',
+    name: 'Kênh mới',
     url: '',
     key: '',
     model: '',
@@ -937,11 +937,11 @@ export function newChannel(): ApiChannel {
   };
 }
 
-/** 当前单角色聊天的角色名;群聊或未进入聊天时返回 null(群聊不参与排除)。 */
+/** Tên nhân vật của cuộc trò chuyện đơn nhân vật hiện tại; khi trò chuyện nhóm hoặc chưa vào cuộc trò chuyện thì trả về null (trò chuyện nhóm không tham gia loại trừ). */
 export function currentCharName(): string | null {
   const ctx = getContext();
   if (!ctx) return null;
-  if (ctx.groupId) return null; // 群聊:多角色,不按单名排除
+  if (ctx.groupId) return null; // Trò chuyện nhóm: nhiều nhân vật, không loại trừ theo tên đơn
   const idx = ctx.characterId;
   if (idx === undefined || idx === null || idx === '') return null;
   const ch = ctx.characters?.[Number(idx)];
@@ -949,12 +949,12 @@ export function currentCharName(): string | null {
 }
 
 /**
- * 当前角色的稳定键:avatar 文件名(唯一,重名卡也不冲突);取不到回退角色名。
- * 用于角色层变量定义的存储键(varsByChar[key])。群聊 / 未进入聊天返回 null(角色层此时不适用)。
+ * Khóa ổn định của nhân vật hiện tại: tên file avatar (duy nhất, thẻ trùng tên cũng không xung đột); không lấy được thì lùi về tên nhân vật.
+ * Dùng làm khóa lưu trữ định nghĩa biến ở tầng nhân vật (varsByChar[key]). Trò chuyện nhóm / chưa vào cuộc trò chuyện trả về null (tầng nhân vật lúc này không áp dụng).
  */
 export function currentCharKey(): string | null {
   const ctx = getContext();
-  if (!ctx || ctx.groupId) return null; // 群聊无单一角色
+  if (!ctx || ctx.groupId) return null; // Trò chuyện nhóm không có một nhân vật đơn lẻ
   const idx = ctx.characterId;
   if (idx === undefined || idx === null || idx === '') return null;
   const ch = ctx.characters?.[Number(idx)] as { avatar?: string; name?: string } | undefined;
@@ -962,8 +962,8 @@ export function currentCharKey(): string | null {
 }
 
 /**
- * 当前聊天是否被排除(该角色名在排除名单里)。被排除则记忆系统所有功能停用。
- * 按「名字」匹配:同名的重名卡会被一并排除——符合用户「这批重名卡一起排除」的诉求。
+ * Cuộc trò chuyện hiện tại có bị loại trừ hay không (tên nhân vật đó nằm trong danh sách loại trừ). Bị loại trừ thì mọi tính năng của hệ thống trí nhớ đều ngừng hoạt động.
+ * Khớp theo "tên": các thẻ trùng tên sẽ bị loại trừ cùng lúc —— phù hợp với mong muốn "loại trừ cả loạt thẻ trùng tên này" của người dùng.
  */
 export function isCurrentChatExcluded(): boolean {
   if (!apiSettings.excludedChars.length) return false;
@@ -971,7 +971,7 @@ export function isCurrentChatExcluded(): boolean {
   return name !== null && apiSettings.excludedChars.includes(name);
 }
 
-/** 引擎是否在当前聊天生效:总开关开着且当前角色未被排除。各功能闸门统一走它。 */
+/** Engine có hiệu lực ở cuộc trò chuyện hiện tại hay không: công tắc tổng đang bật và nhân vật hiện tại không bị loại trừ. Cổng chắn của các tính năng thống nhất đi qua hàm này. */
 export function engineActiveHere(): boolean {
   return apiSettings.enabled && !isCurrentChatExcluded();
 }
@@ -983,9 +983,9 @@ export function getChannelForTask(task: TaskType): ApiChannel | null {
 }
 
 /**
- * 解析某个向量角色实际使用的端点(url/key/model)。
- * 三个角色的**模型各自独立**(embedding/rerank/query 模型本就不同),从不复用;
- * 能复用的只有**地址与密钥**:rerank/queryRewrite 的 url/key 各自留空时,分别回落到 embedding 的。
+ * Phân giải điểm cuối thực tế được sử dụng của một vai trò vector (url/key/model).
+ * **Mô hình** của ba vai trò **độc lập với nhau** (mô hình embedding/rerank/query vốn dĩ khác nhau), không bao giờ tái sử dụng;
+ * thứ duy nhất có thể tái sử dụng là **địa chỉ và khóa**: khi url/key của rerank/queryRewrite để trống, sẽ lần lượt lùi về dùng của embedding.
  */
 export function resolveVectorModel(role: 'embedding' | 'rerank' | 'queryRewrite'): VectorEndpoint {
   const v = apiSettings.vector;
@@ -993,10 +993,10 @@ export function resolveVectorModel(role: 'embedding' | 'rerank' | 'queryRewrite'
   if (role === 'embedding') return { ...base };
   const cfg = v[role];
   return {
-    url: cfg.url.trim() || base.url, // 地址留空 → 复用 embedding 地址
-    key: cfg.key.trim() || base.key, // 密钥留空 → 复用 embedding 密钥
-    model: cfg.model, // 模型始终独立,不回落
-    timeoutSec: cfg.timeoutSec, // 超时/重试始终独立,不回落(各角色默认本就不同)
+    url: cfg.url.trim() || base.url, // Địa chỉ để trống → tái sử dụng địa chỉ embedding
+    key: cfg.key.trim() || base.key, // Khóa để trống → tái sử dụng khóa embedding
+    model: cfg.model, // Mô hình luôn độc lập, không lùi về
+    timeoutSec: cfg.timeoutSec, // Quá thời gian / thử lại luôn độc lập, không lùi về (mặc định của các vai trò vốn đã khác nhau)
     retries: cfg.retries,
   };
 }

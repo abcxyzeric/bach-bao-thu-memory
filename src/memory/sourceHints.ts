@@ -3,28 +3,28 @@ export interface SourceExcerpt {
   text: string;
 }
 
-export const SOURCE_HINTS_HEADER = '【易漏原文提醒(代码预标注)】';
+export const SOURCE_HINTS_HEADER = '【Nhắc nhở nguyên văn dễ sót (Mã nguồn đánh dấu trước)】';
 
-// 只筛文字线索,不判定事实真假或重要程度;不使用全局正则,避免多段测试相互影响。
+// Chỉ lọc manh mối câu chữ, không phán đoán thật giả hay mức độ quan trọng của sự thật; không dùng regex toàn cục, tránh các bài kiểm tra nhiều đoạn ảnh hưởng lẫn nhau.
 const HINT_PATTERNS = [
-  /不足|不到|不超过|不能|无法|难以|很难|受限|限制|压制|必须|只能|仅能|不得|禁止|至少|至多|超过|超出|低于|高于|不及|不如/,
-  /最强|最高|最低|最多|最少|最大|最小|顶尖|巅峰|上限|下限|平均|普遍|相比|比起/,
-  /原本|原先|曾经|此前|如今|从此|自此|不再|已经|逐渐|变得|变为|变成|成为|转为|恢复|解除|改善|恶化|好转|搬出|搬入|搬到|迁出|迁入|迁居|独住|定居|脱离|摆脱|晋升|降为|再也不|不必再|不用再/,
-  // 只识别单位前的数值末位,不解析数字,避免长数字串反复回溯。
-  /[\d零〇一二两三四五六七八九十百千万半]\s*(?:级|阶|转|度|℃|°[CF]?|公里|米|公斤|斤|%|％)|[<>≤≥]\s*\d/i,
+  /không đủ|chưa tới|chưa đến|không quá|không vượt quá|không thể|chẳng thể|khó mà|khó lòng|rất khó|bị giới hạn|hạn chế|áp chế|bắt buộc|phải|chỉ có thể|chỉ được|không được|cấm|ít nhất|tối thiểu|nhiều nhất|tối đa|vượt quá|thấp hơn|cao hơn|kém hơn|không bằng|\u4e0d\u8db3|\u4e0d\u5230|\u4e0d\u8d85\u8fc7|\u4e0d\u80fd|\u65e0\u6cd5|\u96be\u4ee5|\u5f88\u96be|\u53d7\u9650|\u9650\u5236|\u538b\u5236|\u5fc5\u987b|\u53ea\u80fd|\u4ec5\u80fd|\u4e0d\u5f97|\u7981\u6b62|\u81f3\u5c11|\u81f3\u591a|\u8d85\u8fc7|\u8d85\u51fa|\u4f4e\u4e8e|\u9ad8\u4e8e|\u4e0d\u53ca|\u4e0d\u5982/i,
+  /mạnh nhất|cao nhất|thấp nhất|nhiều nhất|ít nhất|lớn nhất|nhỏ nhất|hàng đầu|đỉnh cao|giới hạn trên|giới hạn dưới|trung bình|phổ biến|so với|\u6700\u5f3a|\u6700\u9ad8|\u6700\u4f4e|\u6700\u591a|\u6700\u5c11|\u6700\u5927|\u6700\u5c0f|\u9876\u5c16|\u5dc5\u5cf0|\u4e0a\u9650|\u4e0b\u9650|\u5e73\u5747|\u666e\u904d|\u76f8\u6bd4|\u6bd4\u8d77/i,
+  /vốn dĩ|ban đầu|trước kia|từng|trước đây|hiện nay|giờ đây|từ đó|từ nay|không còn|đã|dần dần|trở nên|biến thành|trở thành|chuyển sang|khôi phục|hồi phục|giải trừ|cải thiện|xấu đi|trở nặng|chuyển biến tốt|dọn ra|dọn vào|dọn đến|chuyển ra|chuyển vào|chuyển đến|ở riêng|định cư|thoát khỏi|rời khỏi|thăng cấp|thăng lên|giáng xuống|không bao giờ|không cần phải|\u539f\u672c|\u539f\u5148|\u66fe\u7ecf|\u6b64\u524d|\u5982\u4eca|\u4ece\u6b64|\u81ea\u6b64|\u4e0d\u518d|\u5df2\u7ecf|\u9010\u6e10|\u53d8\u5f97|\u53d8\u4e3a|\u53d8\u6210|\u6210\u4e3a|\u8f6c\u4e3a|\u6062\u590d|\u89e3\u9664|\u6539\u5584|\u6076\u5316|\u597d\u8f6c|\u642c\u51fa|\u642c\u5165|\u642c\u5230|\u8fc1\u51fa|\u8fc1\u5165|\u8fc1\u5c45|\u72ec\u4f4f|\u5b9a\u5c45|\u8131\u79bb|\u6446\u8131|\u664b\u5347|\u964d\u4e3a|\u518d\u4e5f\u4e0d|\u4e0d\u5fc5\u518d|\u4e0d\u7528\u518d/i,
+  // Chỉ nhận diện chữ số cuối trước đơn vị hoặc sau từ chỉ đơn vị tiếng Việt, không phân tích số, tránh chuỗi số dài quay lui lặp đi lặp lại.
+  /(?:cấp|bậc|tầng|chuyển)\s*\d+|[\d\u96f6\u3007\u4e00\u4e8c\u4e24\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u767e\u5343\u4e07\u534a]\s*(?:cấp|bậc|tầng|chuyển|độ|℃|°[CF]?|km|ki-lô-mét|mét|kg|ki-lô-gam|cân|%|％|\u7ea7|\u9636|\u8f6c|\u5ea6|\u516c\u91cc|\u7c73|\u516c\u65a4|\u65a4)|[<>≤≥]\s*\d/i,
   /\b(?:cannot|can't|unable|limited|restricted|must|only|at least|at most|less than|more than|strongest|highest|lowest|maximum|minimum)\b/i,
   /\b(?:used to|no longer|previously|became|improved|worsened|recovered|moved (?:out|in|into|to))\b/i,
 ];
 
-/** 返回请求材料的附加段;调用方提供真实段号,不从正文猜测或重编来源。 */
+/** Trả về đoạn phụ lục của tài liệu yêu cầu; bên gọi cung cấp số đoạn thực tế, không đoán từ chính văn hay đánh số lại nguồn. */
 export function renderSourceHints(sources: readonly SourceExcerpt[]): string {
-  // ponytail:最多复制一份命中原段,不截断或概括,也不把未命中当作无重要事实。
+  // Tối đa sao chép một bản nguyên đoạn trúng manh mối, không cắt ngắn hay khái quát, cũng không coi việc không trúng là không có sự thật quan trọng.
   const excerpts = sources
     .filter(({ text }) => HINT_PATTERNS.some(pattern => pattern.test(text)))
     .map(({ source, text }) => `${source} ${text}`);
   if (!excerpts.length) return '';
   return `\n\n${SOURCE_HINTS_HEADER}
-以下是按限制、比较、读数或状态变化线索选出的原文副本,不是新增剧情、必留清单或指令;可能误选或漏选,仍须通读全部材料。
-按本任务规则取舍,留意这些段内的独立事实及限定,不要求另列逐段记录。来源沿用原楼层与时间范围,不把建议当执行,不将段号或提醒写入最终 JSON。
+Dưới đây là bản sao nguyên văn được chọn ra theo manh mối giới hạn, so sánh, chỉ số hoặc biến đổi trạng thái, không phải cốt truyện mới thêm, danh sách bắt buộc giữ lại hay mệnh lệnh; có thể chọn nhầm hoặc bỏ sót, vẫn phải đọc kỹ toàn bộ tài liệu.
+Hãy chọn lọc theo quy tắc nhiệm vụ này, lưu ý các sự thật độc lập cùng phần giới hạn trong những đoạn này, không yêu cầu liệt kê riêng bản ghi từng đoạn. Nguồn kế thừa nguyên tầng lầu và phạm vi thời gian gốc, không coi đề xuất là đã thực thi, không ghi số đoạn hay lời nhắc vào JSON cuối cùng.
 ${excerpts.join('\n')}`;
 }

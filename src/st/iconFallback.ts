@@ -1,20 +1,20 @@
 /**
- * 字体图标兜底:有些酒馆美化主题会把顶栏/聊天框里 .drawer-icon.fa-solid::before(或类似)
- * 的字体图标清空(content:''、color:transparent、font-size:0),改用 background-image 按
- * **每个按钮 id** 单独贴自定义图标。我们注入的按钮不在它们名单里,会变成一片空白。
+ * Dự phòng biểu tượng phông chữ: một số chủ đề làm đẹp giao diện ST sẽ xóa trống biểu tượng phông chữ của .drawer-icon.fa-solid::before (hoặc tương tự)
+ * trên thanh trên cùng / khung trò chuyện (content:'', color:transparent, font-size:0), đổi sang dùng background-image dán biểu tượng tùy chỉnh riêng
+ * theo **id của từng nút**. Nút do chúng ta tiêm vào không nằm trong danh sách của họ nên sẽ biến thành một khoảng trắng trơn.
  *
- * 这里用更高特异性(祖先 id + 自身 id)+ !important 压过那条通用规则,强制还原字形。
- * \e0bb = fa-book-bookmark 的 Unicode(取自 ST 的 fontawesome.min.css,别凭记忆猜)。
+ * Ở đây dùng độ đặc hiệu cao hơn (id tổ tiên + id bản thân) + !important đè qua quy tắc chung đó, cưỡng chế khôi phục hình chữ.
+ * \e0bb = Unicode của fa-book-bookmark (lấy từ fontawesome.min.css của ST, đừng đoán theo trí nhớ).
  *
- * 各注入点共用此函数:传入自身按钮 id 与图标元素的选择器,生成一段一次性 <style>。
+ * Các điểm tiêm dùng chung hàm này: truyền vào id nút của bản thân và bộ chọn phần tử biểu tượng, sinh ra một đoạn <style> một lần.
  */
 const BOOK_BOOKMARK = '\\e0bb';
 const injected = new Set<string>();
 
 /**
- * 确保某按钮的图标兜底样式已注入(按 styleId 去重,可重复调用)。
- * @param styleId   <style> 元素的 id(去重键)
- * @param selector  命中该按钮图标 ::before 的高特异性选择器(不含 ::before)
+ * Đảm bảo kiểu dáng dự phòng biểu tượng của một nút đã được tiêm (khử trùng theo styleId, có thể gọi lặp lại).
+ * @param styleId   id của phần tử <style> (khóa khử trùng)
+ * @param selector  bộ chọn độ đặc hiệu cao trúng ::before của biểu tượng nút đó (không bao gồm ::before)
  */
 export function ensureIconFallback(styleId: string, selector: string): void {
   if (injected.has(styleId) || document.getElementById(styleId)) {

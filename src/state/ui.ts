@@ -2,78 +2,78 @@ import { apiSettings, onSettingsReady } from '@/api/settings';
 import { reactive, ref, watch } from 'vue';
 
 /**
- * 弹窗 Teleport 宿主:由 App.vue 挂在 .bbs-root 的直接子级(在 .bbs-body 滚动容器之外)。
- * 所有 .bbs-modal-mask 弹窗都 Teleport 到这里,避开 iOS Safari 的老问题——
- * 「可滚动祖先内的 position:fixed 后代」会相对滚动内容而非视口定位,设置页滚动后弹窗顶出屏幕。
- * 仍在 shadow root 内,scoped 样式与 --bbs-* 主题变量照常生效(故不能用 Teleport to="body")。
+ * Host Teleport của hộp thoại bật lên: được App.vue gắn ở cấp con trực tiếp của .bbs-root (bên ngoài vùng chứa cuộn .bbs-body).
+ * Tất cả các hộp thoại .bbs-modal-mask đều Teleport tới đây, né tránh vấn đề kinh niên của iOS Safari ——
+ * "hậu duệ position:fixed bên trong tổ tiên có thể cuộn" sẽ định vị tương đối theo nội dung cuộn thay vì khung nhìn (viewport), làm hộp thoại bị đẩy văng ra khỏi màn hình sau khi cuộn trang cài đặt.
+ * Vẫn nằm bên trong shadow root, kiểu dáng scoped và các biến chủ đề --bbs-* vẫn có hiệu lực như thường (vì vậy không thể dùng Teleport to="body").
  */
 export const modalHost = ref<HTMLElement | null>(null);
 
-/** 导航位置:auto = PC 顶部、移动端底部 */
+/** Vị trí điều hướng: auto = PC ở trên cùng, thiết bị di động ở dưới cùng */
 export type NavPosition = 'top' | 'bottom' | 'auto';
 
 /**
- * 主题。新增主题只需:
- *   1) theme.css 里加一套 .bbs-root[data-theme='xxx'] 变量;
- *   2) 这里给 ThemeName 加上 'xxx',并往 THEMES 注册表加一条。
- * 设置页与题首切换按钮都从 THEMES 自动读取,无需再改别处。
+ * Giao diện chủ đề. Thêm chủ đề mới chỉ cần:
+ *   1) Trong theme.css thêm một bộ biến .bbs-root[data-theme='xxx'];
+ *   2) Tại đây thêm 'xxx' vào ThemeName, và thêm một mục vào bảng đăng ký THEMES.
+ * Trang cài đặt và nút chuyển đổi ở đầu trang đều tự động đọc từ THEMES, không cần sửa nơi khác nữa.
  */
 export type ThemeName = 'day' | 'night' | 'pastel' | 'green' | 'st';
 
 export interface ThemeDef {
   value: ThemeName;
   label: string;
-  /** Icon 组件名,见 components/Icon.vue */
+  /** Tên component Icon, xem components/Icon.vue */
   icon: string;
 }
 
 export const THEMES: ThemeDef[] = [
-  { value: 'day', label: '日间', icon: 'sun' },
-  { value: 'night', label: '夜间', icon: 'moon' },
-  { value: 'pastel', label: '粉彩', icon: 'sparkles' },
-  { value: 'green', label: '木白', icon: 'sparkles' },
-  { value: 'st', label: '跟随ST', icon: 'plug' },
+  { value: 'day', label: 'Ban ngày', icon: 'sun' },
+  { value: 'night', label: 'Ban đêm', icon: 'moon' },
+  { value: 'pastel', label: 'Phấn màu', icon: 'sparkles' },
+  { value: 'green', label: 'Mộc Bạch', icon: 'sparkles' },
+  { value: 'st', label: 'Theo ST', icon: 'plug' },
 ];
 
 interface UiState {
   open: boolean;
-  /** 当前分页 id,对应 registry 里的 key */
+  /** ID trang hiện tại, tương ứng với key trong registry */
   activePage: string;
   theme: ThemeName;
   navPosition: NavPosition;
-  /** 移动端:再点当前页导航按钮即关窗(默认开,怕误触可关) */
+  /** Thiết bị di động: bấm lại nút điều hướng của trang hiện tại sẽ đóng cửa sổ (mặc định bật, sợ chạm nhầm có thể tắt) */
   navTapClose: boolean;
-  /** 在 ST 顶栏注入快速打开按钮(默认关) */
+  /** Tiêm nút mở nhanh vào thanh trên cùng của ST (mặc định tắt) */
   showTopBar: boolean;
-  /** 聊天框上方快速回复式按钮(默认关) */
+  /** Nút kiểu trả lời nhanh phía trên khung trò chuyện (mặc định tắt) */
   showQuickReply: boolean;
-  /** 楼层内摘要锚点(查看该楼数据 + 标番外,默认关) */
+  /** Mốc neo tóm tắt bên trong tầng lầu (xem dữ liệu tầng đó + đánh dấu ngoại truyện, mặc định tắt) */
   showFloorPanel: boolean;
-  /** 屏幕边缘悬浮球(默认关) */
+  /** Quả cầu nổi ở mép màn hình (mặc định tắt) */
   showOrb: boolean;
-  /** 悬浮球自定义图标(ST 服务器图片路径;空=默认书签图标) */
+  /** Biểu tượng tùy chỉnh của quả cầu nổi (đường dẫn ảnh trên máy chủ ST; trống = biểu tượng dấu trang mặc định) */
   orbImage: string;
-  /** 悬浮球形状:bookmark / circle / square */
+  /** Hình dạng quả cầu nổi: bookmark / circle / square */
   orbShape: OrbShape;
-  /** 悬浮球静止不透明度(百分比 20–100) */
+  /** Độ mờ của quả cầu nổi khi đứng yên (phần trăm 20–100) */
   orbOpacity: number;
-  /** 悬浮球基准尺寸(px,32–80) */
+  /** Kích thước cơ sở của quả cầu nổi (px, 32–80) */
   orbSize: number;
 }
 
-/** 悬浮球形状 */
+/** Hình dạng quả cầu nổi */
 export type OrbShape = 'bookmark' | 'circle' | 'square';
 export const ORB_SHAPES: { value: OrbShape; label: string }[] = [
-  { value: 'bookmark', label: '书签' },
-  { value: 'circle', label: '圆形' },
-  { value: 'square', label: '方形' },
+  { value: 'bookmark', label: 'Dấu trang' },
+  { value: 'circle', label: 'Hình tròn' },
+  { value: 'square', label: 'Hình vuông' },
 ];
 function validOrbShape(s: string): OrbShape {
   return s === 'bookmark' || s === 'circle' || s === 'square' ? s : 'bookmark';
 }
 
-// activePage(上次停在哪一页)是纯本机临时导航态,跨设备同步无意义、且翻页即回写服务器太频繁,
-// 故仍存本机 localStorage;主题/导航位置是真·设置,改存进 apiSettings.ui(→ ST 跨设备同步)。
+// activePage (lần trước dừng ở trang nào) là trạng thái điều hướng tạm thời thuần trên máy, đồng bộ xuyên thiết bị vô nghĩa và mỗi lần lật trang đều ghi lại lên máy chủ thì quá dày,
+// nên vẫn lưu ở localStorage trên máy; chủ đề / vị trí điều hướng là cài đặt thực sự, đổi sang lưu vào apiSettings.ui (→ ST đồng bộ xuyên thiết bị).
 const PAGE_STORAGE_KEY = 'bbs.ui.page.v1';
 
 function loadActivePage(): string {
@@ -84,7 +84,7 @@ function loadActivePage(): string {
   }
 }
 
-// 主题合法性校验:apiSettings.ui.theme 是裸字符串,可能来自旧版本/被手改坏,落到 ui 前先校验。
+// Kiểm tra tính hợp lệ của chủ đề: apiSettings.ui.theme là chuỗi trần, có thể đến từ phiên bản cũ / bị sửa tay hỏng, trước khi đưa vào ui thì kiểm tra trước.
 function validTheme(t: string): ThemeName {
   return THEMES.some(x => x.value === t) ? (t as ThemeName) : 'day';
 }
@@ -92,7 +92,7 @@ function validNav(n: string): NavPosition {
   return n === 'top' || n === 'bottom' || n === 'auto' ? n : 'auto';
 }
 
-// 先用 apiSettings 当前值建 ui(import 阶段多为默认;hydrate 完成后由 onSettingsReady 回灌真值)。
+// Tạo ui bằng giá trị hiện tại của apiSettings trước (ở giai đoạn import đa phần là mặc định; sau khi hydrate hoàn tất sẽ do onSettingsReady rót giá trị thực vào).
 export const ui = reactive<UiState>({
   open: false,
   activePage: loadActivePage(),
@@ -109,7 +109,7 @@ export const ui = reactive<UiState>({
   orbSize: apiSettings.ui.orbSize,
 });
 
-// settings 跨设备同步值就绪后,把主题/导航回灌进 ui(覆盖 import 阶段的默认)
+// Sau khi giá trị đồng bộ xuyên thiết bị của settings sẵn sàng, rót lại chủ đề / điều hướng vào ui (ghi đè mặc định của giai đoạn import)
 onSettingsReady(() => {
   ui.theme = validTheme(apiSettings.ui.theme);
   ui.navPosition = validNav(apiSettings.ui.navPosition);
@@ -124,7 +124,7 @@ onSettingsReady(() => {
   ui.orbSize = apiSettings.ui.orbSize;
 });
 
-// ui 改变 → 写回 apiSettings.ui(由 settings 的 watch 防抖落盘、跨设备同步);activePage 仍存本机。
+// ui thay đổi → ghi về apiSettings.ui (do watch của settings chống rung lưu đĩa, đồng bộ xuyên thiết bị); activePage vẫn lưu trên máy.
 watch(
   () => [
     ui.theme,
@@ -159,14 +159,14 @@ watch(
     try {
       localStorage.setItem(PAGE_STORAGE_KEY, ui.activePage);
     } catch {
-      /* localStorage 不可用时静默 */
+      /* Khi localStorage không khả dụng thì giữ im lặng */
     }
   },
 );
 
 /**
- * 窗口最近一次打开的时间戳。用于在打开瞬间忽略遮罩关闭——
- * 移动端打开手势末尾合成的 click 会穿透到刚渲染的遮罩,造成"秒关"。
+ * Dấu thời gian lần mở cửa sổ gần nhất. Dùng để bỏ qua việc đóng màn chắn ngay trong khoảnh khắc vừa mở ——
+ * sự kiện click tổng hợp ở cuối cử chỉ mở trên thiết bị di động sẽ xuyên qua màn chắn vừa mới kết xuất, gây ra hiện tượng "vừa mở đã tắt".
  */
 export let lastOpenedAt = 0;
 
@@ -180,7 +180,7 @@ export function closeBook() {
   ui.open = false;
 }
 
-/** 题首按钮:在所有已注册主题间循环切换 */
+/** Nút ở đầu trang: chuyển đổi xoay vòng giữa tất cả các chủ đề đã đăng ký */
 export function cycleTheme() {
   const i = THEMES.findIndex(t => t.value === ui.theme);
   ui.theme = THEMES[(i + 1) % THEMES.length].value;

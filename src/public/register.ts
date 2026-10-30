@@ -70,7 +70,7 @@ function emitNotice(type: PublicChangeNotice['type']): void {
     try {
       listener(clonePublic(detail));
     } catch (error) {
-      console.warn('[柏宝书] 公共 API 订阅回调异常', error);
+      console.warn('[Bách Bảo Thư] Lỗi bất thường ở hàm gọi lại đăng ký API công khai', error);
     }
   }
   const eventName = type === 'ready' ? PUBLIC_READY_EVENT : PUBLIC_CHANGED_EVENT;
@@ -120,7 +120,7 @@ function createApi(): STBaiBaiBookApi {
     getContextAtFloor: (options: { floor: number }) => getContextAtFloor(options),
     query: (request: PublicQueryRequest) => query(request),
     subscribe(listener: PublicChangeListener) {
-      if (typeof listener !== 'function') throw new TypeError('subscribe listener 必须是函数');
+      if (typeof listener !== 'function') throw new TypeError('subscribe listener bắt buộc phải là hàm');
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
@@ -130,14 +130,14 @@ function createApi(): STBaiBaiBookApi {
 function numericArg(value: unknown, label: string): number | undefined {
   if (value === undefined || value === null || String(value).trim() === '') return undefined;
   const number = Number(value);
-  if (!Number.isInteger(number)) throw new TypeError(`${label} 必须是整数`);
+  if (!Number.isInteger(number)) throw new TypeError(`${label} bắt buộc phải là số nguyên`);
   return number;
 }
 
 function atArg(value: unknown): SnapshotAt | undefined {
   if (value === undefined || value === null || String(value).trim() === '') return undefined;
   const at = String(value).trim().toLowerCase();
-  if (at !== 'before' && at !== 'after') throw new TypeError('at 只能是 before 或 after');
+  if (at !== 'before' && at !== 'after') throw new TypeError('at chỉ có thể là before hoặc after');
   return at;
 }
 
@@ -195,7 +195,7 @@ function normalizeResource(value: unknown): PublicQueryRequest['resource'] {
     'snapshot', 'history', 'injectedHistory', 'floor', 'context',
   ];
   const matched = resources.find(resource => resource.toLowerCase() === normalized);
-  if (!matched) throw new TypeError(`未知 resource: ${raw}`);
+  if (!matched) throw new TypeError(`resource không xác định: ${raw}`);
   return matched;
 }
 
@@ -236,42 +236,42 @@ async function registerSlashCommand(): Promise<boolean> {
         };
         const format = String(args.format ?? 'json').trim().toLowerCase();
         if (!['json', 'raw', 'text'].includes(format)) {
-          throw new TypeError('format 只能是 json、raw 或 text');
+          throw new TypeError('format chỉ có thể là json, raw hoặc text');
         }
         return formatResult(query(request), format);
       },
       namedArgumentList: [
         named({
           name: 'resource',
-          description: '要读取的资源',
+          description: 'Tài nguyên cần đọc',
           typeList: [ARGUMENT_TYPE.STRING],
           enumList: ['var', 'vars', 'state', 'protagonist', 'items', 'plans', 'scenes', 'npcs', 'itemLog', 'snapshot', 'history', 'injectedHistory', 'floor', 'context'],
         }),
         named({
           name: 'path',
-          description: '变量路径，例如 关系.爱丽丝.好感度 或 队伍[0].hp',
+          description: 'Đường dẫn biến số, ví dụ Quan_hệ.Alice.Hảo_cảm hoặc Đội_hình[0].hp',
           typeList: [ARGUMENT_TYPE.STRING],
         }),
         named({
           name: 'floor',
-          description: 'ST 零基 mesid',
+          description: 'mesid cơ số 0 của ST',
           typeList: [ARGUMENT_TYPE.NUMBER],
         }),
         named({
           name: 'at',
-          description: '快照位于目标楼之前或之后',
+          description: 'Ảnh chụp nằm trước hay sau tầng mục tiêu',
           typeList: [ARGUMENT_TYPE.STRING],
           defaultValue: 'after',
           enumList: ['before', 'after'],
         }),
         named({
           name: 'before',
-          description: '历史剧情截止楼层，不包含该楼',
+          description: 'Tầng lầu cắt cốt truyện lịch sử, không bao gồm tầng đó',
           typeList: [ARGUMENT_TYPE.NUMBER],
         }),
         named({
           name: 'format',
-          description: '返回格式',
+          description: 'Định dạng trả về',
           typeList: [ARGUMENT_TYPE.STRING],
           defaultValue: 'json',
           enumList: ['json', 'raw', 'text'],
@@ -279,21 +279,21 @@ async function registerSlashCommand(): Promise<boolean> {
       ],
       unnamedArgumentList: [
         SlashCommandArgument.fromProps({
-          description: '可选资源名，默认 snapshot',
+          description: 'Tên tài nguyên tùy chọn, mặc định là snapshot',
           typeList: [ARGUMENT_TYPE.STRING],
           enumList: ['var', 'vars', 'state', 'protagonist', 'items', 'plans', 'scenes', 'npcs', 'itemLog', 'snapshot', 'history', 'injectedHistory', 'floor', 'context'],
         }),
       ],
       helpString: `
-        <div>读取柏宝书的只读记忆数据，并把结果传入 STscript 管道。</div>
-        <div><code>/bbs-get resource=var path="关系.爱丽丝.好感度" floor=42 at=after format=raw</code></div>
+        <div>Đọc dữ liệu trí nhớ chỉ đọc của Bách Bảo Thư và truyền kết quả vào đường ống STscript.</div>
+        <div><code>/bbs-get resource=var path="Quan_hệ.Alice.Hảo_cảm" floor=42 at=after format=raw</code></div>
         <div><code>/bbs-get resource=context floor=42 format=json</code></div>
       `,
       returns: ARGUMENT_TYPE.STRING,
     }));
     return true;
   } catch (error) {
-    console.warn('[柏宝书] /bbs-get 注册失败', error);
+    console.warn('[Bách Bảo Thư] Đăng ký /bbs-get thất bại', error);
     return false;
   }
 }
@@ -302,7 +302,7 @@ function macroSafe(read: () => unknown): string {
   try {
     return scalarText(read());
   } catch (error) {
-    console.warn('[柏宝书] 公共宏读取失败', error);
+    console.warn('[Bách Bảo Thư] Đọc macro công khai thất bại', error);
     return '';
   }
 }
@@ -335,7 +335,7 @@ async function registerMacros(): Promise<{ macros: boolean; parameterized: boole
         optional: true,
         type: 'integer',
         sampleValue: '42',
-        description: 'ST 零基 mesid；省略时为当前聊天末尾。',
+        description: 'mesid cơ số 0 của ST; khi lược bỏ là cuối cuộc trò chuyện hiện tại.',
       };
       const optionalAt = {
         name: 'at',
@@ -343,23 +343,23 @@ async function registerMacros(): Promise<{ macros: boolean; parameterized: boole
         defaultValue: 'after',
         type: 'string',
         sampleValue: 'after',
-        description: 'before 不含目标楼，after 包含目标楼。',
+        description: 'before không bao gồm tầng mục tiêu, after bao gồm tầng mục tiêu.',
       };
       const definitions: Array<[string, Record<string, unknown>]> = [
         ['bbsVars', {
           category: categoryVariable,
-          description: '返回柏宝书当前自定义变量 JSON。',
+          description: 'Trả về JSON biến tùy chỉnh hiện tại của Bách Bảo Thư.',
           handler: () => macroSafe(() => getSnapshot().vars),
         }],
         ['bbsState', {
           category: categoryChat,
-          description: '返回柏宝书当前时间与地点状态 JSON。',
+          description: 'Trả về JSON trạng thái thời gian và địa điểm hiện tại của Bách Bảo Thư.',
           handler: () => macroSafe(() => getSnapshot().state),
         }],
         ['bbsSnapshot', {
           category: categoryChat,
           unnamedArgs: [optionalFloor, optionalAt],
-          description: '返回柏宝书当前或指定楼层的完整状态快照 JSON。',
+          description: 'Trả về JSON ảnh chụp trạng thái đầy đủ hiện tại hoặc tại tầng chỉ định của Bách Bảo Thư.',
           exampleUsage: ['{{bbsSnapshot}}', '{{bbsSnapshot::42::after}}'],
           handler: ({ unnamedArgs: [floor, at] }: { unnamedArgs: string[] }) =>
             macroSafe(() => macroSnapshot(floor, at)),
@@ -371,16 +371,16 @@ async function registerMacros(): Promise<{ macros: boolean; parameterized: boole
             optional: true,
             type: 'integer',
             sampleValue: '42',
-            description: '仅返回 mesid 小于该值的历史剧情。',
+            description: 'Chỉ trả về cốt truyện lịch sử có mesid nhỏ hơn giá trị này.',
           }],
-          description: '返回柏宝书带相对时间的压缩历史剧情文本。',
+          description: 'Trả về văn bản cốt truyện lịch sử đã nén kèm thời gian tương đối của Bách Bảo Thư.',
           exampleUsage: ['{{bbsHistory}}', '{{bbsHistory::42}}'],
           handler: ({ unnamedArgs: [before] }: { unnamedArgs: string[] }) =>
             macroSafe(() => getHistory({ before: numericArg(before, 'before') }).relativeText),
         }],
         ['bbsInjectedHistory', {
           category: categoryChat,
-          description: '返回与正常记忆注入相同、已跳过滑动窗口的历史剧情文本。',
+          description: 'Trả về văn bản cốt truyện lịch sử giống với việc tiêm trí nhớ bình thường và đã bỏ qua cửa sổ trượt.',
           exampleUsage: ['{{bbsInjectedHistory}}'],
           handler: () => macroSafe(() => getInjectedHistory().relativeText),
         }],
@@ -389,11 +389,11 @@ async function registerMacros(): Promise<{ macros: boolean; parameterized: boole
           unnamedArgs: [{
             name: 'path',
             type: 'string',
-            sampleValue: '关系.爱丽丝.好感度',
-            description: '点号和数组下标变量路径。',
+            sampleValue: 'Quan_hệ.Alice.Hảo_cảm',
+            description: 'Đường dẫn biến số bằng dấu chấm và chỉ mục mảng.',
           }, optionalFloor, optionalAt],
-          description: '返回柏宝书指定路径的变量值。',
-          exampleUsage: ['{{bbsVar::关系.爱丽丝.好感度}}', '{{bbsVar::队伍[0].hp::42::after}}'],
+          description: 'Trả về giá trị biến tại đường dẫn chỉ định của Bách Bảo Thư.',
+          exampleUsage: ['{{bbsVar::Quan_hệ.Alice.Hảo_cảm}}', '{{bbsVar::Đội_hình[0].hp::42::after}}'],
           handler: ({ unnamedArgs: [path, floor, at] }: { unnamedArgs: string[] }) =>
             macroSafe(() => getVar(path, {
               floor: numericArg(floor, 'floor'),
@@ -406,9 +406,9 @@ async function registerMacros(): Promise<{ macros: boolean; parameterized: boole
             name: 'floor',
             type: 'integer',
             sampleValue: '42',
-            description: 'ST 零基 mesid。',
+            description: 'mesid cơ số 0 của ST.',
           }],
-          description: '返回指定楼层的正文与叶子摘要 JSON。',
+          description: 'Trả về JSON chính văn và tóm tắt lá của tầng chỉ định.',
           exampleUsage: ['{{bbsFloor::42}}'],
           handler: ({ unnamedArgs: [floor] }: { unnamedArgs: string[] }) =>
             macroSafe(() => getFloor(numericArg(floor, 'floor')!)),
@@ -428,18 +428,18 @@ async function registerMacros(): Promise<{ macros: boolean; parameterized: boole
       };
     };
     const stableMacros: Array<[string, () => string, string]> = [
-      ['bbsVars', () => macroSafe(() => getSnapshot().vars), '返回柏宝书当前自定义变量 JSON。'],
-      ['bbsState', () => macroSafe(() => getSnapshot().state), '返回柏宝书当前状态 JSON。'],
-      ['bbsSnapshot', () => macroSafe(() => getSnapshot()), '返回柏宝书当前完整状态快照 JSON。'],
-      ['bbsHistory', () => macroSafe(() => getHistory().relativeText), '返回柏宝书带相对时间的压缩历史剧情文本。'],
-      ['bbsInjectedHistory', () => macroSafe(() => getInjectedHistory().relativeText), '返回与正常记忆注入相同、已跳过滑动窗口的历史剧情文本。'],
+      ['bbsVars', () => macroSafe(() => getSnapshot().vars), 'Trả về JSON biến tùy chỉnh hiện tại của Bách Bảo Thư.'],
+      ['bbsState', () => macroSafe(() => getSnapshot().state), 'Trả về JSON trạng thái hiện tại của Bách Bảo Thư.'],
+      ['bbsSnapshot', () => macroSafe(() => getSnapshot()), 'Trả về JSON ảnh chụp trạng thái đầy đủ hiện tại của Bách Bảo Thư.'],
+      ['bbsHistory', () => macroSafe(() => getHistory().relativeText), 'Trả về văn bản cốt truyện lịch sử đã nén kèm thời gian tương đối của Bách Bảo Thư.'],
+      ['bbsInjectedHistory', () => macroSafe(() => getInjectedHistory().relativeText), 'Trả về văn bản cốt truyện lịch sử giống với việc tiêm trí nhớ bình thường và đã bỏ qua cửa sổ trượt.'],
     ];
     for (const [name, handler, description] of stableMacros) {
       legacyModule.MacrosParser.registerMacro(name, handler, description);
     }
     return { macros: true, parameterized: false };
   } catch (error) {
-    console.warn('[柏宝书] 公共宏注册失败', error);
+    console.warn('[Bách Bảo Thư] Đăng ký macro công khai thất bại', error);
     return { macros: false, parameterized: false };
   }
 }
@@ -469,5 +469,5 @@ export async function registerPublicInterface(): Promise<void> {
 
   ready = true;
   emitNotice('ready');
-  console.log('[柏宝书] 公共只读接口已就绪', clonePublic(capabilities));
+  console.log('[Bách Bảo Thư] Giao diện chỉ đọc công khai đã sẵn sàng', clonePublic(capabilities));
 }

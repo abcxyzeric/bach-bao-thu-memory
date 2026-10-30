@@ -1,12 +1,12 @@
 /**
- * 摘要节点(SummaryNode)递归渲染所需的共享上下文。
- * 卡片渲染下沉到递归组件后,父页(index.vue)通过 provide 把状态、helper、动作一次性注入,
- * 免去逐层 props 透传。默认/搜索/选择三视图共用同一张卡片,只此一份实现。
+ * Ngữ cảnh chia sẻ cần thiết để kết xuất đệ quy nút tóm tắt (SummaryNode).
+ * Sau khi việc kết xuất thẻ được đưa xuống component đệ quy, trang cha (index.vue) thông qua provide tiêm trạng thái, helper, hành động một lần,
+ * khỏi phải truyền props qua từng tầng. Ba chế độ xem Mặc định / Tìm kiếm / Chọn dùng chung cùng một thẻ, chỉ có một bản triển khai duy nhất này.
  */
 import type { ComputedRef, InjectionKey, Ref } from 'vue';
 import type { ViewNode } from '@/memory/inject';
 
-/** 一个森林节点在列表里的展示字段(toRow 的产物),供 helper 计算标签/时间用。 */
+/** Các trường hiển thị của một nút rừng trong danh sách (sản phẩm của toRow), cung cấp cho helper tính toán nhãn/thời gian. */
 export interface SummaryRow {
   key: string;
   id: string;

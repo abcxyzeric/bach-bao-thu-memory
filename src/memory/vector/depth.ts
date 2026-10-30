@@ -1,7 +1,7 @@
-/** 向量召回默认注入深度:D0,紧邻最新用户输入。 */
+/** Độ sâu tiêm mặc định của truy xuất vector: D0, nằm sát ngay đầu vào người dùng mới nhất. */
 export const DEFAULT_RECALL_INJECTION_DEPTH = 0;
 
-/** 注入深度只接受非负整数;旧配置缺失、输入为空或非法时保持默认 D0。 */
+/** Độ sâu tiêm chỉ chấp nhận số nguyên không âm; khi cấu hình cũ bị thiếu, ô nhập để trống hoặc không hợp lệ thì giữ nguyên mặc định D0. */
 export function normalizeRecallInjectionDepth(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0
     ? Math.floor(value)

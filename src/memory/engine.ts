@@ -33,7 +33,7 @@ function llmOptionalScalar(v: unknown): string | undefined {
   return llmScalar(v) || undefined;
 }
 
-/** 引擎运行状态(供 UI 显示) */
+/** Trạng thái chạy của engine (phục vụ hiển thị UI) */
 export const engineState = reactive({
   running: false,
   lastError: '' as string,
@@ -41,8 +41,8 @@ export const engineState = reactive({
 });
 
 /**
- * 单楼摘要状态(自动摘要/补摘/重摘共用;模块级单例,供 UI 跨「关窗重开」恢复对应楼层的转圈)。
- * chatId 用于隔离聊天:切到别的聊天时不把相同楼层号误显示为正在补摘。
+ * Trạng thái tóm tắt đơn tầng (dùng chung cho tự động tóm tắt / tóm tắt bù / tóm tắt lại; singleton cấp mô-đun, phục vụ UI khôi phục vòng xoay ở tầng tương ứng sau khi đóng rồi mở lại cửa sổ).
+ * chatId dùng để cô lập cuộc trò chuyện: khi chuyển sang cuộc trò chuyện khác sẽ không hiển thị nhầm số tầng giống nhau thành đang tóm tắt bù.
  */
 export const floorBackfillState = reactive({
   running: false,
@@ -52,44 +52,44 @@ export const floorBackfillState = reactive({
 let floorBackfillOwnerRunId: number | null = null;
 
 /**
- * 批量补摘运行状态(模块级单例,供 UI 跨「关窗重开」恢复进度/取消按钮)。
- * 放这里而非组件本地 ref:柏宝书窗口关闭会销毁组件、丢失本地 ref,但 batchBackfill 在本模块继续跑——
- * 关窗 ≠ 取消。重开后组件读这个单例即可恢复「补摘中 X/Y + 取消」的显示。
+ * Trạng thái chạy tóm tắt bù hàng loạt (singleton cấp mô-đun, phục vụ UI khôi phục tiến độ / nút hủy sau khi đóng rồi mở lại cửa sổ).
+ * Đặt ở đây thay vì ref cục bộ của component: cửa sổ Bách Bảo Thư đóng lại sẽ hủy component, mất ref cục bộ, nhưng batchBackfill vẫn chạy tiếp trong mô-đun này ——
+ * đóng cửa sổ ≠ hủy bỏ. Sau khi mở lại, component chỉ cần đọc singleton này là khôi phục được hiển thị "Đang tóm tắt bù X/Y + Hủy".
  */
 export const batchState = reactive({
   running: false,
   done: 0,
   total: 0,
-  cancelRequested: false, // 用户已点取消、等块边界生效
+  cancelRequested: false, // Người dùng đã bấm hủy, đợi có hiệu lực ở ranh giới khối
 });
 
-/** 请求取消正在进行的批量补摘(块边界生效,不打断进行中的块)。 */
+/** Yêu cầu hủy bỏ việc tóm tắt bù hàng loạt đang diễn ra (có hiệu lực ở ranh giới khối, không ngắt ngang khối đang chạy). */
 export function cancelBatchBackfill(): void {
   if (batchState.running) batchState.cancelRequested = true;
 }
 
 let busy = false;
-// 当前在飞的摘要完成信号:拦截器可 await 它(成功/失败都 resolve,永不 reject,故不会卡死生成)。
-// 无在飞摘要时为 null。在 runSummary 头尾维护。
+// Tín hiệu hoàn thành tóm tắt đang bay hiện tại: bộ chặn có thể await nó (thành công / thất bại đều resolve, không bao giờ reject, nên sẽ không làm treo việc tạo).
+// Khi không có tóm tắt đang bay thì là null. Được duy trì ở đầu và cuối runSummary.
 let currentRun: Promise<void> | null = null;
 let summaryRunSeq = 0;
 export function currentSummaryPromise(): Promise<void> | null {
   return currentRun;
 }
 
-/** 把消息渲染成给摘要模型的文本(cleanBody:裁正文段 + 整块删噪声标签 + 时间标签转文本) */
+/** Kết xuất tin nhắn thành văn bản đưa cho mô hình tóm tắt (cleanBody: cắt gọn đoạn chính văn + xóa nguyên khối thẻ nhiễu + chuyển thẻ thời gian thành văn bản) */
 function renderMessages(chat: STMessage[], indices: number[], name1: string, name2: string): string {
   const sources: SourceExcerpt[] = [];
   const content = indices
     .map(i => {
       const m = chat[i];
       if (!m) return '';
-      // 双标:既标发言方(用户/角色),又带人名 —— 摘要正文用人名,群聊也能区分谁说的
-      const tag = m.is_user ? '用户' : '角色';
+      // Nhãn kép: vừa ghi bên phát ngôn (Người dùng/Nhân vật), vừa kèm tên người —— chính văn tóm tắt dùng tên người, trò chuyện nhóm cũng phân biệt được ai nói
+      const tag = m.is_user ? 'Người dùng' : 'Nhân vật';
       const who = m.is_user ? name1 || 'User' : m.name || name2 || 'Char';
-      // cleanBody:裁剪到 <bbs_start>…</bbs_end>(剔除状态栏等正文外格式)+ 整块删噪声标签
-      //（思维链/注释/物品旁注/自定义标签)+ 时间标签转可读文本。不再裸删标签。
-      // 只为请求材料编号;使用聊天消息序号,同一正文在单楼与批量中保持相同来源标记。
+      // cleanBody: cắt gọn vào <bbs_start>…</bbs_end> (loại bỏ định dạng ngoài chính văn như thanh trạng thái) + xóa nguyên khối thẻ nhiễu
+      // (chuỗi suy nghĩ/chú thích/chú thích vật phẩm/thẻ tùy chỉnh) + chuyển thẻ thời gian thành văn bản dễ đọc. Không còn xóa trần thẻ.
+      // Chỉ đánh số cho tài liệu yêu cầu; dùng số thứ tự tin nhắn trò chuyện, cùng một chính văn trong đơn tầng và hàng loạt giữ cùng nhãn nguồn.
       const body = cleanBody(m.mes).split(/\r?\n/)
         .filter(line => line.trim())
         .map((line, p) => {
@@ -105,7 +105,7 @@ function renderMessages(chat: STMessage[], indices: number[], name1: string, nam
   return content + renderSourceHints(sources);
 }
 
-/** 把去空后的分段去重、join。世界书激活各来源统一收口于此(与旧行为一致)。 */
+/** Khử trùng và join các phân đoạn sau khi đã bỏ trống. Các nguồn kích hoạt sách thế giới thống nhất gom về đây (nhất quán với hành vi cũ). */
 function joinWorldInfoChunks(chunks: string[]): string {
   const seen = new Set<string>();
   const out: string[] = [];
@@ -120,10 +120,10 @@ function joinWorldInfoChunks(chunks: string[]): string {
 }
 
 /**
- * 判断某条条目是否应被排除:① 整本排除(world 命中名单);② 条目名(comment)命中任一规则。
- * 规则按正则编译、**大小写不敏感**(填 mvu 命中 [MVU]);普通名字天然=包含匹配。
- * 编译失败降级为字面子串包含(大小写不敏感)——用户填了带元字符的普通名字(如「(临时)」)
- * 也不会误伤,只是退化成子串比对。
+ * Phán đoán xem một mục có nên bị loại trừ hay không: ① Loại trừ cả cuốn (world nằm trong danh sách); ② Tên mục (comment) trúng bất kỳ quy tắc nào.
+ * Quy tắc biên dịch theo regex, **không phân biệt hoa thường** (điền mvu sẽ trúng [MVU]); tên thông thường tự nhiên = khớp bao hàm.
+ * Biên dịch thất bại thì hạ cấp thành bao hàm chuỗi con nguyên văn (không phân biệt hoa thường) —— người dùng có điền tên thông thường chứa siêu ký tự (như "(tạm thời)")
+ * cũng không làm hỏng nhầm, chỉ thoái hóa thành đối chiếu chuỗi con.
  */
 function isWorldInfoEntryExcluded(entry: WorldInfoEntry): boolean {
   const world = entry.world?.trim();
@@ -137,7 +137,7 @@ function isWorldInfoEntryExcluded(entry: WorldInfoEntry): boolean {
     try {
       hit = new RegExp(pat, 'i').test(comment);
     } catch {
-      hit = comment.toLowerCase().includes(pat.toLowerCase()); // 非法正则 → 退化为字面子串包含
+      hit = comment.toLowerCase().includes(pat.toLowerCase()); // Regex không hợp lệ → thoái hóa thành bao hàm chuỗi con chữ
     }
     if (hit) return true;
   }
@@ -145,8 +145,8 @@ function isWorldInfoEntryExcluded(entry: WorldInfoEntry): boolean {
 }
 
 /**
- * 本轮待摘文本的扫描数组(各楼正文清洗后,带人名前缀帮助关键词命中角色名)。
- * checkWorldInfo / getWorldInfoPrompt 共用。
+ * Mảng quét văn bản chờ tóm tắt của lượt này (chính văn các tầng sau khi làm sạch, kèm tiền tố tên người giúp từ khóa trúng tên nhân vật).
+ * Dùng chung cho checkWorldInfo / getWorldInfoPrompt.
  */
 function buildScanText(chat: STMessage[], targets: number[], name1: string, name2: string): string[] {
   return targets
@@ -159,51 +159,51 @@ function buildScanText(chat: STMessage[], targets: number[], name1: string, name
     .filter(Boolean);
 }
 
-// ST 内部:WI 实际预算 = world_info_budget(默认25%) × maxContext,超出即截断条目(蓝灯也不例外)。
-// 摘要场景要「激活的一条都不漏」,故传一个极大的 maxContext,让预算大到不可能溢出。
-// (若用户设了 world_info_budget_cap 上限,仍会被它封顶——那是用户显式的硬上限,尊重之。)
+// Nội bộ ST: ngân sách thực tế của WI = world_info_budget (mặc định 25%) × maxContext, vượt quá là cắt cụt mục (đèn xanh lam cũng không ngoại lệ).
+// Kịch bản tóm tắt cần "mục đã kích hoạt không sót một mục nào", nên truyền một maxContext cực lớn, để ngân sách lớn đến mức không thể tràn.
+// (Nếu người dùng đặt trần world_info_budget_cap, vẫn sẽ bị nó khống chế —— đó là giới hạn cứng tường minh của người dùng, tôn trọng nó.)
 const HUGE_WI_CONTEXT = 1_000_000_000;
 
 /**
- * 渲染世界书条目内容,让副 API 拿到「执行后」的成品而非原文:
- *   ① substituteParams 展开 {{宏}}(含 JS-Slash-Runner 经 MacrosParser 注册的自定义宏);
- *   ② 若装了 ST-Prompt-Template(提示词模板)且文本含 <% %>,调其执行器跑 EJS
- *      (如「按好感度切换人设」的条件条目)。
- * 复刻其官方 evaluateWIEntities 的顺序(先宏后 EJS)。开关 renderWorldInfoTemplates 关闭时整体跳过。
+ * Kết xuất nội dung mục sách thế giới, để API phụ nhận được thành phẩm "sau khi thực thi" thay vì nguyên văn:
+ *   ① substituteParams mở rộng {{macro}} (bao gồm macro tùy chỉnh của JS-Slash-Runner đăng ký qua MacrosParser);
+ *   ② Nếu có cài ST-Prompt-Template (khuôn mẫu prompt) và văn bản chứa <% %>, gọi bộ thực thi của nó chạy EJS
+ *      (như các mục điều kiện "chuyển đổi thiết lập nhân vật theo độ hảo cảm").
+ * Sao chép đúng thứ tự evaluateWIEntities chính thức của nó (macro trước EJS sau). Khi tắt công tắc renderWorldInfoTemplates thì bỏ qua toàn bộ.
  *
- * 变量时点(floor):作为**截止楼层**传给 prepareContext 的第二参(导出接口签名是
- * (context, end),end 即 msg_id)。这样 EJS 里 getvar 读到的是**那一楼的楼层级变量快照**
- * (MVU 等按 message 级存储的框架天然对得上),而非当前最新——总结旧楼时才用当时的好感度等。
- *   - floor 省略(降级路径拿不到楼层)→ prepareContext 默认取最新楼。
- *   - 该楼变量若只在聊天级(单一最新)而无楼层快照 → 仍是最新值(优雅降级,不比原来差)。
+ * Thời điểm biến số (floor): truyền làm **tầng lầu cắt** vào tham số thứ hai của prepareContext (chữ ký giao diện xuất ra là
+ * (context, end), end chính là msg_id). Như vậy getvar trong EJS đọc được là **ảnh chụp biến số cấp tầng lầu của đúng tầng đó**
+ * (các framework lưu trữ theo cấp message như MVU tự nhiên khớp được), chứ không phải giá trị mới nhất hiện tại —— khi tổng kết tầng cũ phải dùng độ hảo cảm của thời điểm đó.
+ *   - floor lược bỏ (đường dẫn hạ cấp không lấy được tầng lầu) → prepareContext mặc định lấy tầng mới nhất.
+ *   - Nếu biến của tầng đó chỉ ở cấp cuộc trò chuyện (một giá trị mới nhất duy nhất) mà không có ảnh chụp tầng lầu → vẫn là giá trị mới nhất (hạ cấp êm đẹp, không tệ hơn ban đầu).
  *
- * ⚠️ 含写变量(setvar 等)的 EJS 每次摘要会额外执行、污染状态,故给了开关让用户可关。
- * 单条失败不影响整体:退回该条上一步的文本(已展宏 / 原文),并打日志。
+ * ⚠️ EJS có chứa ghi biến (setvar v.v.) mỗi lần tóm tắt sẽ thực thi thêm, làm bẩn trạng thái, nên đã cung cấp công tắc để người dùng có thể tắt.
+ * Một mục thất bại không ảnh hưởng tổng thể: lùi về văn bản bước trước của mục đó (đã mở rộng macro / nguyên văn), và ghi log.
  */
 async function renderWorldInfoContent(content: string, entry?: WorldInfoEntry, floor?: number): Promise<string> {
   if (!apiSettings.renderWorldInfoTemplates) return content;
   const ctx = getContext();
-  // ① 展宏(substituteParams 不存在时保持原文)
+  // ① Mở rộng macro (khi substituteParams không tồn tại thì giữ nguyên văn)
   let text = typeof ctx?.substituteParams === 'function' ? ctx.substituteParams(content) : content;
-  // ② 无 EJS 标签则无需调模板插件(省去 prepareContext/sandbox 开销)
+  // ② Không có thẻ EJS thì không cần gọi plugin khuôn mẫu (đỡ tốn chi phí prepareContext/sandbox)
   if (!text.includes('<%')) return text;
   const ejs = getEjsTemplate();
-  if (!ejs) return text; // 未装 ST-Prompt-Template:只做了展宏
+  if (!ejs) return text; // Chưa cài ST-Prompt-Template: chỉ mở rộng macro
   try {
-    // 第二参 end=floor:让 getvar 以「截止该楼」的变量快照求值;undefined 时接口默认取最新楼
+    // Tham số thứ hai end=floor: để getvar tính giá trị bằng ảnh chụp biến số "tính đến tầng đó"; khi undefined giao diện mặc định lấy tầng mới nhất
     const env = await ejs.prepareContext({ world_info: entry }, floor);
     const out = await ejs.evalTemplate(text, env);
     if (typeof out === 'string') text = out;
   } catch (e) {
-    console.log('[柏宝书] 世界书 EJS 渲染失败(退回未执行文本):', e);
+    console.log('[Bách Bảo Thư] Kết xuất EJS sách thế giới thất bại (lùi về văn bản chưa thực thi):', e);
   }
   return text;
 }
 
 /**
- * 降级路径:走 ST 暴露的 getWorldInfoPrompt(只拿拼好的字符串,**无法按名字过滤**)。
- * 仅当 checkWorldInfo 取不到时使用——此时排除设置不生效,但至少摘要照常带世界书,不崩。
- * 蓝灯/相关条目可能落在 before、after、depth(@深度)、作者注 任一位置,全部提取。
+ * Đường dẫn hạ cấp: đi qua getWorldInfoPrompt do ST bộc lộ (chỉ lấy được chuỗi đã ghép sẵn, **không thể lọc theo tên**).
+ * Chỉ dùng khi không lấy được checkWorldInfo —— lúc này cài đặt loại trừ không có hiệu lực, nhưng ít nhất tóm tắt vẫn mang theo sách thế giới như thường, không sập.
+ * Đèn xanh lam / các mục liên quan có thể rơi vào bất kỳ vị trí nào trong before, after, depth (@độ sâu), ghi chú tác giả, trích xuất toàn bộ.
  */
 async function fetchWorldInfoViaPrompt(scanText: string[], refFloor?: number): Promise<string> {
   const fn = getContext()?.getWorldInfoPrompt;
@@ -218,55 +218,55 @@ async function fetchWorldInfoViaPrompt(scanText: string[], refFloor?: number): P
   }
   for (const e of res.anBefore ?? []) if (typeof e === 'string') chunks.push(e);
   for (const e of res.anAfter ?? []) if (typeof e === 'string') chunks.push(e);
-  // 逐块渲染(展宏 + EJS);此路径拿不到条目对象,EJS 仅带当前状态上下文(无 world_info),但仍按 refFloor 取变量
+  // Kết xuất từng khối (mở rộng macro + EJS); đường dẫn này không lấy được đối tượng mục, EJS chỉ mang ngữ cảnh trạng thái hiện tại (không có world_info), nhưng vẫn lấy biến theo refFloor
   const rendered = await Promise.all(chunks.map(c => renderWorldInfoContent(c, undefined, refFloor)));
   return joinWorldInfoChunks(rendered);
 }
 
-// 世界书条目插入位置枚举(对齐 ST world_info_position;未知值归入「其他」排最后,不丢条目)
+// Enum vị trí chèn mục sách thế giới (khớp với ST world_info_position; giá trị chưa biết quy vào "Khác" xếp cuối cùng, không làm mất mục)
 const WI_POSITION_BEFORE = 0;
 const WI_POSITION_AT_DEPTH = 4;
 
-// 桶序:复刻 ST 主提示词中各类条目出现的先后(openai.js populateChatCompletion 的加入顺序):
-// worldInfoBefore(0 角色前) → worldInfoAfter(1 角色后) → 作者注前(2) → 作者注后(3) → @深度(4) → EM上(5) → EM下(6)
-// 出口(outlet,7)由 PromptManager 模板位置决定,无固定先后,归入「其他」排末尾。
+// Thứ tự nhóm: sao chép thứ tự xuất hiện trước sau của các loại mục trong prompt chính của ST (thứ tự đưa vào của populateChatCompletion trong openai.js):
+// worldInfoBefore(0 trước nhân vật) → worldInfoAfter(1 sau nhân vật) → trước ghi chú tác giả(2) → sau ghi chú tác giả(3) → @độ sâu(4) → EM trên(5) → EM dưới(6)
+// Cổng ra (outlet, 7) do vị trí khuôn mẫu PromptManager quyết định, không có thứ tự cố định, quy vào "Khác" xếp ở cuối.
 const WI_BUCKET_ORDER: Record<number, number> = {
-  0: 0, // before 角色前
-  1: 1, // after 角色后
-  2: 2, // ANTop 作者注前
-  3: 3, // ANBottom 作者注后
-  4: 4, // atDepth @深度
-  5: 5, // EMTop EM 上锚
-  6: 6, // EMBottom EM 下锚
-  7: 99, // outlet 出口:无固定位置,统一归入其他
+  0: 0, // before trước nhân vật
+  1: 1, // after sau nhân vật
+  2: 2, // ANTop trước ghi chú tác giả
+  3: 3, // ANBottom sau ghi chú tác giả
+  4: 4, // atDepth @độ sâu
+  5: 5, // EMTop mốc EM trên
+  6: 6, // EMBottom mốc EM dưới
+  7: 99, // outlet cổng ra: không có vị trí cố định, thống nhất quy vào khác
 };
 
-/** ST 新建条目的默认 Order(world-info.js newWorldInfoEntryDefinition.order.default) */
+/** Order mặc định khi ST tạo mục mới (world-info.js newWorldInfoEntryDefinition.order.default) */
 const WI_DEFAULT_ORDER = 100;
 
-/** ST 新建条目的默认深度(newWorldInfoEntryDefinition.depth.default = DEFAULT_DEPTH) */
+/** Độ sâu mặc định khi ST tạo mục mới (newWorldInfoEntryDefinition.depth.default = DEFAULT_DEPTH) */
 const WI_DEFAULT_DEPTH = 4;
 
 /**
- * 把激活条目排成 ST 主提示词同款顺序(桶内 order 升序 + 桶间按出现先后):
- * ST 内部(world-info.js 末段)是「按 order 降序遍历 + unshift 头插」→ 等效同位置内 order 升序;
- * 我们拿到的 allActivatedEntries 是扫描命中顺序(Set/Map 插入序),不含这一步,故在此复刻。
- * 桶间顺序按它们进入主提示词的先后(角色前 → 角色后 → 作者注前/后 → @深度 → EM);
- * @深度桶内再按 depth 降序(深度大的在提示词里更早出现)后按 order 升序。
- * position/order/depth 缺失时用 ST 默认值(0/100/4)兑底;未知 position 归入「其他」排末尾。
+ * Sắp xếp các mục đã kích hoạt theo đúng thứ tự của prompt chính ST (order tăng dần trong nhóm + giữa các nhóm theo thứ tự xuất hiện trước sau):
+ * Nội bộ ST (đoạn cuối world-info.js) là "duyệt theo order giảm dần + chèn đầu unshift" → tương đương order tăng dần trong cùng vị trí;
+ * allActivatedEntries mà chúng ta lấy được là thứ tự trúng khi quét (thứ tự chèn Set/Map), chưa bao gồm bước này, nên sao chép lại tại đây.
+ * Thứ tự giữa các nhóm theo thứ tự chúng đi vào prompt chính (trước nhân vật → sau nhân vật → trước/sau ghi chú tác giả → @độ sâu → EM);
+ * bên trong nhóm @độ sâu lại xếp theo depth giảm dần (độ sâu lớn xuất hiện sớm hơn trong prompt) rồi mới theo order tăng dần.
+ * Khi thiếu position/order/depth thì dùng giá trị mặc định của ST (0/100/4) làm đáy; position chưa biết quy vào "Khác" xếp ở cuối.
  */
 function sortWorldInfoEntriesLikeST(entries: WorldInfoEntry[]): WorldInfoEntry[] {
   return [...entries].sort((a, b) => {
     const pa = WI_BUCKET_ORDER[Number(a.position ?? WI_POSITION_BEFORE)] ?? 99;
     const pb = WI_BUCKET_ORDER[Number(b.position ?? WI_POSITION_BEFORE)] ?? 99;
     if (pa !== pb) return pa - pb;
-    // 同为 @深度:深度大的先出现(提示词里离对话更远)
+    // Cùng là @độ sâu: độ sâu lớn xuất hiện trước (trong prompt nằm xa cuộc đối thoại hơn)
     if (pa === WI_BUCKET_ORDER[WI_POSITION_AT_DEPTH]) {
       const da = Number(a.depth ?? WI_DEFAULT_DEPTH);
       const db = Number(b.depth ?? WI_DEFAULT_DEPTH);
       if (da !== db) return db - da;
     }
-    // 桶内:order 升序(ST 的降序遍历+头插等效结果);非数字/缺失按默认 100
+    // Trong nhóm: order tăng dần (kết quả tương đương của duyệt giảm dần + chèn đầu trong ST); phi chữ số / bị thiếu tính theo mặc định 100
     const oa = Number.isFinite(a.order as number) ? Number(a.order) : WI_DEFAULT_ORDER;
     const ob = Number.isFinite(b.order as number) ? Number(b.order) : WI_DEFAULT_ORDER;
     return oa - ob;
@@ -274,31 +274,31 @@ function sortWorldInfoEntriesLikeST(entries: WorldInfoEntry[]): WorldInfoEntry[]
 }
 
 /**
- * 按本轮待摘文本激活世界书条目(关键词触发 + constant 蓝灯),过滤后返回设定文本。
- * 优先走 checkWorldInfo:它返回**条目对象**(带 world/comment),据此按「整本排除」+「条目名规则」
- * 过滤掉不需要的条目(如全局挂载的附加知识书)。激活逻辑(扫描深度/递归/预算)全在其内部,不碰。
- * checkWorldInfo 取不到(旧版/路径变动)→ 降级到 getWorldInfoPrompt(不过滤,但摘要照常带书,不崩)。
- * 无激活条目 / 角色卡无世界书 / 出错 → 返回空串(不影响摘要正常运行)。
+ * Kích hoạt các mục sách thế giới theo văn bản chờ tóm tắt của lượt này (kích hoạt bằng từ khóa + đèn xanh lam constant), sau khi lọc trả về văn bản thiết lập.
+ * Ưu tiên đi qua checkWorldInfo: nó trả về **đối tượng mục** (kèm world/comment), dựa vào đó lọc bỏ các mục không cần thiết theo "loại trừ cả cuốn" + "quy tắc tên mục"
+ * (như sách kiến thức phụ gắn toàn cục). Logic kích hoạt (độ sâu quét/đệ quy/ngân sách) đều nằm bên trong nó, không đụng vào.
+ * Không lấy được checkWorldInfo (bản cũ / đổi đường dẫn) → hạ cấp xuống getWorldInfoPrompt (không lọc, nhưng tóm tắt vẫn mang theo sách như thường, không sập).
+ * Không có mục kích hoạt / thẻ nhân vật không có sách thế giới / xảy ra lỗi → trả về chuỗi rỗng (không ảnh hưởng việc tóm tắt chạy bình thường).
  */
 async function fetchWorldInfo(chat: STMessage[], targets: number[], name1: string, name2: string): Promise<string> {
   const scanText = buildScanText(chat, targets, name1, name2);
   if (!scanText.length) return '';
-  // 变量时点代表楼:取本批**最后一个 target 楼**(= 这段剧情结束时的状态,与「总结这段发生了什么」最匹配)。
-  // targets 为升序 chat 索引;空则 undefined(降级取最新)。EJS 里 getvar 据此读该楼的历史变量快照。
+  // Tầng đại diện thời điểm biến số: lấy **tầng target cuối cùng** của đợt này (= trạng thái khi kết thúc đoạn cốt truyện này, khớp nhất với việc "tổng kết đoạn này đã xảy ra chuyện gì").
+  // targets là chỉ mục chat tăng dần; trống thì undefined (hạ cấp lấy mới nhất). getvar trong EJS dựa vào đây đọc ảnh chụp biến số lịch sử của tầng đó.
   const refFloor = targets.length ? targets[targets.length - 1] : undefined;
   try {
     const check = await getCheckWorldInfo();
-    if (!check) return await fetchWorldInfoViaPrompt(scanText, refFloor); // 降级:拿不到条目对象,无从过滤
+    if (!check) return await fetchWorldInfoViaPrompt(scanText, refFloor); // Hạ cấp: không lấy được đối tượng mục, không có cách nào lọc
 
     const res = await check(scanText, HUGE_WI_CONTEXT, true);
     const activated = res?.allActivatedEntries;
     if (!activated) return '';
-    // allActivatedEntries 可能是 Set<entry> 或 Map<key,entry>,统一取 values;
-    // 再排成 ST 主提示词同款顺序(扫描命中序不含排序,见 sortWorldInfoEntriesLikeST)
+    // allActivatedEntries có thể là Set<entry> hoặc Map<key,entry>, thống nhất lấy values;
+    // sau đó xếp thành thứ tự giống hệt prompt chính của ST (thứ tự trúng khi quét chưa gồm sắp xếp, xem sortWorldInfoEntriesLikeST)
     const entries = sortWorldInfoEntriesLikeST(
       activated instanceof Map ? [...activated.values()] : [...activated],
     );
-    // 逐条渲染(展宏 + 执行 EJS),让「按好感度切换人设」等动态条目拿到成品而非原文;变量按 refFloor 取历史值
+    // Kết xuất từng mục (mở rộng macro + thực thi EJS), để các mục động như "chuyển đổi thiết lập theo độ hảo cảm" nhận được thành phẩm thay vì nguyên văn; biến số lấy giá trị lịch sử theo refFloor
     const chunks = await Promise.all(
       entries
         .filter(e => e && !isWorldInfoEntryExcluded(e))
@@ -306,31 +306,31 @@ async function fetchWorldInfo(chat: STMessage[], targets: number[], name1: strin
     );
     return joinWorldInfoChunks(chunks);
   } catch (e) {
-    console.log('[柏宝书] 世界书激活失败(降级为不带设定):', e);
+    console.log('[Bách Bảo Thư] Kích hoạt sách thế giới thất bại (hạ cấp thành không mang theo thiết lập):', e);
     return '';
   }
 }
 
 /**
- * 取当前角色卡的人设字段(description / personality / scenario)。
- * 有些卡把人设写在角色描述而非世界书里,摘要也需据此理解角色言行。
- *   - 三个字段都尝试,空的自动跳过(现代卡常只填 description);
- *   - 字段里可能含 {{char}}/{{user}} 宏,用 substituteParams 展开;
- *   - 群聊(characterId 为空)暂不带——多成员合并逻辑复杂,后续再做。
- * 取不到角色 / 全空 → 返回空串(降级,不影响摘要)。
+ * Lấy các trường thiết lập nhân vật của thẻ nhân vật hiện tại (description / personality / scenario).
+ * Có những thẻ viết thiết lập nhân vật ở phần mô tả nhân vật thay vì trong sách thế giới, việc tóm tắt cũng cần dựa vào đó để hiểu lời nói hành động của nhân vật.
+ *   - Cả ba trường đều thử lấy, trường trống tự động bỏ qua (thẻ hiện đại thường chỉ điền description);
+ *   - Trong trường có thể chứa macro {{char}}/{{user}}, dùng substituteParams để mở rộng;
+ *   - Trò chuyện nhóm (characterId trống) tạm thời không mang theo —— logic gộp nhiều thành viên phức tạp, để làm sau.
+ * Không lấy được nhân vật / trống toàn bộ → trả về chuỗi rỗng (hạ cấp, không ảnh hưởng tóm tắt).
  */
 function fetchCharCard(): string {
   const ctx = getContext();
-  if (!ctx || ctx.groupId) return ''; // 群聊暂不带
+  if (!ctx || ctx.groupId) return ''; // Trò chuyện nhóm tạm thời không mang theo
   const idx = ctx.characterId;
   if (idx === undefined || idx === null || idx === '') return '';
   const ch = ctx.characters?.[Number(idx)] as Record<string, unknown> | undefined;
   if (!ch) return '';
   const sub = typeof ctx.substituteParams === 'function' ? ctx.substituteParams : (s: string) => s;
   const fields: Array<[string, string]> = [
-    ['描述', String(ch.description ?? '')],
-    ['性格', String(ch.personality ?? '')],
-    ['情景', String(ch.scenario ?? '')],
+    ['Mô tả', String(ch.description ?? '')],
+    ['Tính cách', String(ch.personality ?? '')],
+    ['Bối cảnh', String(ch.scenario ?? '')],
   ];
   const parts: string[] = [];
   for (const [label, raw] of fields) {
@@ -341,12 +341,12 @@ function fetchCharCard(): string {
 }
 
 /**
- * 取当前用户人设(persona / 用户设定)。
- * 走 ST 稳定宏 {{persona}}(= power_user.persona_description),substituteParams 展开即得;
- * 不去翻 power_user 全局,保持「只通过 context 接触宿主」。
- * 用途:摘要副API原本只知道角色卡({{char}} 一方),不知道主角({{user}})是谁,
- * 写 summary、判断「NPC 与 user 的互动」时缺一块。带上 persona 补齐这一侧。
- * 群聊同样适用(persona 独立于角色,不按 groupId 早退);未设置 persona / 取不到 → 空串(降级)。
+ * Lấy thiết lập người dùng hiện tại (persona / thiết lập người dùng).
+ * Đi qua macro ổn định của ST là {{persona}} (= power_user.persona_description), mở rộng bằng substituteParams là có ngay;
+ * không đi lục tìm biến toàn cục power_user, giữ nguyên tắc "chỉ tiếp xúc với host thông qua context".
+ * Công dụng: API phụ tóm tắt vốn chỉ biết thẻ nhân vật (phía {{char}}), không biết nhân vật chính ({{user}}) là ai,
+ * khi viết summary, phán đoán "tương tác giữa NPC và user" bị khuyết mất một mảng. Mang theo persona sẽ bù đắp phía bên này.
+ * Trò chuyện nhóm cũng áp dụng tương tự (persona độc lập với nhân vật, không thoát sớm theo groupId); chưa đặt persona / không lấy được → chuỗi rỗng (hạ cấp).
  */
 function fetchUserPersona(): string {
   const ctx = getContext();
@@ -354,21 +354,24 @@ function fetchUserPersona(): string {
   return ctx.substituteParams('{{persona}}').trim();
 }
 
-// 提示楼正文里的固定句,既给用户看,也用作旧数据兼容识别与末楼去重哨兵。
-const BACKLOG_NOTICE_SENTINEL = '本次生成已拦截';
+// Câu cố định trong chính văn tầng thông báo, vừa để người dùng xem, vừa dùng làm lính canh nhận diện tương thích dữ liệu cũ và khử trùng tầng cuối.
+const BACKLOG_NOTICE_SENTINEL = 'Lần tạo này đã bị chặn';
+const LEGACY_BACKLOG_SENTINEL = '\u672c\u6b21\u751f\u6210\u5df2\u62e6\u622a';
 
-/** 是否柏宝书自己插入的积压提示楼。正文识别只用于兼容升级前尚未带专用标记的旧提示楼。 */
+/** Có phải tầng thông báo tồn đọng do chính Bách Bảo Thư chèn vào hay không. Nhận diện chính văn chỉ dùng để tương thích với các tầng thông báo cũ trước khi nâng cấp chưa mang nhãn chuyên dụng. */
 function isBacklogNotice(m: STMessage | undefined): boolean {
   if (!m || m.is_user) return false;
   if (m.extra?.bbs_internal_notice === 'backlog') return true;
-  return m.name === '柏宝书' && typeof m.mes === 'string' && m.mes.includes(BACKLOG_NOTICE_SENTINEL);
+  return (m.name === 'Bách Bảo Thư' || m.name === '\u67cf\u5b9d\u4e66')
+    && typeof m.mes === 'string'
+    && (m.mes.includes(BACKLOG_NOTICE_SENTINEL) || m.mes.includes(LEGACY_BACKLOG_SENTINEL));
 }
 
 /**
- * 把积压提示楼标成内部楼层:
- *  - bbs_internal_notice:明确身份,避免靠正文长期判断;
- *  - bbs_omit:复用现有「彻底不参与记忆」通道,确保即便旧提示楼曾被误摘,其叶子也不再重放/注入。
- * 返回是否改动过 chat,调用方据此重算与落盘。
+ * Đánh dấu tầng thông báo tồn đọng thành tầng nội bộ:
+ *  - bbs_internal_notice: xác định rõ danh tính, tránh dựa vào chính văn để phán đoán lâu dài;
+ *  - bbs_omit: tái sử dụng kênh "hoàn toàn không tham gia vào trí nhớ" hiện có, đảm bảo cho dù tầng thông báo cũ từng bị tóm tắt nhầm thì lá của nó cũng không còn được phát lại / tiêm.
+ * Trả về có sửa đổi chat hay không, bên gọi dựa vào đó tính lại và lưu đĩa.
  */
 function normalizeBacklogNotices(chat: STMessage[]): boolean {
   let changed = false;
@@ -386,43 +389,43 @@ function normalizeBacklogNotices(chat: STMessage[]): boolean {
 }
 
 /**
- * 是否「可追踪的 AI 楼层」。与「是否对主 LLM 可见」解耦——隐藏与否都要算,只要它是真实的 AI 回复。
+ * Có phải "tầng lầu AI có thể theo dõi" hay không. Tách rời với việc "có hiển thị với LLM chính hay không" —— ẩn hay không đều phải tính, miễn nó là câu trả lời AI thực sự.
  *
- * 关键区分:`is_system=true` 有两种来源,不能一概排除:
- *   ① 被隐藏的真实 AI 回复(我们 /hide 的 → 带 extra.bbs_hidden;或用户/别的扩展 /hide 的 → 无标记)
- *      —— 这些是角色的真实发言,**必须算 AI 楼**,否则隐藏过的楼就漏摘(用户实测痛点)。
- *   ② ST 原生系统楼(/sys、/comment、叙事注入等)—— 这些带 extra.type,**不算**。
- * 据此:非用户、有正文、且不是「带 type 的原生系统楼」即为 AI 楼。普通可见回复 is_system=false 自然命中。
+ * Phân biệt then chốt: `is_system=true` có hai nguồn gốc, không thể loại trừ vơ đũa cả nắm:
+ *   ① Câu trả lời AI thực sự bị ẩn (do chúng ta /hide → mang extra.bbs_hidden; hoặc do người dùng / tiện ích khác /hide → không nhãn)
+ *      —— Đây là phát ngôn thực sự của nhân vật, **bắt buộc phải tính là tầng AI**, nếu không tầng đã ẩn sẽ bị bỏ sót không tóm tắt (điểm đau thực tế người dùng gặp).
+ *   ② Tầng hệ thống gốc của ST (/sys, /comment, tiêm tự sự v.v.) —— Những tầng này mang extra.type, **không tính**.
+ * Dựa vào đó: không phải người dùng, có chính văn, và không phải "tầng hệ thống gốc có mang type" tức là tầng AI. Câu trả lời hiển thị thông thường is_system=false tự nhiên trúng.
  */
 export function isAiFloor(m: STMessage | undefined): boolean {
-  // 番外楼(bbs_omit):对引擎彻底不存在——不摘、不总结、不重放、不注入、不隐藏计数。
-  // 放在最前面短路,凌驾于所有其它判定(含 bbs_hidden)。
+  // Tầng ngoại truyện (bbs_omit): hoàn toàn không tồn tại đối với engine —— không tóm tắt, không tổng kết, không phát lại, không tiêm, không đếm ẩn.
+  // Đặt ở ngay đầu tiên để ngắt mạch, đứng trên mọi phán đoán khác (bao gồm cả bbs_hidden).
   if (m?.extra?.bbs_omit) return false;
   return isRealAiReply(m);
 }
 
 /**
- * 是否「真实的 AI 回复楼」——只看消息本身的物理性质,**不看番外标记**。
- * 与 isAiFloor 的区别:番外楼仍是真实 AI 回复(isRealAiReply=true),只是被引擎排除(isAiFloor=false)。
- * 楼内锚点要挂在所有真实 AI 回复上(含已标番外者,否则无从取消番外),故用它而非 isAiFloor。
+ * Có phải "tầng câu trả lời AI thực sự" hay không —— chỉ xét tính chất vật lý của bản thân tin nhắn, **không xét nhãn ngoại truyện**.
+ * Khác biệt với isAiFloor: tầng ngoại truyện vẫn là câu trả lời AI thực sự (isRealAiReply=true), chỉ là bị engine loại trừ (isAiFloor=false).
+ * Mốc neo trong tầng cần gắn trên mọi câu trả lời AI thực sự (gồm cả những tầng đã đánh dấu ngoại truyện, nếu không sẽ không có chỗ để bỏ đánh dấu ngoại truyện), nên dùng hàm này thay vì isAiFloor.
  */
 export function isRealAiReply(m: STMessage | undefined): boolean {
   if (!m || m.is_user) return false;
   if (typeof m.mes !== 'string' || !m.mes.trim()) return false;
-  if (isBacklogNotice(m)) return false; // 插件内部提示楼不是剧情正文,不挂楼内面板、不参与记忆
-  if (m.extra?.bbs_hidden) return true; // 被我们隐藏的旧 AI 楼
-  // ST 原生系统楼带 extra.type(narrator/sys 等);真实回复(可见或被 /hide)无 type。
+  if (isBacklogNotice(m)) return false; // Tầng thông báo nội bộ của plugin không phải chính văn cốt truyện, không gắn bảng trong tầng, không tham gia trí nhớ
+  if (m.extra?.bbs_hidden) return true; // Tầng AI cũ bị chúng ta ẩn đi
+  // Tầng hệ thống gốc của ST mang extra.type (narrator/sys v.v.); câu trả lời thực sự (hiển thị hoặc bị /hide) không có type.
   if (m.is_system && m.extra?.type) return false;
   return true;
 }
 
 /**
- * 求「保留窗口」的起点索引:从这条消息起(含)都发全文,之前的可摘要/隐藏。
- * 对齐 Horae 的 _resolveAutoSummaryKeepStart——keepRecent 现在数的是 **AI 消息条数**。
- *   - 无 AI 楼 → 0(不隐藏)
- *   - keep<=0 → chat.length(全部可摘要)
- *   - AI 楼数 <= keep → 0(全保留)
- *   - 否则 → 倒数第 keep 个 AI 楼的索引
+ * Tìm chỉ mục điểm đầu của "cửa sổ giữ lại": từ tin nhắn này trở đi (bao gồm cả nó) đều gửi toàn văn, các tin nhắn trước đó có thể tóm tắt / ẩn.
+ * Khớp với _resolveAutoSummaryKeepStart của Horae —— keepRecent hiện tại đếm **số lượng tin nhắn AI**.
+ *   - Không có tầng AI → 0 (không ẩn)
+ *   - keep<=0 → chat.length (toàn bộ đều có thể tóm tắt)
+ *   - Số tầng AI <= keep → 0 (giữ lại toàn bộ)
+ *   - Ngược lại → chỉ mục của tầng AI thứ keep đếm từ dưới lên
  */
 export function resolveKeepStart(chat: STMessage[]): number {
   const keep = Math.max(0, apiSettings.keepRecent);
@@ -436,7 +439,7 @@ export function resolveKeepStart(chat: STMessage[]): number {
   return aiIdx[aiIdx.length - keep];
 }
 
-/** 当前森林里的导入历史覆盖范围。节点即使已被更高层总结收纳,其接管范围仍然有效。 */
+/** Phạm vi bao phủ lịch sử nhập vào trong rừng hiện tại. Cho dù nút đã được tổng kết tầng cao hơn thu nạp, phạm vi tiếp quản của nó vẫn có hiệu lực. */
 function importedHistoryRanges(): Array<[number, number]> {
   return memory.summaries
     .filter(s => s.imported && Number.isFinite(s.importedFloorEnd))
@@ -456,8 +459,8 @@ function importedHistoryCovers(floor: number): boolean {
 }
 
 /**
- * 找出"待摘要"的 AI 楼层:AI 楼且没有有效叶子(无叶 / 陈旧)。由旧到新。
- * 新消息、regenerate 新 swipe、编辑过的楼,都因 leafValid=false 自然落入。
+ * Tìm ra các tầng lầu AI "chờ tóm tắt": là tầng AI và không có lá hợp lệ (không lá / lỗi thời). Từ cũ đến mới.
+ * Tin nhắn mới, regenerate swipe mới, tầng đã chỉnh sửa, đều vì leafValid=false mà tự nhiên rơi vào đây.
  */
 export function pendingAiFloors(chat: STMessage[]): number[] {
   const out: number[] = [];
@@ -470,12 +473,12 @@ export function pendingAiFloors(chat: STMessage[]): number[] {
 }
 
 /**
- * 「洞」楼层:违反核心不变式「除最后一条 AI 外,其余 AI 楼都必须有有效摘要」的待摘 AI 楼。
- * = 末尾 AI 楼之前的所有待摘 AI 楼。末尾那条豁免——它刚定稿、本就还没摘,属正常待摘而非洞。
+ * Tầng lầu "lỗ hổng": các tầng AI chờ tóm tắt vi phạm bất biến cốt lõi "trừ tin nhắn AI cuối cùng ra, các tầng AI còn lại đều bắt buộc phải có tóm tắt hợp lệ".
+ * = Tất cả các tầng AI chờ tóm tắt nằm trước tầng AI cuối cùng. Tầng cuối cùng đó được miễn —— nó vừa chốt bản thảo, vốn dĩ chưa tóm tắt, thuộc diện chờ tóm tắt bình thường chứ không phải lỗ hổng.
  *
- * 这是生成拦截的判据(见 handleGenerationIntercept)。注意:**不看保留窗口(keepRecent)**——
- * 窗口内的中间洞(如某楼摘要失败、或手动删了某楼摘要)同样破坏不变式,必须拦,
- * 否则后发的楼会在「前面缺摘」时照常生成,导致状态/计划注入错位(D2 注入位置假设了此不变式)。
+ * Đây là tiêu chuẩn phán đoán của bộ chặn tạo nội dung (xem handleGenerationIntercept). Lưu ý: **không xét cửa sổ giữ lại (keepRecent)** ——
+ * lỗ hổng ở giữa bên trong cửa sổ (như một tầng tóm tắt thất bại, hoặc xóa thủ công tóm tắt của một tầng) cũng phá vỡ bất biến như nhau, bắt buộc phải chặn,
+ * nếu không các tầng gửi sau sẽ vẫn sinh nội dung bình thường khi "phía trước đang thiếu tóm tắt", dẫn đến việc tiêm trạng thái / kế hoạch bị lệch vị trí (vị trí tiêm D2 giả định bất biến này).
  */
 export function holesExceptLast(chat: STMessage[]): number[] {
   let lastAi = -1;
@@ -487,8 +490,8 @@ export function holesExceptLast(chat: STMessage[]): number[] {
 }
 
 /**
- * regenerate/swipe 只有在聊天末尾实际是 AI 楼时才代表“正在改写末楼”。
- * 若末尾是用户楼(例如失败后恢复生成),前一条 AI 已稳定,不能因为 type 字符串而跳过。
+ * regenerate/swipe chỉ đại diện cho việc "đang viết lại tầng cuối" khi ở cuối cuộc trò chuyện thực sự là tầng AI.
+ * Nếu ở cuối là tầng người dùng (ví dụ khôi phục tạo sau khi thất bại), tầng AI phía trước đã ổn định, không thể vì chuỗi type mà bỏ qua.
  */
 function shouldSkipLastAiForGeneration(chat: STMessage[], type: string | undefined): boolean {
   if (type !== 'regenerate' && type !== 'swipe') return false;
@@ -501,14 +504,14 @@ function shouldSkipLastAiForGeneration(chat: STMessage[], type: string | undefin
 }
 
 /**
- * 「开场白待摘」场景:最新 AI 楼是**玩家发言前的第一条 AI 楼(开场白)**、尚未摘要、且正文无时间标签。
- * 返回该开场白楼层索引;不匹配返回 -1。
+ * Kịch bản "lời mở đầu chờ tóm tắt": tầng AI mới nhất là **tầng AI đầu tiên trước khi người chơi phát ngôn (lời mở đầu)**, chưa tóm tắt, và chính văn không có thẻ thời gian.
+ * Trả về chỉ mục tầng lời mở đầu đó; không khớp trả về -1.
  *
- * 为何要特判:开场白不是本插件提示词生成的(卡片预设),通常既无 <bbs_start>/<bbs_end> 标签、
- * 也还没摘要 —— 此刻没有任何时间锚点。若放任首次正文生成,主模型会自行编一个时间,而开场白摘要
- * 又会独立编另一个,两者对不上(用户实测的时间错乱)。解法:先摘开场白,把时间落进叶子,主模型
- * 生成时经 latestStoryTime 的「无标签→回退叶子时间」兜底 + 注入的当前时间,即以此为基准推进,同步。
- * 开场白已带时间标签时不特判(主模型能直接读标签,有锚点),不必多等一次请求。
+ * Tại sao phải xử lý đặc biệt: lời mở đầu không phải do prompt của plugin này sinh ra (thiết lập sẵn của thẻ nhân vật), thường vừa không có thẻ <bbs_start>/<bbs_end>,
+ * vừa chưa được tóm tắt —— lúc này chưa có bất kỳ mốc thời gian nào. Nếu cứ mặc kệ cho lần tạo chính văn đầu tiên chạy, mô hình chính sẽ tự bịa ra một thời gian, còn bản tóm tắt lời mở đầu
+ * lại độc lập bịa ra một thời gian khác, hai bên không khớp nhau (lỗi loạn thời gian người dùng đã gặp thực tế). Cách giải quyết: tóm tắt lời mở đầu trước, đưa thời gian vào lá, khi mô hình chính
+ * tạo nội dung sẽ thông qua lớp dự phòng "không thẻ → lùi về thời gian của lá" của latestStoryTime + thời gian hiện tại được tiêm vào, lấy đó làm chuẩn để đẩy tiếp, đồng bộ hoàn toàn.
+ * Khi lời mở đầu đã có sẵn thẻ thời gian thì không xử lý đặc biệt (mô hình chính đọc trực tiếp được thẻ, đã có mốc neo), không cần đợi thêm một lần yêu cầu.
  */
 export function openingPendingFloor(chat: STMessage[]): number {
   let lastAi = -1;
@@ -517,136 +520,136 @@ export function openingPendingFloor(chat: STMessage[]): number {
   }
   if (lastAi < 0) return -1;
   for (let i = lastAi - 1; i >= 0; i--) {
-    if (chat[i]?.is_user || isAiFloor(chat[i])) return -1; // 前面已有玩家发言或其他 AI 楼 → 不是开场白
+    if (chat[i]?.is_user || isAiFloor(chat[i])) return -1; // Phía trước đã có phát ngôn của người chơi hoặc tầng AI khác → không phải lời mở đầu
   }
-  if (importedHistoryCovers(lastAi)) return -1; // 已由导入历史接管,不再为开场白单独造叶子
-  if (leafValid(chat[lastAi])) return -1; // 已摘 → 锚点已在
+  if (importedHistoryCovers(lastAi)) return -1; // Đã được lịch sử nhập vào tiếp quản, không tạo riêng lá cho lời mở đầu nữa
+  if (leafValid(chat[lastAi])) return -1; // Đã tóm tắt → mốc neo đã có sẵn
   const tag = parseTimeRange(clampToTimeTags(chat[lastAi].mes));
-  if (tag.start && tag.end) return -1; // 开场白自带时间标签 → 主模型能读,不必先摘
+  if (tag.start && tag.end) return -1; // Lời mở đầu tự mang thẻ thời gian → mô hình chính đọc được, không cần tóm tắt trước
   return lastAi;
 }
 
 /**
- * 生成拦截器:每次「产出新正文」的生成前,守住不变式「除最后一条 AI 外其余都必须有摘要」。
- * 判据 = holesExceptLast(末尾 AI 之前的待摘楼层),按数量分流:
- *  - 0 个 → 放行。
- *  - 恰好 1 个 → 等待正在后台生成的摘要;若事件时序未启动它,拦截器自行补这一楼。
- *    完成后重判,洞填上则启动最新稳定楼摘要;确认摘要请求已发起后放行,否则拦截。
- *  - >1 个 → 直接拦截,且不启动新的自动补摘;由用户自行选择逐楼补摘或批量补摘。
- * 拦截 = abort(true) + /sendas 插提示楼。
+ * Bộ chặn tạo nội dung: trước mỗi lần tạo "sản sinh chính văn mới", giữ vững bất biến "trừ tin nhắn AI cuối cùng ra các tầng còn lại đều bắt buộc phải có tóm tắt".
+ * Tiêu chuẩn phán đoán = holesExceptLast (các tầng chờ tóm tắt trước AI cuối cùng), phân luồng theo số lượng:
+ *  - 0 lỗ hổng → cho qua.
+ *  - Đúng 1 lỗ hổng → đợi bản tóm tắt đang được tạo dưới nền; nếu trình tự sự kiện chưa khởi động nó, bộ chặn tự tóm tắt bù tầng này.
+ *    Sau khi hoàn tất thì phán đoán lại, lấp xong lỗ hổng thì khởi động tóm tắt tầng ổn định mới nhất; xác nhận yêu cầu tóm tắt đã phát đi rồi mới cho qua, nếu không thì chặn.
+ *  - >1 lỗ hổng → chặn trực tiếp, và không khởi động tự động tóm tắt bù mới; để người dùng tự chọn tóm tắt bù từng tầng hoặc tóm tắt bù hàng loạt.
+ * Chặn = abort(true) + /sendas chèn tầng thông báo.
  *
- * 关键时序/口径(改前务必理解,否则极易复发并行 bug):
- *  1) type 口径必须与摘要触发(bindEngine 里 GENERATION_STARTED 监听器)一致——都放行
- *     continue/quiet/impersonate、都管 normal/regenerate/swipe。否则重生/翻页时「补摘」与「生成」会并行。
- *  2) GENERATION_STARTED(触发 maybeSummarizePrevAi)在 ST 中先于本拦截器 emit,且 maybeSummarizePrevAi
- *     到 runSummary 之间是同步代码、runSummary 同步置好 currentRun → 本拦截器跑时已能读到「在飞」信号。
- *  3) ST 会 await 本拦截器(script.js runGenerationInterceptors),故 await 能真正阻塞生成;
- *     且拦截器在 prompt 组装之前跑,摘要落盘后,后续组装阶段的注入自然带上新数据。
- * 跟随「自动摘要」开关:关了则一并不拦。
+ * Trình tự / tiêu chuẩn then chốt (trước khi sửa nhất định phải hiểu rõ, nếu không rất dễ tái phát lỗi chạy song song):
+ *  1) Tiêu chuẩn type bắt buộc phải nhất quán với kích hoạt tóm tắt (trình lắng nghe GENERATION_STARTED trong bindEngine) —— đều cho qua
+ *     continue/quiet/impersonate, đều quản lý normal/regenerate/swipe. Nếu không khi tạo lại / lật trang việc "tóm tắt bù" và "tạo nội dung" sẽ chạy song song.
+ *  2) GENERATION_STARTED (kích hoạt maybeSummarizePrevAi) trong ST được emit trước bộ chặn này, và từ maybeSummarizePrevAi
+ *     đến runSummary là mã đồng bộ, runSummary đặt sẵn currentRun đồng bộ → khi bộ chặn này chạy đã đọc được tín hiệu "đang bay".
+ *  3) ST sẽ await bộ chặn này (script.js runGenerationInterceptors), nên await thực sự chặn được việc tạo;
+ *     và bộ chặn chạy trước khi lắp ráp prompt, sau khi tóm tắt lưu đĩa, việc tiêm ở giai đoạn lắp ráp tiếp theo tự nhiên mang theo dữ liệu mới.
+ * Đi theo công tắc "Tự động tóm tắt": tắt đi thì cũng không chặn nữa.
  */
 export async function handleGenerationIntercept(
   type: string | undefined,
   abort: (immediately: boolean) => void,
 ): Promise<boolean> {
-  if (!engineActiveHere()) return false; // 排除角色/总开关关:不拦
-  if (!apiSettings.autoSummaryEnabled) return false; // 自动摘要关 → 拦截一并关
-  // 要产出新正文的生成才拦:normal(发消息)/regenerate(重新生成)/swipe(翻页)。
-  // 与摘要触发(GENERATION_STARTED 监听器)同口径,否则重生/翻页时「补摘」与「生成」会并行。
-  // continue(续写)/quiet(安静)/impersonate(扮演)放行,不该被洞挡。
+  if (!engineActiveHere()) return false; // Nhân vật bị loại trừ / tắt công tắc tổng: không chặn
+  if (!apiSettings.autoSummaryEnabled) return false; // Tắt tự động tóm tắt → tắt luôn việc chặn
+  // Chỉ chặn những lần tạo sẽ sản sinh chính văn mới: normal (gửi tin nhắn) / regenerate (tạo lại) / swipe (lật trang).
+  // Cùng tiêu chuẩn với kích hoạt tóm tắt (trình lắng nghe GENERATION_STARTED), nếu không khi tạo lại / lật trang việc "tóm tắt bù" và "tạo nội dung" sẽ chạy song song.
+  // continue (viết tiếp) / quiet (im lặng) / impersonate (nhập vai) cho qua, không nên bị lỗ hổng chặn lại.
   if (type === 'continue' || type === 'quiet' || type === 'impersonate') return false;
 
   const ctx = getContext();
   if (!ctx) return false;
-  if (!ctx.getCurrentChatId?.()) return false; // 欢迎页:无聊天不拦
+  if (!ctx.getCurrentChatId?.()) return false; // Trang chào mừng: không có cuộc trò chuyện thì không chặn
   const chat = ctx.chat ?? [];
-  normalizeBacklogNotices(chat); // 兼容升级前已存在但尚未标记的提示楼
+  normalizeBacklogNotices(chat); // Tương thích với các tầng thông báo đã tồn tại trước khi nâng cấp nhưng chưa được gắn nhãn
   const skipLastAi = shouldSkipLastAiForGeneration(chat, type);
 
-  // 开场白特判(不拦,只等):开场白无时间标签、又还没摘时,先摘它建立时间锚点,再放行首次生成。
-  // 否则主模型与开场白摘要会各自凭空编一个开场时间,导致正文与摘要时间对不上(用户实测)。
-  // 摘完(或失败退化)即继续放行——开场白摘要失败不该挡住用户开始游戏。
-  // 正在翻页/重生成的末楼尚未定稿,即使是真开场白也不能摘旧页来建立锚点。
+  // Xử lý đặc biệt lời mở đầu (không chặn, chỉ đợi): khi lời mở đầu không có thẻ thời gian, lại chưa tóm tắt, thì tóm tắt nó trước để thiết lập mốc thời gian, rồi mới cho qua lần tạo đầu tiên.
+  // Nếu không mô hình chính và bản tóm tắt lời mở đầu sẽ tự bịa riêng một thời gian mở đầu, dẫn đến thời gian chính văn và tóm tắt không khớp nhau (người dùng đã gặp thực tế).
+  // Tóm tắt xong (hoặc thất bại thoái hóa) là tiếp tục cho qua ngay —— tóm tắt lời mở đầu thất bại không nên cản trở người dùng bắt đầu trò chơi.
+  // Tầng cuối đang lật trang / tạo lại chưa chốt bản thảo, cho dù là lời mở đầu thật cũng không thể tóm tắt trang cũ để lập mốc neo.
   const opening = skipLastAi ? -1 : openingPendingFloor(chat);
   if (opening >= 0) {
     const inflight = currentSummaryPromise();
     if (inflight) {
-      toast('正在为开场白建立时间锚点,请稍候…', 'info');
-      await inflight; // promise 永不 reject,不会卡死生成
+      toast('Đang thiết lập mốc thời gian cho lời mở đầu, vui lòng đợi…', 'info');
+      await inflight; // promise không bao giờ reject, sẽ không làm treo việc tạo
     } else if (!busy) {
-      toast('正在为开场白建立时间锚点,请稍候…', 'info');
+      toast('Đang thiết lập mốc thời gian cho lời mở đầu, vui lòng đợi…', 'info');
       await runSummary(opening);
     }
-    // 摘要落盘后 refreshInjection 已把「当前时间」刷成开场白时间;继续走洞判定(通常放行)。
+    // Sau khi tóm tắt lưu đĩa, refreshInjection đã quét "Thời gian hiện tại" thành thời gian lời mở đầu; tiếp tục đi vào phán đoán lỗ hổng (thường là cho qua).
   }
 
   let holes = holesExceptLast(chat);
   if (holes.length < 1) {
-    // 确保最新稳定 AI 楼已进入后台摘要;只有聊天末尾实际是 AI 时才跳过正在改写的末楼。
-    // 通常事件监听器已经启动了它,busy 守卫会自动去重;这里是时序兜底。
+    // Đảm bảo tầng AI ổn định mới nhất đã đi vào tóm tắt dưới nền; chỉ khi ở cuối cuộc trò chuyện thực sự là AI mới bỏ qua tầng cuối đang được viết lại.
+    // Thông thường trình lắng nghe sự kiện đã khởi động nó rồi, cổng bảo vệ busy sẽ tự động khử trùng; ở đây là dự phòng trình tự thời gian.
     void maybeSummarizePrevAi(skipLastAi);
     return false;
   }
 
-  // 恰好 1 个洞:优先等后台任务;若事件时序未启动且引擎空闲,拦截器自行补。
+  // Đúng 1 lỗ hổng: ưu tiên đợi tác vụ nền; nếu trình tự sự kiện chưa khởi động và engine đang rảnh, bộ chặn tự tóm tắt bù.
   if (holes.length === 1) {
     const inflight = currentSummaryPromise();
     if (inflight) {
-      toast('正在补摘前一楼层,请稍候…', 'info');
+      toast('Đang tóm tắt bù tầng trước đó, vui lòng đợi…', 'info');
       await inflight;
     } else if (!busy) {
-      toast('正在补摘前一楼层,请稍候…', 'info');
+      toast('Đang tóm tắt bù tầng trước đó, vui lòng đợi…', 'info');
       await runSummary(holes[0]);
     }
     holes = holesExceptLast(chat);
     if (holes.length < 1) {
-      // 摘要在真正发 API 前还要异步读取世界书等上下文。若直接放行,正文生成可能抢先开始,
-      // 导致最新稳定楼的摘要请求未能启动。这里只等请求实际发起,不等摘要完成。
+      // Tóm tắt trước khi thực sự gửi API còn phải đọc bất đồng bộ các ngữ cảnh như sách thế giới. Nếu cho qua ngay, việc tạo chính văn có thể tranh chạy trước,
+      // dẫn đến yêu cầu tóm tắt của tầng ổn định mới nhất không thể khởi động. Ở đây chỉ đợi yêu cầu thực sự được phát đi, không đợi tóm tắt hoàn tất.
       await maybeSummarizePrevAi(skipLastAi, true);
       return false;
     }
   }
 
-  abort(true); // 仍有洞(>1,或那唯一的洞没在飞/补失败):立即中止
+  abort(true); // Vẫn còn lỗ hổng (>1, hoặc lỗ hổng duy nhất đó không đang bay / tóm tắt bù thất bại): lập tức hủy bỏ
 
-  // 去重:末楼已是本提示楼就不再重复插(连点发送不刷屏)
+  // Khử trùng: nếu tầng cuối đã là tầng thông báo này rồi thì không chèn lặp lại nữa (bấm gửi liên tục không làm tràn màn hình)
   const last = chat[chat.length - 1];
-  if (last && !last.is_user && typeof last.mes === 'string' && last.mes.includes(BACKLOG_NOTICE_SENTINEL)) {
+  if (last && !last.is_user && typeof last.mes === 'string' && (last.mes.includes(BACKLOG_NOTICE_SENTINEL) || last.mes.includes(LEGACY_BACKLOG_SENTINEL))) {
     return true;
   }
 
   const exec = ctx.executeSlashCommandsWithOptions;
   if (typeof exec === 'function') {
-    // 多行靠 {{newline}} 宏(sendMessageAs 走 substituteParams 会还原成换行)
+    // Nhiều dòng dựa vào macro {{newline}} (sendMessageAs đi qua substituteParams sẽ khôi phục thành xuống dòng)
     const text = [
-      `【柏宝书】${BACKLOG_NOTICE_SENTINEL}`,
-      `发生了什么: 因为前面有楼层没有摘要，为了保证剧情的连续性，所以你需要先去给它补全摘要才能继续发送消息`,
-      `应该怎么做: 点开左下角魔法棒，打开柏宝书界面，在第一页的“未摘要楼层”中逐楼补摘，或使用“批量补摘”一次处理`,
-      `补全失败: 多半是API问题，多尝试不同的API`,
-      `补全成功: 在补全成功后，只需要把这一层提示楼层删掉，就可以继续正常生成了`
+      `【Bách Bảo Thư】${BACKLOG_NOTICE_SENTINEL}`,
+      `Chuyện gì đã xảy ra: Vì phía trước có tầng lầu chưa có tóm tắt, để đảm bảo tính liên tục của cốt truyện, bạn cần đi bổ sung hoàn tất tóm tắt cho nó trước thì mới có thể tiếp tục gửi tin nhắn`,
+      `Cần làm gì: Bấm vào cây đũa phép ở góc dưới bên trái, mở giao diện Bách Bảo Thư, trong mục "Tầng chưa tóm tắt" ở trang đầu tiên hãy tóm tắt bù từng tầng, hoặc dùng "Tóm tắt bù hàng loạt" để xử lý một lần`,
+      `Bổ sung thất bại: Đa phần là vấn đề API, hãy thử đổi các API khác nhau`,
+      `Bổ sung thành công: Sau khi bổ sung thành công, chỉ cần xóa tầng lầu thông báo này đi là có thể tiếp tục tạo nội dung bình thường`
     ].join('{{newline}}');
     try {
-      await exec(`/sendas name="柏宝书" ${text}`);
-      // /sendas 产物在 ST 中是普通非用户消息(is_system=false、无 extra.type),必须主动标记,
-      // 否则它会被下一轮当成真实 AI 楼再次要求补摘。
+      await exec(`/sendas name="Bách Bảo Thư" ${text}`);
+      // Sản phẩm của /sendas trong ST là tin nhắn phi người dùng thông thường (is_system=false, không có extra.type), bắt buộc phải chủ động đánh dấu,
+      // nếu không ở lượt tiếp theo nó sẽ bị coi là tầng AI thực sự và lại yêu cầu tóm tắt bù.
       normalizeBacklogNotices(chat);
     } catch (e) {
-      engineState.lastError = `积压提示楼插入失败: ${e instanceof Error ? e.message : String(e)}`;
+      engineState.lastError = `Chèn tầng thông báo tồn đọng thất bại: ${e instanceof Error ? e.message : String(e)}`;
     }
   }
   return true;
 }
 
-/** 摘要后的统一收尾:同步滑动隐藏 + 刷新注入(自动隐藏已并入摘要流程,不再有独立开关) */
+/** Thu dọn cuối thống nhất sau khi tóm tắt: đồng bộ ẩn trượt + làm mới tiêm (tự động ẩn đã gộp vào quy trình tóm tắt, không còn công tắc độc lập) */
 async function afterSummaryHideAndInject(chat: STMessage[]): Promise<void> {
   await syncWindowHiddenState(chat);
   refreshInjection();
 }
 
 /**
- * 对外的「检测一次隐藏」:按当前叶子覆盖情况同步滑动窗口隐藏 + 刷新注入。
- * 供迁移等批量写入叶子后调用,复用摘要收尾同一套逻辑;守卫与摘要流程一致
- * (引擎在此聊天不生效 / 自动摘要关闭则不隐藏,仅刷新注入)。force=true 供用户主动导入/删除
- * 旧总结时立即同步覆盖范围,不受自动摘要开关影响。
+ * Hàm "kiểm tra ẩn một lần" hướng ra ngoài: đồng bộ ẩn cửa sổ trượt theo tình trạng bao phủ lá hiện tại + làm mới tiêm.
+ * Phục vụ gọi sau khi ghi hàng loạt lá như di chuyển dữ liệu, tái sử dụng cùng một bộ logic thu dọn cuối của tóm tắt; cổng bảo vệ nhất quán với quy trình tóm tắt
+ * (engine không có hiệu lực ở cuộc trò chuyện này / tắt tự động tóm tắt thì không ẩn, chỉ làm mới tiêm). force=true phục vụ khi người dùng chủ động nhập / xóa
+ * tổng kết cũ thì đồng bộ ngay phạm vi bao phủ, không bị ảnh hưởng bởi công tắc tự động tóm tắt.
  */
 export async function syncHiddenNow(force = false): Promise<void> {
   const chat = getContext()?.chat ?? [];
@@ -658,22 +661,22 @@ export async function syncHiddenNow(force = false): Promise<void> {
 }
 
 /**
- * 全量补摘:给所有「无有效叶子」的 AI 楼逐个生成摘要。
- * **仅供摘要页「立即摘要」按钮手动调用**——自动触发改用 maybeSummarizePrevAi(单楼增量)。
+ * Tóm tắt bù toàn bộ: lần lượt tạo tóm tắt cho tất cả các tầng AI "không có lá hợp lệ".
+ * **Chỉ dành cho nút "Tóm tắt ngay" ở trang tóm tắt gọi thủ công** —— kích hoạt tự động đã đổi sang dùng maybeSummarizePrevAi (tăng thêm đơn tầng).
  */
 export async function checkAutoSummary(): Promise<void> {
-  console.log('[柏宝书] checkAutoSummary(手动全量) 进入', { enabled: apiSettings.autoSummaryEnabled, busy });
-  if (!engineActiveHere()) { console.log('[柏宝书] 早退:插件总开关关闭或当前角色被排除'); return; }
-  if (!apiSettings.autoSummaryEnabled) { console.log('[柏宝书] 早退:自动摘要未开启'); return; }
-  if (busy) { console.log('[柏宝书] 早退:busy 锁'); return; }
+  console.log('[Bách Bảo Thư] checkAutoSummary(toàn bộ thủ công) đi vào', { enabled: apiSettings.autoSummaryEnabled, busy });
+  if (!engineActiveHere()) { console.log('[Bách Bảo Thư] Thoát sớm: công tắc tổng của plugin đang tắt hoặc nhân vật hiện tại bị loại trừ'); return; }
+  if (!apiSettings.autoSummaryEnabled) { console.log('[Bách Bảo Thư] Thoát sớm: tự động tóm tắt chưa bật'); return; }
+  if (busy) { console.log('[Bách Bảo Thư] Thoát sớm: khóa busy'); return; }
 
   const ctx = getContext();
-  if (!ctx) { console.log('[柏宝书] 早退:无 ctx'); return; }
+  if (!ctx) { console.log('[Bách Bảo Thư] Thoát sớm: không có ctx'); return; }
   const chat = ctx.chat ?? [];
-  if (chat.length === 0) { console.log('[柏宝书] 早退:chat 为空'); return; }
+  if (chat.length === 0) { console.log('[Bách Bảo Thư] Thoát sớm: chat trống'); return; }
 
   const floors = pendingAiFloors(chat);
-  console.log('[柏宝书] 待摘要楼层 =', floors);
+  console.log('[Bách Bảo Thư] Các tầng chờ tóm tắt =', floors);
   for (const floor of floors) {
     await runSummary(floor);
   }
@@ -681,8 +684,8 @@ export async function checkAutoSummary(): Promise<void> {
 }
 
 /**
- * 手动对单个楼层补摘(摘要页「未摘要楼层」列表逐楼点击)。
- * 与自动触发解耦:不看 autoSummaryEnabled,只要总开关开着就执行;摘完跑收尾(隐藏+注入)。
+ * Tóm tắt bù thủ công cho một tầng lầu đơn lẻ (bấm từng tầng trong danh sách "Tầng chưa tóm tắt" ở trang tóm tắt).
+ * Tách rời với kích hoạt tự động: không xét autoSummaryEnabled, chỉ cần công tắc tổng đang bật là thực thi; tóm tắt xong chạy thu dọn cuối (ẩn + tiêm).
  */
 export async function summarizeFloor(floor: number): Promise<void> {
   if (!engineActiveHere()) return;
@@ -697,10 +700,10 @@ export async function summarizeFloor(floor: number): Promise<void> {
 }
 
 /**
- * 手动重新生成某楼现有摘要。
- * 旧叶子保留到新请求成功后才替换;失败时原摘要与派生状态不变。
- * 重摘保留叶子 id,避免后续计划引用失效;包含该叶子的上层总结会在落叶时失效移除。
- * 此操作只重做当前叶子,不额外触发上层总结请求。
+ * Tạo lại thủ công bản tóm tắt hiện có của một tầng.
+ * Giữ lại lá cũ cho đến khi yêu cầu mới thành công mới thay thế; khi thất bại bản tóm tắt gốc và trạng thái dẫn xuất không đổi.
+ * Tóm tắt lại giữ nguyên id lá, tránh làm mất hiệu lực các tham chiếu kế hoạch phía sau; các tổng kết tầng trên có chứa lá đó sẽ bị vô hiệu hóa gỡ bỏ khi lá hạ cánh.
+ * Thao tác này chỉ làm lại lá hiện tại, không kích hoạt thêm yêu cầu tổng kết tầng trên.
  */
 export async function regenerateFloor(floor: number): Promise<boolean> {
   if (!engineActiveHere()) return false;
@@ -721,17 +724,17 @@ export async function regenerateFloor(floor: number): Promise<boolean> {
 }
 
 /**
- * 标记 / 取消标记某楼为「番外」(小剧场/番外篇,与主线剧情无关)。
- * 番外楼对引擎**彻底不存在**:不摘、不总结、不重放派生、不注入——由 isAiFloor 等处的 bbs_omit 守卫实现。
+ * Đánh dấu / bỏ đánh dấu một tầng là "Ngoại truyện" (tiểu kịch trường / phần ngoại truyện, không liên quan mạch truyện chính).
+ * Tầng ngoại truyện **hoàn toàn không tồn tại** đối với engine: không tóm tắt, không tổng kết, không phát lại dẫn xuất, không tiêm —— được thực hiện bởi cổng bảo vệ bbs_omit ở những nơi như isAiFloor.
  *
- * 非破坏性:只切 extra.bbs_omit 标记,**不删该楼已有的叶子**。故可逆——取消番外即刻恢复其摘要,
- * 无需重新调 AI。叶子/森林数据都原样保留,守卫只是在遍历时跳过它。
+ * Phi phá hủy: chỉ bật tắt cờ extra.bbs_omit, **không xóa lá đã có của tầng đó**. Do đó có thể đảo ngược —— bỏ đánh dấu ngoại truyện là khôi phục ngay bản tóm tắt của nó,
+ * không cần gọi lại AI. Dữ liệu lá / rừng đều được giữ nguyên, cổng bảo vệ chỉ bỏ qua nó khi duyệt.
  *
- * ⚠️ 边界:若该楼的叶子**已被压进上层总结节点**(L1+),其叙事文字已融入 AI 写的总结散文里,
- * 无法无损抠除——那段总结文本仍含此楼,直到重新总结。绝大多数场景(小剧场刚写完就标番外、
- * 尚未压缩)不受影响,完全排除。
+ * ⚠️ Trường hợp biên: nếu lá của tầng đó **đã được nén vào nút tổng kết tầng trên** (L1+), văn bản tự sự của nó đã hòa vào văn xuôi tổng kết do AI viết,
+ * không thể bóc tách không tổn hao —— đoạn văn bản tổng kết đó vẫn chứa tầng này, cho đến khi tổng kết lại. Đại đa số kịch bản (tiểu kịch trường vừa viết xong là đánh dấu ngoại truyện ngay,
+ * chưa bị nén) không bị ảnh hưởng, loại trừ hoàn toàn.
  *
- * @param on true=标为番外,false=取消番外
+ * @param on true = đánh dấu là ngoại truyện, false = bỏ đánh dấu ngoại truyện
  */
 export async function setFloorOmit(floor: number, on: boolean): Promise<void> {
   const ctx = getContext();
@@ -740,7 +743,7 @@ export async function setFloorOmit(floor: number, on: boolean): Promise<void> {
   const m = chat[floor];
   if (!m) return;
   const already = !!m.extra?.bbs_omit;
-  if (already === on) return; // 幂等
+  if (already === on) return; // Bất biến
 
   if (on) {
     m.extra = { ...(m.extra ?? {}), bbs_omit: true };
@@ -749,24 +752,24 @@ export async function setFloorOmit(floor: number, on: boolean): Promise<void> {
     m.extra = rest;
   }
 
-  // 标记随 chat 文件持久化;派生/注入/隐藏窗口按新口径重算。
+  // Nhãn được lưu bền vững theo file chat; dữ liệu dẫn xuất / tiêm / cửa sổ ẩn được tính lại theo tiêu chuẩn mới.
   recomputeDerived();
-  await syncHiddenNow(); // 内部据 engineActiveHere/autoSummary 决定是否同步隐藏,并刷新注入
+  await syncHiddenNow(); // Bên trong dựa vào engineActiveHere/autoSummary quyết định có đồng bộ ẩn hay không, và làm mới tiêm
   scheduleLeafFlush();
 }
 
 /**
- * 自动触发的单楼摘要:**最早待摘优先**,一次最多处理一楼。
- * @param skipLastAi true 时跳过正在操作的末尾 AI 消息(翻页/重新生成场景),它不参与目标选取。
- * @param waitUntilRequestStarts true 时只等到摘要 API 请求实际发起,随后让摘要在后台完成。
+ * Tóm tắt đơn tầng kích hoạt tự động: **ưu tiên tầng chờ tóm tắt sớm nhất**, mỗi lần xử lý tối đa một tầng.
+ * @param skipLastAi khi true sẽ bỏ qua tin nhắn AI ở cuối đang thao tác (kịch bản lật trang / tạo lại), nó không tham gia chọn mục tiêu.
+ * @param waitUntilRequestStarts khi true chỉ đợi đến khi yêu cầu API tóm tắt thực sự được phát đi, sau đó để việc tóm tắt hoàn tất dưới nền.
  *
- * 不变式:除最后一条 AI 外,其余 AI 楼都应有摘要。为此目标取「可摘范围内最早的待摘 AI 楼」,
- * 而非「上一条」——否则前面有失败楼(洞)时,新楼会越过它先摘,导致倒序(计划漏删等)。
- *  - 发消息:可摘范围 = 直到最后一条 AI 楼。skipLastAi=false。
- *  - 翻页/重新生成:末尾 AI 正在被改写,排除它,范围 = 直到之前那条 AI。skipLastAi=true。
- * 若存在多个旧洞,不自动消耗额度:直接早退,交给拦截器提示用户选择逐楼或批量补摘。
- * 只有正常的最新楼、或唯一旧洞会自动处理。唯一旧洞补完后,拦截器会另启最新稳定楼的
- * 单次后台摘要,恢复「摘要与正文生成并行」的正常节奏。
+ * Bất biến: trừ tin nhắn AI cuối cùng ra, các tầng AI còn lại đều phải có tóm tắt. Vì mục tiêu này, lấy "tầng AI chờ tóm tắt sớm nhất trong phạm vi có thể tóm tắt",
+ * thay vì "tin nhắn ngay trước" —— nếu không khi phía trước có tầng thất bại (lỗ hổng), tầng mới sẽ nhảy qua nó để tóm tắt trước, dẫn đến ngược thứ tự (xóa sót kế hoạch v.v.).
+ *  - Gửi tin nhắn: phạm vi có thể tóm tắt = cho đến tầng AI cuối cùng. skipLastAi=false.
+ *  - Lật trang / tạo lại: AI ở cuối đang bị viết lại, loại trừ nó, phạm vi = cho đến tầng AI trước đó nữa. skipLastAi=true.
+ * Nếu tồn tại nhiều lỗ hổng cũ, không tự động tiêu hao hạn mức: thoát sớm trực tiếp, giao cho bộ chặn nhắc người dùng chọn tóm tắt bù từng tầng hoặc hàng loạt.
+ * Chỉ có tầng mới nhất bình thường, hoặc một lỗ hổng cũ duy nhất mới được tự động xử lý. Sau khi lấp xong lỗ hổng cũ duy nhất, bộ chặn sẽ khởi động thêm một lần tóm tắt nền
+ * cho tầng ổn định mới nhất, khôi phục nhịp độ bình thường "tóm tắt và tạo chính văn chạy song song".
  */
 export async function maybeSummarizePrevAi(
   skipLastAi: boolean,
@@ -782,15 +785,15 @@ export async function maybeSummarizePrevAi(
 
   const holes = holesExceptLast(chat);
   if (holes.length > 1) {
-    console.log('[柏宝书] 多个摘要缺口,停止自动补摘,交由用户手动处理:', holes);
+    console.log('[Bách Bảo Thư] Có nhiều khoảng trống tóm tắt, dừng tự động tóm tắt bù, giao cho người dùng xử lý thủ công:', holes);
     return;
   }
 
-  // 可摘范围上界:发消息=最后一条 AI;翻页/重生=之前那条 AI(末尾易变,排除)。
+  // Cận trên của phạm vi có thể tóm tắt: gửi tin nhắn = AI cuối cùng; lật trang / tạo lại = AI trước đó (tầng cuối dễ biến đổi, loại trừ).
   const ceiling = prevAiFloor(chat, skipLastAi);
   if (ceiling < 0) return;
 
-  // 范围内最早的待摘 AI 楼(洞优先);没有则仅跑收尾(隐藏窗口可能变化)。
+  // Tầng AI chờ tóm tắt sớm nhất trong phạm vi (ưu tiên lỗ hổng); không có thì chỉ chạy thu dọn cuối (cửa sổ ẩn có thể thay đổi).
   const pending = pendingAiFloors(chat);
   const target = pending.find(f => f <= ceiling);
   if (target === undefined) {
@@ -811,7 +814,7 @@ export async function maybeSummarizePrevAi(
       .catch(e => {
         engineState.lastError = e instanceof Error ? e.message : String(e);
       });
-    // 早退/失败时 run 会先完成,不会因为启动屏障未触发而卡住正文生成。
+    // Khi thoát sớm / thất bại run sẽ hoàn thành trước, không vì rào chắn khởi động chưa kích hoạt mà làm kẹt việc tạo chính văn.
     await Promise.race([
       started,
       run.then(() => 'run-finished' as const),
@@ -824,9 +827,9 @@ export async function maybeSummarizePrevAi(
 }
 
 /**
- * 找「上一条已定稿 AI 消息」的索引。
- * skipLastAi=false → 最后一条 AI 楼;skipLastAi=true → 跳过最后一条 AI 楼,取再之前那条。
- * 找不到返回 -1。
+ * Tìm chỉ mục của "tin nhắn AI đã chốt bản thảo trước đó".
+ * skipLastAi=false → tầng AI cuối cùng; skipLastAi=true → bỏ qua tầng AI cuối cùng, lấy tầng trước đó nữa.
+ * Không tìm thấy trả về -1.
  */
 export function prevAiFloor(chat: STMessage[], skipLastAi: boolean): number {
   let lastAi = -1;
@@ -844,7 +847,7 @@ export function prevAiFloor(chat: STMessage[], skipLastAi: boolean): number {
   return -1;
 }
 
-/** 把递增的索引列表合并成连续区间(供 /hide 0-3 这种批量参数用) */
+/** Gộp danh sách chỉ mục tăng dần thành các khoảng liên tục (phục vụ tham số hàng loạt kiểu /hide 0-3) */
 export function coalesceRanges(indices: number[]): Array<[number, number]> {
   const sorted = [...new Set(indices)].sort((a, b) => a - b);
   const ranges: Array<[number, number]> = [];
@@ -857,12 +860,12 @@ export function coalesceRanges(indices: number[]): Array<[number, number]> {
 }
 
 /**
- * 同步滑动窗口隐藏状态:
- *  - 隐藏「保留窗口之前、已被摘要覆盖、尚未隐藏」的消息。
- *  - 取消隐藏「曾由本插件隐藏、但现在不应隐藏」的消息。
- * 走 ST 原生 /hide(对齐 Horae、自动同步 DOM、走官方入口),
- * /unhide,同时用 extra.bbs_hidden 私有标记区分「我们隐藏的」与「ST 原生系统楼」。
- * 只隐藏已被摘要覆盖的,绝不制造信息黑洞。
+ * Đồng bộ trạng thái ẩn của cửa sổ trượt:
+ *  - Ẩn các tin nhắn "trước cửa sổ giữ lại, đã được tóm tắt bao phủ, chưa ẩn".
+ *  - Bỏ ẩn các tin nhắn "từng bị plugin này ẩn, nhưng hiện tại không nên ẩn".
+ * Đi qua lệnh gốc /hide của ST (khớp với Horae, tự động đồng bộ DOM, đi qua cổng chính thức),
+ * /unhide, đồng thời dùng nhãn riêng extra.bbs_hidden để phân biệt giữa "do chúng ta ẩn" và "tầng hệ thống gốc của ST".
+ * Chỉ ẩn những tầng đã được tóm tắt bao phủ, tuyệt đối không tạo ra hố đen thông tin.
  */
 async function syncWindowHiddenState(chat: STMessage[]): Promise<void> {
   const keepStart = resolveKeepStart(chat);
@@ -876,8 +879,8 @@ async function syncWindowHiddenState(chat: STMessage[]): Promise<void> {
   for (let i = 0; i < chat.length; i++) {
     const m = chat[i];
     if (!m) continue;
-    // 用户明确把一段旧剧情交给“导入历史”接管时,整段都隐藏,不再受最近窗口保留数影响,
-    // 否则导入正文会与窗口内旧原文重复注入。删除导入节点后会自动走下面的 unhide。
+    // Khi người dùng giao rõ ràng một đoạn cốt truyện cũ cho "lịch sử nhập vào" tiếp quản, ẩn toàn bộ cả đoạn, không còn chịu ảnh hưởng bởi số lượng giữ lại cửa sổ gần đây nữa,
+    // nếu không chính văn nhập vào sẽ bị tiêm trùng lặp với nguyên văn cũ trong cửa sổ. Sau khi xóa nút nhập vào sẽ tự động đi qua nhánh unhide bên dưới.
     const shouldHide = covered.has(i) && (i < keepStart || floorInImportedRanges(i, imported));
     if (shouldHide) {
       if (!m.extra?.bbs_hidden || m.is_system !== true) toHide.push(i);
@@ -900,7 +903,7 @@ async function syncWindowHiddenState(chat: STMessage[]): Promise<void> {
         }
         await exec(`/unhide ${arg}`);
       } catch (e) {
-        // /unhide 失败则回退到直接写 is_system,保证取消隐藏一定落地
+        // /unhide thất bại thì lùi về ghi trực tiếp is_system, đảm bảo việc bỏ ẩn chắc chắn có hiệu lực
         for (let i = start; i <= end; i++) {
           const m = chat[i];
           if (!m) continue;
@@ -910,24 +913,24 @@ async function syncWindowHiddenState(chat: STMessage[]): Promise<void> {
             m.extra = extra;
           }
         }
-        engineState.lastError = `/unhide ${arg} 失败: ${e instanceof Error ? e.message : String(e)}`;
+        engineState.lastError = `/unhide ${arg} thất bại: ${e instanceof Error ? e.message : String(e)}`;
       }
     }
 
     for (const [start, end] of coalesceRanges(toHide)) {
       const arg = start === end ? `${start}` : `${start}-${end}`;
       try {
-        // 预写私有标记 + 内存态,防止 /hide 异步期间的竞态 saveChat 覆盖
+        // Ghi trước nhãn riêng + trạng thái bộ nhớ, ngăn việc saveChat tranh chấp trong lúc /hide bất đồng bộ ghi đè mất
         for (let i = start; i <= end; i++) if (chat[i]) chat[i].extra = { ...(chat[i].extra ?? {}), bbs_hidden: true };
         await exec(`/hide ${arg}`);
       } catch (e) {
-        // /hide 失败则回退到直接写 is_system,保证隐藏一定落地
+        // /hide thất bại thì lùi về ghi trực tiếp is_system, đảm bảo việc ẩn chắc chắn có hiệu lực
         for (let i = start; i <= end; i++) if (chat[i]) chat[i].is_system = true;
-        engineState.lastError = `/hide ${arg} 失败: ${e instanceof Error ? e.message : String(e)}`;
+        engineState.lastError = `/hide ${arg} thất bại: ${e instanceof Error ? e.message : String(e)}`;
       }
     }
   } else {
-    // 无 slash 执行器(旧版/未就绪):回退直接写 is_system + 重载
+    // Không có bộ thực thi slash (bản cũ / chưa sẵn sàng): lùi về ghi trực tiếp is_system + tải lại
     for (const i of toUnhide) {
       const m = chat[i];
       if (!m) continue;
@@ -947,39 +950,39 @@ async function syncWindowHiddenState(chat: STMessage[]): Promise<void> {
       await ctx.saveChat();
       await ctx.reloadCurrentChat();
     } catch {
-      /* 刷新失败不致命 */
+      /* Làm mới thất bại không gây chết chương trình */
     }
   }
 }
 
 /**
- * 对单个 AI 楼层执行摘要。
- * 上下文:为了让摘要连贯,把该 AI 楼层连同它前面紧邻的、尚未覆盖的用户发言一起喂给模型,
- * 但只把这一个 AI 楼层(及其前置用户楼层)标记为已覆盖。
+ * Thực thi tóm tắt cho một tầng lầu AI đơn lẻ.
+ * Ngữ cảnh: để bản tóm tắt liền mạch, đem tầng AI đó cùng với phát ngôn của người dùng nằm sát ngay trước nó và chưa được bao phủ nạp chung cho mô hình,
+ * nhưng chỉ đánh dấu một tầng AI này (cùng các tầng người dùng phía trước nó) là đã được bao phủ.
  */
 /**
- * 解析某摘要任务实际怎么发请求:
- *  - 指派了副 API 渠道 → 用该渠道(requestCompletion);
- *  - 未指派(空)→ 跟随主 API(requestViaMainApi → generateRaw,用主界面当前在用的 API,不带聊天历史)。
- * 主 API 也不可用(ST 无 generateRaw)时返回 error,调用方据此早退并写 lastError。
+ * Phân giải xem một tác vụ tóm tắt thực tế gửi yêu cầu như thế nào:
+ *  - Đã chỉ định kênh API phụ → dùng kênh đó (requestCompletion);
+ *  - Chưa chỉ định (trống) → đi theo API chính (requestViaMainApi → generateRaw, dùng API đang dùng trên giao diện chính hiện tại, không mang lịch sử trò chuyện).
+ * Khi API chính cũng không khả dụng (ST không có generateRaw) thì trả về error, bên gọi dựa vào đó thoát sớm và ghi lastError.
  */
 function resolveSender(
   task: TaskType,
 ): { send: (messages: ChatMsg[]) => Promise<string>; label: string } | { error: string } {
   const channel = getChannelForTask(task);
   if (channel) {
-    return { send: messages => requestCompletion(channel, messages), label: `渠道「${channel.name}」(${channel.model})` };
+    return { send: messages => requestCompletion(channel, messages), label: `Kênh "${channel.name}" (${channel.model})` };
   }
   if (!mainApiAvailable()) {
-    return { error: '未指派副 API 渠道,且当前主 API 不可用(请填好主 API 后重试,或为本任务单独指派渠道)' };
+    return { error: 'Chưa chỉ định kênh API phụ, và API chính hiện tại không khả dụng (vui lòng điền xong API chính rồi thử lại, hoặc chỉ định riêng kênh cho tác vụ này)' };
   }
-  return { send: messages => requestViaMainApi(messages), label: '主 API(主界面当前在用)' };
+  return { send: messages => requestViaMainApi(messages), label: 'API chính (đang dùng trên giao diện chính)' };
 }
 
 /**
- * 发请求并解析,失败自动重试。失败 = 请求抛错 或 解析函数抛错(JSON 无效/缺字段)。
- * 最多重试 apiSettings.summaryMaxRetries 次(默认 1),即「首试 + N 次重试」共 N+1 次尝试。
- * 全部失败则抛出最后一次的错误,由调用方写 lastError。
+ * Gửi yêu cầu và phân tích, thất bại tự động thử lại. Thất bại = yêu cầu ném lỗi hoặc hàm phân tích ném lỗi (JSON không hợp lệ / thiếu trường).
+ * Thử lại tối đa apiSettings.summaryMaxRetries lần (mặc định 1), tức là "lần thử đầu + N lần thử lại" tổng cộng N+1 lần thử.
+ * Thất bại toàn bộ thì ném ra lỗi của lần cuối cùng, do bên gọi ghi vào lastError.
  */
 async function sendAndParse<T>(
   send: (messages: ChatMsg[]) => Promise<string>,
@@ -994,7 +997,7 @@ async function sendAndParse<T>(
     } catch (e) {
       lastErr = e;
       if (attempt < maxRetries) {
-        console.log(`[柏宝书] 第 ${attempt + 1} 次尝试失败,重试:`, e instanceof Error ? e.message : String(e));
+        console.log(`[Bách Bảo Thư] Lần thử thứ ${attempt + 1} thất bại, thử lại:`, e instanceof Error ? e.message : String(e));
       }
     }
   }
@@ -1002,16 +1005,16 @@ async function sendAndParse<T>(
 }
 
 /**
- * 单楼摘要。对外包一层,维护「当前在飞摘要」信号 currentRun,供生成拦截器 await(见 handleGenerationIntercept)。
- *  - currentRun 同步置为本次 promise → 拦截器在 GENERATION_STARTED(触发摘要)之后跑时已能读到它。
- *  - finally 里清回 null(只清自己,避免清掉后一次调用设的新 promise)。
- *  - 真正的请求/落盘在 runSummaryInner;它内部已 try/catch,promise 永不 reject → 拦截器 await 不会卡死。
- * 注:早退(busy/非 AI 楼等)也会经历「置 p → 立即 finally 清回 null」,只是 p 几乎瞬间 resolve,不构成有效在飞。
+ * Tóm tắt đơn tầng. Bọc một lớp hướng ra ngoài, duy trì tín hiệu "tóm tắt đang bay hiện tại" currentRun, phục vụ bộ chặn tạo nội dung await (xem handleGenerationIntercept).
+ *  - currentRun được đặt đồng bộ thành promise lần này → khi bộ chặn chạy sau GENERATION_STARTED (kích hoạt tóm tắt) đã có thể đọc được nó.
+ *  - Trong finally xóa về lại null (chỉ xóa chính mình, tránh xóa mất promise mới do lần gọi sau thiết lập).
+ *  - Việc gửi yêu cầu / lưu đĩa thực sự nằm ở runSummaryInner; bên trong nó đã có try/catch, promise không bao giờ reject → bộ chặn await sẽ không bị treo cứng.
+ * Lưu ý: khi thoát sớm (busy / không phải tầng AI v.v.) cũng sẽ trải qua "đặt p → lập tức finally xóa về null", chỉ là p gần như resolve tức khắc, không tạo thành trạng thái đang bay thực sự.
  */
 interface RunSummaryOptions {
   replaceLeaf?: LeafExtra;
   checkResummary?: boolean;
-  /** 内部启动屏障:摘要上下文准备完毕、即将调用 API 时触发。 */
+  /** Rào chắn khởi động nội bộ: kích hoạt khi ngữ cảnh tóm tắt đã chuẩn bị xong, sắp gọi API. */
   onRequestStart?: () => void;
 }
 
@@ -1040,31 +1043,31 @@ export function runSummary(aiFloor: number, options: RunSummaryOptions = {}): Pr
 }
 
 /**
- * 求某 AI 楼的「覆盖范围」(喂模型的上下文楼段):本 AI 楼 + 它前面紧邻的、尚未覆盖的(用户)楼层。
- * 碰到已覆盖楼或上一个 AI 楼即停。单楼与批量共用,保证两路径喂给模型的正文段一致。
+ * Tìm "phạm vi bao phủ" của một tầng AI (đoạn tầng ngữ cảnh nạp cho mô hình): tầng AI này + các tầng (người dùng) nằm sát ngay trước nó và chưa được bao phủ.
+ * Gặp tầng đã bao phủ hoặc tầng AI phía trước là dừng. Dùng chung cho đơn tầng và hàng loạt, đảm bảo đoạn chính văn nạp cho mô hình ở hai đường dẫn nhất quán với nhau.
  */
 function floorTargets(chat: STMessage[], aiFloor: number, covered: Set<number>): number[] {
   const targets: number[] = [aiFloor];
   for (let i = aiFloor - 1; i >= 0; i--) {
     if (covered.has(i)) break;
-    if (chat[i]?.extra?.bbs_omit) continue; // 番外楼:不把它正文并进摘要上下文(但不作屏障)
-    if (isAiFloor(chat[i])) break; // 碰到上一个 AI 楼层就停
+    if (chat[i]?.extra?.bbs_omit) continue; // Tầng ngoại truyện: không gộp chính văn của nó vào ngữ cảnh tóm tắt (nhưng không làm rào chắn)
+    if (isAiFloor(chat[i])) break; // Gặp tầng AI phía trước là dừng
     if (chat[i]) targets.unshift(i);
   }
   return targets;
 }
 
-/** 重摘已有叶子时只看目标楼之前的覆盖状态,避免旧叶子挡掉自己的前置用户消息。 */
+/** Khi tóm tắt lại lá đã có thì chỉ xét trạng thái bao phủ trước tầng mục tiêu, tránh việc lá cũ chặn mất tin nhắn người dùng phía trước của chính nó. */
 function coveredBeforeFloor(chat: STMessage[], floor: number): Set<number> {
   return coveredSet(chat.slice(0, Math.max(0, floor)));
 }
 
 /**
- * 把一份 AI delta 固化成叶子并落到某 AI 楼(单楼与批量共用,保证两路径落叶口径一致)。
- *  - 时间:优先读该楼正文 <bbs_start>/<bbs_end> 标签(权威锚点);缺的那端用 AI 补的兜底。
- *  - plans.resolve 短序号 → 稳定 id:用传入的 stateBefore(本楼之前状态)的未了结计划顺序翻译。
- *  - 物品净变动写进正文 <bbs_items> 旁注(基准 = stateBefore.items)。
- * 不做 recompute/flush/注入——由调用方在合适时机统一收尾(批量可攒到块尾一次刷新)。
+ * Cố định một bản AI delta thành lá và hạ cánh xuống một tầng AI (dùng chung cho đơn tầng và hàng loạt, đảm bảo tiêu chuẩn hạ cánh lá ở hai đường dẫn nhất quán).
+ *  - Thời gian: ưu tiên đọc thẻ <bbs_start>/<bbs_end> trong chính văn tầng đó (mốc neo có thẩm quyền); đầu bị thiếu dùng kết quả AI bù làm dự phòng.
+ *  - Số thứ tự ngắn plans.resolve → id ổn định: dịch theo thứ tự kế hoạch chưa khép lại của stateBefore (trạng thái trước tầng này) truyền vào.
+ *  - Biến động ròng vật phẩm ghi vào chú thích <bbs_items> trong chính văn (mốc chuẩn = stateBefore.items).
+ * Không làm recompute/flush/tiêm —— do bên gọi thống nhất thu dọn cuối vào thời điểm thích hợp (hàng loạt có thể gom đến cuối khối mới làm mới một lần).
  */
 function applyLeafForFloor(
   chat: STMessage[],
@@ -1075,25 +1078,25 @@ function applyLeafForFloor(
   knowledgeShown?: { id: string }[],
 ): void {
   if (!chat[aiFloor]) {
-    throw new Error(`摘要落叶失败:楼层 #${aiFloor} 已不存在(可能在请求期间被删除)`);
+    throw new Error(`Hạ cánh lá tóm tắt thất bại: Tầng #${aiFloor} không còn tồn tại (có thể đã bị xóa trong lúc gửi yêu cầu)`);
   }
   if (replaceLeaf && getLeaf(chat[aiFloor]) !== replaceLeaf) {
-    throw new Error(`重新摘要失败:楼层 #${aiFloor} 的原摘要已在请求期间发生变化`);
+    throw new Error(`Tóm tắt lại thất bại: Tóm tắt gốc của tầng #${aiFloor} đã thay đổi trong lúc gửi yêu cầu`);
   }
-  // 时间锚点:从该楼正文标签读起止(先裁剪到正文段,跳过思维链/状态栏里混入的同名标签)
+  // Mốc thời gian: đọc thời gian bắt đầu-kết thúc từ thẻ chính văn tầng đó (cắt gọn về đoạn chính văn trước, bỏ qua thẻ cùng tên lẫn trong chuỗi suy nghĩ / thanh trạng thái)
   const tag = parseTimeRange(clampToTimeTags(chat[aiFloor].mes));
 
-  // 未了结计划的有序列表:顺序即提示词里的 p1/p2…,用于把 resolve 短序号翻译成稳定 id
+  // Danh sách có thứ tự các kế hoạch chưa khép lại: thứ tự chính là p1/p2… trong prompt, dùng để dịch số thứ tự ngắn của resolve thành id ổn định
   const openPlansOrdered = stateBefore.plans.filter(p => p.status === 'open');
-  // 生活小档案当前列表:顺序即提示词里的 d1/d2…,用于把 update/archive/remove 短序号翻译成稳定 id
-  // 了解清单同理(k1/k2…);未传 knowledgeShown = 功能关闭,AI 输出的 knowledge 整段丢弃
+  // Danh sách hiện tại của hồ sơ nhỏ đời sống: thứ tự chính là d1/d2… trong prompt, dùng để dịch số thứ tự ngắn của update/archive/remove thành id ổn định
+  // Danh sách hiểu biết cũng tương tự (k1/k2…); không truyền knowledgeShown = tính năng đang tắt, toàn bộ đoạn knowledge do AI xuất ra bị hủy bỏ
   const storedDelta = finalizeDelta(delta, openPlansOrdered, stateBefore.lifeDetails,
     knowledgeShown && { shown: knowledgeShown, npcNames: stateBefore.npcs.map(n => n.name) });
 
-  // 时间起止:标签优先(与新剧情同源不漂移);标签缺的那端用 AI 补的 timeStart/timeEnd 兜底。
+  // Thời gian bắt đầu-kết thúc: ưu tiên thẻ (cùng nguồn với cốt truyện mới nên không lệch); đầu nào thiếu thẻ thì dùng timeStart/timeEnd do AI bù làm dự phòng.
   const timeStart = tag.start || llmOptionalScalar(delta.timeStart) || undefined;
   const timeEnd = tag.end || llmOptionalScalar(delta.timeEnd) || llmOptionalScalar(delta.time) || undefined;
-  // 状态当前时间(覆盖型):用结束时间(本段最后时刻);取不到则保留既有状态。
+  // Thời gian hiện tại của trạng thái (kiểu ghi đè): dùng thời gian kết thúc (thời khắc cuối của đoạn này); không lấy được thì giữ nguyên trạng thái hiện có.
   if (timeEnd) storedDelta.time = timeEnd;
 
   const leaf: LeafExtra = {
@@ -1103,31 +1106,31 @@ function applyLeafForFloor(
     timeStart,
     timeEnd,
     createdAt: replaceLeaf?.createdAt ?? Date.now(),
-    // 记录生成时所在页码,供 leafValid 判定归属(翻到别页时不串扰);缺 swipe_id 按第一页 0
+    // Ghi lại số trang lúc tạo, phục vụ leafValid phán đoán quyền sở hữu (khi lật sang trang khác không bị nhiễu chéo); thiếu swipe_id tính là trang đầu tiên 0
     swipe: replaceLeaf?.swipe ?? (typeof chat[aiFloor].swipe_id === 'number' ? chat[aiFloor].swipe_id : 0),
     v: 1,
   };
   if (replaceLeaf) invalidateSummaryAncestors(replaceLeaf.id);
   chat[aiFloor].extra = { ...(chat[aiFloor].extra ?? {}), bbs_leaf: leaf };
-  // 叶子正文/摘要已变 → 召回读到的向量内容会变,立即失效召回缓存(防重生成/翻页复用旧召回)。
+  // Chính văn / tóm tắt của lá đã đổi → nội dung vector đọc được khi truy xuất sẽ đổi, lập tức vô hiệu hóa bộ nhớ đệm truy xuất (chống việc tạo lại / lật trang tái sử dụng truy xuất cũ).
   invalidateRecallCache();
 
   if (!apiSettings.summaryOnlyMode) {
-    // 把本楼物品净变动写进正文 </bbs_end> 之后(<bbs_items> 旁注,正则隐藏、不进副API摘要)。
-    // 用 stateBefore.items(本楼之前的物品)作基准算 from→to;无变动则只清旧块。
+    // Ghi biến động ròng vật phẩm của tầng này vào sau </bbs_end> trong chính văn (chú thích <bbs_items>, ẩn bằng regex, không đi vào tóm tắt API phụ).
+    // Dùng stateBefore.items (vật phẩm trước tầng này) làm chuẩn để tính from→to; không có biến động thì chỉ xóa khối cũ.
     const changes = itemChangesOf(storedDelta, stateBefore.items, timeEnd || timeStart || '');
     let mes = writeItemLogTag(chat[aiFloor].mes, fmtItemLogInline(changes));
-    // 自定义变量净变动同样写进正文 <bbs_vars>(紧随物品块,正则隐藏、不进副API摘要),
-    // 让窗口内全文楼层的主模型看到「本楼已改过这些变量」,防重复改(与物品旁注同机制)。
+    // Biến động ròng của biến tùy chỉnh cũng ghi vào <bbs_vars> trong chính văn (nối sát sau khối vật phẩm, ẩn bằng regex, không đi vào tóm tắt API phụ),
+    // giúp mô hình chính ở các tầng toàn văn trong cửa sổ thấy được "tầng này đã sửa những biến này rồi", chống sửa lặp lại (cùng cơ chế với chú thích vật phẩm).
     mes = writeVarLogTag(mes, fmtVarOpsInline(storedDelta.varOps));
     setMessageText(chat[aiFloor], mes);
   }
 }
 
 /**
- * 单楼摘要的「纯工作」部分:发请求 + 解析 + 落叶 + 刷新派生/注入。
- * **不管理 busy / 不做守卫 / 不触发 checkResummary**——由调用方(runSummaryInner 或批量回退)负责。
- * 失败(请求报错 / JSON 无效)直接抛出,调用方决定如何处理。
+ * Phần "công việc thuần túy" của tóm tắt đơn tầng: gửi yêu cầu + phân tích + hạ cánh lá + làm mới dẫn xuất/tiêm.
+ * **Không quản lý busy / không làm cổng bảo vệ / không kích hoạt checkResummary** —— do bên gọi (runSummaryInner hoặc lùi về trong hàng loạt) phụ trách.
+ * Thất bại (yêu cầu báo lỗi / JSON không hợp lệ) ném thẳng ra ngoài, bên gọi quyết định cách xử lý.
  */
 async function summarizeFloorWork(
   chat: STMessage[],
@@ -1136,20 +1139,20 @@ async function summarizeFloorWork(
   options: Pick<RunSummaryOptions, 'replaceLeaf' | 'onRequestStart'> = {},
 ): Promise<void> {
   const ctx = getContext();
-  if (!ctx) throw new Error('无 ST 上下文');
+  if (!ctx) throw new Error('Không có ngữ cảnh ST');
   if (!chat[aiFloor]) {
-    throw new Error(`摘要失败:楼层 #${aiFloor} 已不存在(可能在请求期间被删除)`);
+    throw new Error(`Tóm tắt thất bại: Tầng #${aiFloor} không còn tồn tại (có thể đã bị xóa trong lúc gửi yêu cầu)`);
   }
 
   const covered = options.replaceLeaf ? coveredBeforeFloor(chat, aiFloor) : coveredSet(chat);
   const targets = floorTargets(chat, aiFloor, covered);
   const content = renderMessages(chat, targets, ctx.name1, ctx.name2);
 
-  // 两端标签齐才算「有标签」,提示词据此免去 AI 算时间。
+  // Cả hai đầu thẻ đều đủ mới tính là "có thẻ", prompt dựa vào đó miễn cho AI việc tính thời gian.
   const tag = parseTimeRange(clampToTimeTags(chat[aiFloor].mes));
   const hasTimeTags = !!(tag.start && tag.end);
 
-  // 截止到「被分析楼段之前」的状态与历史(不泄漏未来:重摘早期楼时排除其后叶子)
+  // Trạng thái và lịch sử tính đến "trước đoạn tầng đang phân tích" (không rò rỉ tương lai: khi tóm tắt lại tầng sớm sẽ loại trừ các lá phía sau nó)
   const beforeIndex = targets[0];
   const stateBefore = deriveMemory(chat, beforeIndex);
   const history = renderHistoryNodes(selectHistoryNodesBefore(memory.summaries, chat, beforeIndex));
@@ -1159,8 +1162,8 @@ async function summarizeFloorWork(
   const persona = fetchUserPersona();
 
   const openPlansOrdered = stateBefore.plans.filter(p => p.status === 'open');
-  // 了解清单只给相关角色(主要/在场/本轮正文点名),省 token;顺序即提示词里的 k1/k2…
-  // 点名只认两个字以上的名字:「林」「夏」这种单字名几乎每段正文都能命中
+  // Danh sách hiểu biết chỉ đưa cho các nhân vật liên quan (chính yếu / có mặt / được điểm tên trong chính văn lượt này), tiết kiệm token; thứ tự chính là k1/k2… trong prompt
+  // Điểm tên chỉ nhận tên từ hai ký tự trở lên: tên một chữ hầu như đoạn chính văn nào cũng có thể trúng nhầm
   const knowledgeShown = apiSettings.injection.knowledge
     ? selectKnowledgeForSummary(
         stateBefore.knowledge,
@@ -1183,15 +1186,15 @@ async function summarizeFloorWork(
     itemLog: stateBefore.itemLog,
     scenes: stateBefore.scenes.map(s => ({ path: s.path, desc: s.desc })),
     npcs: stateBefore.npcs.map(n => ({ name: n.name, gender: n.gender, age: n.age, ageTime: n.ageTime, relation: n.relation, affinityInner: n.affinityInner, affinityOuter: n.affinityOuter, affinityNote: n.affinityNote, ties: n.ties, title: n.title, personality: n.personality, important: n.important, outfit: n.outfit, condition: n.condition || undefined, follow: n.follow, location: n.location,
-      // 在场标记按「本楼之前」的状态算,要 AI 逐个对照做离场/归场对账(与注入端同一权威判定)
+      // Nhãn có mặt tính theo trạng thái "trước tầng này", yêu cầu AI đối chiếu từng người để hạch toán rời trường / quay lại hiện trường (cùng phán đoán có thẩm quyền với đầu tiêm)
       presence: classifyNpcPresence(n, stateBefore.scenes, stateBefore.state.location, stateBefore.state.locationPath) })),
     openPlans: openPlansOrdered.map(p => ({ kind: p.kind, content: p.content, createdTime: p.createdTime, targetTime: p.targetTime })),
-    // 近期已完成计划:与注入端同口径,截止点用本楼之前的状态(不泄漏未来)
+    // Kế hoạch đã hoàn thành gần đây: cùng tiêu chuẩn với đầu tiêm, điểm cắt dùng trạng thái trước tầng này (không rò rỉ tương lai)
     resolvedPlans: selectRecentResolvedPlans(stateBefore.plans, apiSettings.recentResolvedPlansCount),
     history,
     content,
     hasTimeTags,
-    // 自定义变量:当前状态取本楼之前(不泄漏未来);含义+规则各合并三层(副API两段都要)
+    // Biến tùy chỉnh: trạng thái hiện tại lấy trước tầng này (không rò rỉ tương lai); ý nghĩa + quy tắc mỗi thứ gộp ba tầng (API phụ cần cả hai đoạn)
     varsState: stateBefore.vars,
     varsMeaning: (['global', 'char', 'chat'] as const).map(t => memory.varTemplates[t].meaning.trim()).filter(Boolean).join('\n\n'),
     varsRule: (['global', 'char', 'chat'] as const).map(t => memory.varTemplates[t].rule.trim()).filter(Boolean).join('\n\n'),
@@ -1204,7 +1207,7 @@ async function summarizeFloorWork(
   if (charCard) messages.push({ role: 'system', content: buildCharCardSystem(charCard) });
   if (persona) messages.push({ role: 'system', content: buildPersonaSystem(persona) });
   if (worldInfo) messages.push({ role: 'system', content: buildWorldInfoSystem(worldInfo) });
-  // 自定义模板已自带全部补充段时 system 为空;空内容消息部分接口会拒收
+  // Khi khuôn mẫu tùy chỉnh đã tự kèm toàn bộ các đoạn bổ sung thì system sẽ trống; một số giao diện sẽ từ chối nhận tin nhắn có nội dung rỗng
   if (prompt.system) messages.push({ role: 'system', content: prompt.system });
   messages.push(
     { role: 'user', content: prompt.user },
@@ -1212,11 +1215,11 @@ async function summarizeFloorWork(
   );
   options.onRequestStart?.();
   const delta = await sendAndParse(sender.send, messages, raw => {
-    console.log('[柏宝书] 摘要原始返回(未清洗):\n', raw);
+    console.log('[Bách Bảo Thư] Kết quả tóm tắt gốc trả về (chưa làm sạch):\n', raw);
     const d = extractJsonObject<SummaryDelta>(raw);
     const summary = llmString(d?.summary);
     if (!d || !summary) {
-      throw new Error(raw.trim() ? '摘要失败:AI道歉或掉格式' : '摘要失败:AI空回');
+      throw new Error(raw.trim() ? 'Tóm tắt thất bại: AI xin lỗi hoặc làm rơi định dạng' : 'Tóm tắt thất bại: AI trả về rỗng');
     }
     return { ...d, summary } as SummaryDelta & { summary: string };
   });
@@ -1224,38 +1227,38 @@ async function summarizeFloorWork(
   applyLeafForFloor(chat, aiFloor, delta, stateBefore, options.replaceLeaf, knowledgeShown);
   engineState.lastRunAt = Date.now();
 
-  // 立刻反映到派生与注入;落盘走防抖(隐藏由收尾的 syncWindowHiddenState 统一负责)
+  // Phản ánh ngay lập tức vào dữ liệu dẫn xuất và phần tiêm; lưu đĩa đi qua chống rung (việc ẩn do syncWindowHiddenState ở bước thu dọn cuối thống nhất phụ trách)
   recomputeDerived();
   refreshInjection();
   scheduleLeafFlush();
-  scheduleVectorIndex(); // 新叶子 → 防抖同步进向量库(失败静默,不影响摘要)
+  scheduleVectorIndex(); // Lá mới → chống rung đồng bộ vào kho vector (thất bại âm thầm, không ảnh hưởng tóm tắt)
 }
 
 async function runSummaryInner(aiFloor: number, options: RunSummaryOptions = {}): Promise<void> {
-  if (!engineActiveHere()) { console.log('[柏宝书] runSummary 早退:插件总开关关闭或当前角色被排除'); return; }
-  if (busy) { console.log('[柏宝书] runSummary 早退:busy'); return; }
+  if (!engineActiveHere()) { console.log('[Bách Bảo Thư] runSummary thoát sớm: công tắc tổng của plugin đang tắt hoặc nhân vật hiện tại bị loại trừ'); return; }
+  if (busy) { console.log('[Bách Bảo Thư] runSummary thoát sớm: busy'); return; }
   const sender = resolveSender('summary');
   if ('error' in sender) {
     engineState.lastError = sender.error;
-    console.log('[柏宝书] runSummary 早退:', sender.error);
+    console.log('[Bách Bảo Thư] runSummary thoát sớm:', sender.error);
     return;
   }
   const ctx = getContext();
   if (!ctx) return;
   const chat = ctx.chat ?? [];
-  if (!isAiFloor(chat[aiFloor])) { console.log('[柏宝书] runSummary 早退:非 AI 楼', aiFloor); return; }
+  if (!isAiFloor(chat[aiFloor])) { console.log('[Bách Bảo Thư] runSummary thoát sớm: không phải tầng AI', aiFloor); return; }
   if (options.replaceLeaf && getLeaf(chat[aiFloor]) !== options.replaceLeaf) {
-    engineState.lastError = `重新摘要失败:楼层 #${aiFloor} 的原摘要已发生变化`;
+    engineState.lastError = `Tóm tắt lại thất bại: Tóm tắt gốc của tầng #${aiFloor} đã thay đổi`;
     return;
   }
-  console.log('[柏宝书] runSummary 即将发请求,', sender.label);
+  console.log('[Bách Bảo Thư] runSummary sắp gửi yêu cầu,', sender.label);
 
   busy = true;
   engineState.running = true;
   engineState.lastError = '';
   try {
     await summarizeFloorWork(chat, aiFloor, sender, options);
-    // 摘要积累到阈值则触发总结
+    // Tóm tắt tích lũy đạt ngưỡng thì kích hoạt tổng kết
     if (options.checkResummary !== false) await checkResummary();
   } catch (e) {
     engineState.lastError = e instanceof Error ? e.message : String(e);
@@ -1265,28 +1268,28 @@ async function runSummaryInner(aiFloor: number, options: RunSummaryOptions = {})
   }
 }
 
-/* ============ 批量补摘(分块批量,一次请求 → 多片单楼叶子) ============ */
+/* ============ Tóm tắt bù hàng loạt (chia khối hàng loạt, một yêu cầu → nhiều lá đơn tầng) ============ */
 
-/** 批量补摘选项 */
+/** Tùy chọn tóm tắt bù hàng loạt */
 export interface BatchBackfillOpts {
-  /** 待补摘的 AI 楼层(由旧到新);省略则取当前所有待摘 AI 楼 */
+  /** Các tầng AI chờ tóm tắt bù (từ cũ đến mới); lược bỏ thì lấy toàn bộ các tầng AI đang chờ tóm tắt hiện tại */
   floors?: number[];
 }
 
-/** 批量结果汇总 */
+/** Tổng hợp kết quả hàng loạt */
 export interface BatchBackfillResult {
-  /** 成功落叶的楼数 */
+  /** Số tầng hạ cánh lá thành công */
   done: number;
-  /** 计划处理的总楼数 */
+  /** Tổng số tầng dự kiến xử lý */
   total: number;
-  /** 是否因取消提前结束 */
+  /** Có phải kết thúc sớm do hủy bỏ hay không */
   cancelled: boolean;
 }
 
 /**
- * 按内容量把待摘楼层切成多个块:每块正文累计字符到 maxChars 或楼数到 maxFloors 即切。
- * 单楼正文超 maxChars 时自成一块(不可再分)。每块楼层升序,块间升序。
- * 与批量请求共用 floorTargets/renderMessages,计入前置玩家消息、段号及原文提醒。
+ * Cắt các tầng chờ tóm tắt thành nhiều khối theo dung lượng nội dung: mỗi khối tích lũy ký tự chính văn đạt maxChars hoặc số tầng đạt maxFloors là cắt.
+ * Khi chính văn một tầng đơn lẻ vượt quá maxChars thì tự làm thành một khối riêng (không thể chia nhỏ hơn). Các tầng trong mỗi khối tăng dần, giữa các khối tăng dần.
+ * Dùng chung floorTargets/renderMessages với yêu cầu hàng loạt, tính cả tin nhắn người chơi phía trước, số đoạn và lời nhắc nguyên văn.
  */
 export function planBatches(chat: STMessage[], floors: number[], maxChars: number, maxFloors: number): number[][] {
   const ctx = getContext();
@@ -1301,7 +1304,7 @@ export function planBatches(chat: STMessage[], floors: number[], maxChars: numbe
   let curChars = 0;
   for (const f of floors) {
     const len = renderMessages(chat, floorTargets(chat, f, covered), name1, name2).length;
-    // 当前块非空,且(加这楼会超字数 或 楼数已达上限)→ 先切块
+    // Khối hiện tại khác rỗng, và (thêm tầng này sẽ vượt số chữ hoặc số tầng đã đạt trần) → cắt khối trước
     if (cur.length && (curChars + len > cap || cur.length >= lo)) {
       batches.push(cur);
       cur = [];
@@ -1315,8 +1318,8 @@ export function planBatches(chat: STMessage[], floors: number[], maxChars: numbe
 }
 
 /**
- * 对一个块发一次批量请求,解析出 floors 数组并**逐楼落叶**(块内顺序,后楼承接前楼状态)。
- * 校验 floors 长度 == 块楼数;不符则抛错(由调用方按重试/回退处理)。
+ * Gửi một yêu cầu hàng loạt cho một khối, phân tích ra mảng floors và **hạ cánh lá từng tầng** (theo thứ tự trong khối, tầng sau nối tiếp trạng thái tầng trước).
+ * Kiểm tra độ dài floors == số tầng của khối; không khớp thì ném lỗi (do bên gọi xử lý theo thử lại / lùi về).
  */
 async function summarizeBatchWork(
   chat: STMessage[],
@@ -1324,25 +1327,25 @@ async function summarizeBatchWork(
   sender: { send: (messages: ChatMsg[]) => Promise<string>; label: string },
 ): Promise<void> {
   const ctx = getContext();
-  if (!ctx) throw new Error('无 ST 上下文');
+  if (!ctx) throw new Error('Không có ngữ cảnh ST');
   const covered = coveredSet(chat);
 
-  // 块开头之前的状态/历史/世界书(整块统一口径,只取一次)
+  // Trạng thái / lịch sử / sách thế giới trước đầu khối (thống nhất tiêu chuẩn cho cả khối, chỉ lấy một lần)
   const beforeIndex = floorTargets(chat, block[0], covered)[0];
   const stateBefore = deriveMemory(chat, beforeIndex);
   const history = renderHistoryNodes(selectHistoryNodesBefore(memory.summaries, chat, beforeIndex));
 
-  // 多楼正文:每楼带「━━ 第 n 楼 ━━」分隔,内含该 AI 楼 + 其前置未覆盖 user 楼
+  // Chính văn nhiều tầng: mỗi tầng kèm phân cách "━━ Tầng thứ n ━━", bên trong gồm tầng AI đó + các tầng user phía trước chưa được bao phủ của nó
   const allTargets: number[] = [];
   const segments: string[] = [];
   block.forEach((f, idx) => {
     const targets = floorTargets(chat, f, covered);
     allTargets.push(...targets);
-    segments.push(`━━ 第 ${idx + 1} 楼 ━━\n${renderMessages(chat, targets, ctx.name1, ctx.name2)}`);
+    segments.push(`━━ Tầng thứ ${idx + 1} ━━\n${renderMessages(chat, targets, ctx.name1, ctx.name2)}`);
   });
   const content = segments.join('\n\n');
 
-  // 世界书按整块合并正文激活一次(省去逐楼激活)
+  // Sách thế giới kích hoạt một lần theo chính văn gộp của cả khối (đỡ phải kích hoạt từng tầng)
   const worldInfo = await fetchWorldInfo(chat, allTargets, ctx.name1, ctx.name2);
   const charCard = fetchCharCard();
   const persona = fetchUserPersona();
@@ -1370,16 +1373,16 @@ async function summarizeBatchWork(
     { role: 'system', content: checklist },
   );
 
-  // 解析 { floors: [...] };校验长度等于块楼数(缺楼/多楼都算失败,触发重试/回退)
+  // Phân tích { floors: [...] }; kiểm tra độ dài bằng số tầng của khối (thiếu tầng / thừa tầng đều tính là thất bại, kích hoạt thử lại / lùi về)
   const list = await sendAndParse(sender.send, messages, raw => {
-    console.log('[柏宝书] 批量摘要原始返回(未清洗):\n', raw);
+    console.log('[Bách Bảo Thư] Kết quả tóm tắt hàng loạt gốc trả về (chưa làm sạch):\n', raw);
     const d = extractJsonObject<{ floors?: SummaryDelta[] }>(raw);
     const floors = d?.floors;
     if (!Array.isArray(floors) || !floors.length) {
-      throw new Error(raw.trim() ? '批量摘要失败:AI道歉或掉格式' : '批量摘要失败:AI空回');
+      throw new Error(raw.trim() ? 'Tóm tắt hàng loạt thất bại: AI xin lỗi hoặc làm rơi định dạng' : 'Tóm tắt hàng loạt thất bại: AI trả về rỗng');
     }
     if (floors.length !== block.length) {
-      throw new Error(`批量摘要失败:返回 ${floors.length} 楼,期望 ${block.length} 楼`);
+      throw new Error(`Tóm tắt hàng loạt thất bại: Trả về ${floors.length} tầng, kỳ vọng ${block.length} tầng`);
     }
     const cleaned = floors.map(f => {
       if (!f || typeof f !== 'object') return null;
@@ -1387,14 +1390,14 @@ async function summarizeBatchWork(
       return summary ? { ...f, summary } : null;
     });
     if (cleaned.some(f => !f)) {
-      throw new Error('批量摘要失败:有楼层缺 summary');
+      throw new Error('Tóm tắt hàng loạt thất bại: Có tầng lầu bị thiếu summary');
     }
     return cleaned as Array<SummaryDelta & { summary: string }>;
   });
 
-  // 逐楼落叶(块内顺序,严格按 block 升序)。批量只取 summary + 起止时间:
-  // 显式剥掉 items/plans/location —— 这些跨多楼难保顺序正确(易致计划/时间错乱),
-  // 即便 AI 不听话硬产了也丢弃。结构化数据交给后续正常的逐楼自动摘要。
+  // Hạ cánh lá từng tầng (thứ tự trong khối, nghiêm ngặt theo block tăng dần). Hàng loạt chỉ lấy summary + thời gian bắt đầu-kết thúc:
+  // bóc bỏ tường minh items/plans/location —— những thứ này qua nhiều tầng khó đảm bảo đúng thứ tự (dễ gây loạn kế hoạch / thời gian),
+  // cho dù AI không nghe lời cố tình sinh ra cũng hủy bỏ. Dữ liệu có cấu trúc giao cho tự động tóm tắt từng tầng bình thường về sau.
   block.forEach((f, idx) => {
     const r = list[idx];
     const lean: SummaryDelta = {
@@ -1414,14 +1417,14 @@ async function summarizeBatchWork(
 }
 
 /**
- * 批量补摘:把待摘 AI 楼按内容量切块,逐块串行发请求、**严格按楼序逐楼落叶**。
- * 省 token 关键:固定上下文(破限/设定/前情)按块分摊,而非每楼重发。
- *  - 批量只产 summary + 起止时间(不产物品/计划),避免跨多楼的结构化数据顺序错乱;
- *    结构化数据交给后续正常的逐楼自动摘要补。
- *  - 块间串行 + 块内 AI 顺序维护时间单调,后块用前块落盘后的前情。
- *  - 某块解析失败(已含 summaryMaxRetries 次重试)→ 回退:对该块逐楼走单楼摘要(单楼路径仍产完整结构化数据),不中断整体。
- *  - 取消在块边界生效(不打断进行中的块)。
- * 全部完成后触发 checkResummary(连锁 L1/L2)+ 收尾(隐藏 + 注入)。
+ * Tóm tắt bù hàng loạt: cắt các tầng AI chờ tóm tắt thành từng khối theo dung lượng nội dung, gửi yêu cầu tuần tự từng khối, **hạ cánh lá từng tầng nghiêm ngặt theo thứ tự tầng lầu**.
+ * Mấu chốt tiết kiệm token: ngữ cảnh cố định (vượt giới hạn / thiết lập / chuyện trước đó) được phân bổ theo khối, thay vì gửi lại ở mỗi tầng.
+ *  - Hàng loạt chỉ sinh summary + thời gian bắt đầu-kết thúc (không sinh vật phẩm / kế hoạch), tránh việc dữ liệu có cấu trúc qua nhiều tầng bị loạn thứ tự;
+ *    dữ liệu có cấu trúc giao cho tự động tóm tắt từng tầng bình thường về sau bù đắp.
+ *  - Tuần tự giữa các khối + thứ tự AI trong khối duy trì tính đơn điệu thời gian, khối sau dùng chuyện trước đó sau khi khối trước đã lưu đĩa.
+ *  - Một khối phân tích thất bại (đã bao gồm summaryMaxRetries lần thử lại) → lùi về: đi qua tóm tắt đơn tầng cho từng tầng của khối đó (đường dẫn đơn tầng vẫn sinh đầy đủ dữ liệu có cấu trúc), không làm gián đoạn tổng thể.
+ *  - Hủy bỏ có hiệu lực ở ranh giới khối (không ngắt ngang khối đang chạy).
+ * Sau khi hoàn tất toàn bộ sẽ kích hoạt checkResummary (dây chuyền L1/L2) + thu dọn cuối (ẩn + tiêm).
  */
 export async function batchBackfill(opts: BatchBackfillOpts = {}): Promise<BatchBackfillResult> {
   if (!engineActiveHere()) return { done: 0, total: 0, cancelled: false };
@@ -1435,7 +1438,7 @@ export async function batchBackfill(opts: BatchBackfillOpts = {}): Promise<Batch
   if (!ctx) return { done: 0, total: 0, cancelled: false };
   const chat = ctx.chat ?? [];
 
-  // 目标楼层:显式传入则过滤成「当前确实待摘的 AI 楼」(防陈旧),否则取全部待摘
+  // Các tầng mục tiêu: nếu truyền vào tường minh thì lọc thành "các tầng AI hiện tại thực sự đang chờ tóm tắt" (chống lỗi thời), nếu không thì lấy toàn bộ các tầng chờ tóm tắt
   const pending = new Set(pendingAiFloors(chat));
   const floors = (opts.floors ?? [...pending]).filter(f => pending.has(f)).sort((a, b) => a - b);
   const total = floors.length;
@@ -1445,12 +1448,12 @@ export async function batchBackfill(opts: BatchBackfillOpts = {}): Promise<Batch
   }
 
   const batches = planBatches(chat, floors, apiSettings.batchMaxChars, apiSettings.batchMaxFloors);
-  console.log('[柏宝书] 批量补摘:', total, '楼 →', batches.length, '批,', sender.label);
+  console.log('[Bách Bảo Thư] Tóm tắt bù hàng loạt:', total, 'tầng →', batches.length, 'đợt,', sender.label);
 
   busy = true;
   engineState.running = true;
   engineState.lastError = '';
-  // 批量状态(模块级单例)→ UI 跨关窗重开可恢复进度/取消
+  // Trạng thái hàng loạt (singleton cấp mô-đun) → UI đóng rồi mở lại cửa sổ vẫn khôi phục được tiến độ / hủy
   batchState.running = true;
   batchState.cancelRequested = false;
   batchState.done = 0;
@@ -1463,10 +1466,10 @@ export async function batchBackfill(opts: BatchBackfillOpts = {}): Promise<Batch
       try {
         await summarizeBatchWork(chat, block, sender);
       } catch (e) {
-        // 整块失败(已含重试)→ 回退:逐楼单独摘。单楼也可能失败(写 lastError),失败楼留作待摘,不中断后续。
-        console.log('[柏宝书] 批量块失败,回退逐楼:', e instanceof Error ? e.message : String(e));
+        // Cả khối thất bại (đã gồm thử lại) → lùi về: tóm tắt riêng từng tầng. Đơn tầng cũng có thể thất bại (ghi lastError), tầng thất bại để lại làm chờ tóm tắt, không làm gián đoạn phía sau.
+        console.log('[Bách Bảo Thư] Khối hàng loạt thất bại, lùi về từng tầng:', e instanceof Error ? e.message : String(e));
         for (const f of block) {
-          if (!isAiFloor(chat[f]) || leafValid(chat[f])) continue; // 已被填或非 AI 楼:跳过
+          if (!isAiFloor(chat[f]) || leafValid(chat[f])) continue; // Đã được lấp hoặc không phải tầng AI: bỏ qua
           try {
             await summarizeFloorWork(chat, f, sender);
           } catch (e2) {
@@ -1474,11 +1477,11 @@ export async function batchBackfill(opts: BatchBackfillOpts = {}): Promise<Batch
           }
         }
       }
-      // 本块产出的已落叶楼计入进度(只数确实落上叶子的,失败楼不计)
+      // Các tầng đã hạ cánh lá do khối này sinh ra được tính vào tiến độ (chỉ đếm những tầng thực sự đã gắn được lá, tầng thất bại không tính)
       done = floors.filter(f => leafValid(chat[f])).length;
       batchState.done = done;
     }
-    // 连锁触发总结(可能跨多层),失败写 lastError 不影响已落叶子
+    // Kích hoạt dây chuyền tổng kết (có thể qua nhiều tầng), thất bại ghi lastError không ảnh hưởng các lá đã hạ cánh
     await checkResummary();
   } catch (e) {
     engineState.lastError = e instanceof Error ? e.message : String(e);
@@ -1493,15 +1496,15 @@ export async function batchBackfill(opts: BatchBackfillOpts = {}): Promise<Batch
 }
 
 /**
- * 当前已被覆盖的楼层索引集合(几何即时推导,不读存储)。
- * 一条 AI 楼若有有效叶子 → 它及其前置「尚未被更早 AI 叶子覆盖」的楼(含 user 楼)都算被覆盖。
- * 即区间 (上一条有效 AI 叶子, 本条有效 AI 叶子] 全覆盖。待摘要 AI 楼不闭合区间。
+ * Tập hợp các chỉ mục tầng lầu đã được bao phủ hiện tại (suy dẫn hình học tức thì, không đọc lưu trữ).
+ * Một tầng AI nếu có lá hợp lệ → nó cùng với các tầng phía trước nó "chưa được lá AI sớm hơn bao phủ" (gồm cả tầng user) đều tính là đã được bao phủ.
+ * Tức là khoảng (lá AI hợp lệ ngay trước, lá AI hợp lệ này] được bao phủ toàn bộ. Tầng AI chờ tóm tắt không đóng khoảng.
  */
 export function coveredSet(chat: STMessage[]): Set<number> {
   const covered = new Set<number>();
   for (const [start, end] of importedHistoryRanges()) {
     for (let i = start; i <= Math.min(end, chat.length - 1); i++) {
-      if (!chat[i]?.extra?.bbs_omit) covered.add(i); // 番外楼仍遵守“完全忽略”,不因导入范围而被隐藏
+      if (!chat[i]?.extra?.bbs_omit) covered.add(i); // Tầng ngoại truyện vẫn tuân thủ "bỏ qua hoàn toàn", không vì phạm vi nhập vào mà bị ẩn
     }
   }
   let segStart = 0;
@@ -1511,12 +1514,12 @@ export function coveredSet(chat: STMessage[]): Set<number> {
       for (let k = segStart; k <= i; k++) covered.add(k);
       segStart = i + 1;
     }
-    // 待摘要 AI 楼(无有效叶子):段不前进,等它被摘后再覆盖
+    // Tầng AI chờ tóm tắt (không có lá hợp lệ): đoạn không tiến lên, đợi sau khi nó được tóm tắt mới bao phủ
   }
   return covered;
 }
 
-/** 某层级触发压缩所需的阈值:L0→L1、L1→L2、L2+ 分开控制,避免高层长文本按 7 条堆积。 */
+/** Ngưỡng cần thiết để một cấp độ kích hoạt việc nén: L0→L1, L1→L2, L2+ kiểm soát riêng, tránh việc văn bản dài ở tầng cao bị chất đống theo mốc 7 mục. */
 function thresholdForLevel(level: number): number {
   if (level === 0) return apiSettings.leafBatchThreshold;
   if (level === 1) return apiSettings.resummaryThreshold;
@@ -1524,11 +1527,11 @@ function thresholdForLevel(level: number): number {
 }
 
 /**
- * 把一批待融合节点拼成给总结模型的 content:**每段头部标注该段时间范围**。
- * 关键:摘要正文的权威时间存在 timeStart/timeEnd 字段(正文里常不含完整日期),
- * 若只喂正文,总结被「必须写满日期」的规则逼着现编 → 日期全对不上(已修的 bug)。
- * 故这里把真实时间随正文一并交给模型,让它「看着写」而非凭空造。
- * 时间括注:两端齐→「起 – 止」;只有一端→那一端;都无→不加括注(不硬造)。
+ * Ghép một loạt nút chờ dung hợp thành content đưa cho mô hình tổng kết: **ở đầu mỗi đoạn gắn nhãn phạm vi thời gian của đoạn đó**.
+ * Then chốt: thời gian có thẩm quyền của chính văn tóm tắt lưu ở trường timeStart/timeEnd (trong chính văn thường không chứa ngày tháng đầy đủ),
+ * nếu chỉ nạp chính văn, việc tổng kết bị quy tắc "bắt buộc viết đủ ngày tháng" ép phải bịa tại chỗ → ngày tháng lệch nhau toàn bộ (bug đã sửa).
+ * Do đó tại đây giao thời gian thực tế kèm theo chính văn cho mô hình, để nó "nhìn mà viết" thay vì bịa đặt vô căn cứ.
+ * Chú thích ngoặc đơn thời gian: đủ hai đầu → "bắt đầu – kết thúc"; chỉ có một đầu → đầu đó; không có cả hai → không thêm chú thích ngoặc đơn (không ép bịa).
  */
 function joinNodesForResummary(nodes: Array<{ text: string; timeStart?: string; timeEnd?: string }>): { content: string; hints: string } {
   const sources = nodes.map((n, i) => {
@@ -1539,14 +1542,14 @@ function joinNodesForResummary(nodes: Array<{ text: string; timeStart?: string; 
     else if (start || end) time = `(${start || end}) `;
     return { source: `[${i + 1}]`, text: `${time}${n.text}` };
   });
-  // 提醒只在预算计算后附加到材料,不能用重复原文抬高二次总结的目标字数。
+  // Lời nhắc chỉ nối thêm vào tài liệu sau khi đã tính toán ngân sách, không được dùng nguyên văn lặp lại làm đẩy cao số chữ mục tiêu của tổng kết lần hai.
   return {
     content: sources.map(({ source, text }) => `${source} ${text}`).join('\n\n'),
     hints: renderSourceHints(sources),
   };
 }
 
-/** 压缩用的根节点视图:带起止时间(叶子直接取,comp 取已聚合的范围),供向上合并时取边界。 */
+/** Khung nhìn nút gốc dùng cho việc nén: mang thời gian bắt đầu-kết thúc (lá lấy trực tiếp, comp lấy phạm vi đã tổng hợp), phục vụ lấy ranh giới khi gộp lên trên. */
 interface RootView {
   id: string;
   text: string;
@@ -1555,7 +1558,7 @@ interface RootView {
   timeEnd?: string;
 }
 
-/** 某层级「未被收纳的根节点」,按时间/楼层升序。level0=叶子(扫 chat),level≥1=森林。 */
+/** "Các nút gốc chưa được thu nạp" ở một cấp độ, tăng dần theo thời gian / tầng lầu. level0=lá (quét chat), level≥1=rừng. */
 function rootsAtLevel(level: number, chat: STMessage[]): RootView[] {
   const collected = new Set<string>();
   for (const s of memory.summaries) for (const c of s.childIds) collected.add(c);
@@ -1563,11 +1566,11 @@ function rootsAtLevel(level: number, chat: STMessage[]): RootView[] {
   if (level === 0) {
     const out: RootView[] = [];
     for (let i = 0; i < chat.length; i++) {
-      if (chat[i]?.extra?.bbs_omit) continue; // 番外楼:不进森林压缩
+      if (chat[i]?.extra?.bbs_omit) continue; // Tầng ngoại truyện: không đưa vào nén rừng
       if (!leafValid(chat[i])) continue;
       const lf = getLeaf(chat[i]) as LeafExtra;
-      if (collected.has(lf.id)) continue; // 已被某 L1 收纳
-      out.push({ id: lf.id, text: llmString(lf.text), createdAt: lf.createdAt, timeStart: llmOptionalScalar(lf.timeStart), timeEnd: llmOptionalScalar(lf.timeEnd) }); // 已按楼层序
+      if (collected.has(lf.id)) continue; // Đã được một L1 nào đó thu nạp
+      out.push({ id: lf.id, text: llmString(lf.text), createdAt: lf.createdAt, timeStart: llmOptionalScalar(lf.timeStart), timeEnd: llmOptionalScalar(lf.timeEnd) }); // Đã theo thứ tự tầng lầu
     }
     return out;
   }
@@ -1578,10 +1581,10 @@ function rootsAtLevel(level: number, chat: STMessage[]): RootView[] {
 }
 
 /**
- * 可逆层级压缩(不删底层)。
- * 从最低层往上逐层检查:某层「未被收纳的根节点」攒够该层阈值时,
- * 用 AI 把这批的**叙事文本**融合成一条上层节点,childIds 收纳它们(底层全部保留)。
- * 一次调用会向上连锁(加叶子→可能生 L1→可能生 L2…),按各层阈值递归。
+ * Nén cấp bậc có thể đảo ngược (không xóa tầng đáy).
+ * Kiểm tra từng tầng từ tầng thấp nhất lên trên: khi "các nút gốc chưa được thu nạp" của một tầng tích lũy đủ ngưỡng của tầng đó,
+ * dùng AI dung hợp **văn bản tự sự** của đợt này thành một nút tầng trên, childIds thu nạp chúng (tầng đáy giữ lại toàn bộ).
+ * Một lần gọi sẽ dây chuyền lên trên (thêm lá → có thể sinh L1 → có thể sinh L2…), đệ quy theo ngưỡng từng tầng.
  */
 export async function checkResummary(): Promise<number> {
   if (!engineActiveHere()) return 0;
@@ -1589,9 +1592,9 @@ export async function checkResummary(): Promise<number> {
   if (!ctx) return 0;
   const chat = ctx.chat ?? [];
 
-  let made = 0; // 本次连锁共生成的总结条数
+  let made = 0; // Tổng số mục tổng kết sinh ra trong chuỗi dây chuyền lần này
 
-  // 最高现存压缩层级,作为连锁上限(+1 容纳新生成的层)
+  // Cấp độ nén cao nhất hiện có, làm trần dây chuyền (+1 để chứa tầng mới sinh ra)
   const maxLevel = memory.summaries.reduce((m, s) => Math.max(m, s.level), 0);
 
   for (let level = 0; level <= maxLevel + 1; level++) {
@@ -1599,9 +1602,9 @@ export async function checkResummary(): Promise<number> {
     if (!threshold || threshold < 2) continue;
 
     const roots = rootsAtLevel(level, chat);
-    // 叶子层(L0→L1)保留最近 N 条不压:门槛抬到 阈值+保留数,但下面仍只压最旧的 阈值 条,
-    // newest 的 N 条自然留作根、继续被逐条注入,避免「一次全压塌成 L1」的注入断崖。
-    // 仅 level 0 生效(更高层已是压缩散文,再留无意义);keep=0 即退回旧行为。
+    // Tầng lá (L0→L1) giữ lại N mục gần nhất không nén: ngưỡng nâng lên thành ngưỡng + số giữ lại, nhưng bên dưới vẫn chỉ nén số mục bằng ngưỡng cũ nhất,
+    // N mục mới nhất tự nhiên lưu lại làm gốc, tiếp tục được tiêm từng mục một, tránh vách đá tiêm kiểu "nén sập hết một lần thành L1".
+    // Chỉ có hiệu lực ở level 0 (tầng cao hơn đã là văn xuôi nén, giữ lại thêm không có ý nghĩa); keep=0 tức là lùi về hành vi cũ.
     const keep = level === 0 ? Math.max(0, apiSettings.leafKeepRecent) : 0;
     if (roots.length < threshold + keep) continue;
 
@@ -1613,35 +1616,35 @@ export async function checkResummary(): Promise<number> {
 
     const batch = roots.slice(0, threshold);
     const { content, hints } = joinNodesForResummary(batch);
-    // 传**输出层级**(level+1):L1(普通总结,300-500字)/ L2+(二次总结,字数随输入动态)
+    // Truyền **cấp độ đầu ra** (level+1): L1 (tổng kết thông thường, 300-500 chữ) / L2+ (tổng kết lần hai, số chữ động theo đầu vào)
     const prompt = buildResummaryPrompt({ user: ctx.name1, char: ctx.name2, content, level: level + 1 });
 
     try {
       const jb = apiSettings.prompts.jailbreak.trim() || JAILBREAK_PROMPT;
       const messages: ChatMsg[] = [];
       if (jb) messages.push({ role: 'system', content: jb });
-      // 自定义模板已自带全部补充段时 system 为空;空内容消息部分接口会拒收
+      // Khi khuôn mẫu tùy chỉnh đã tự kèm toàn bộ các đoạn bổ sung thì system sẽ trống; một số giao diện sẽ từ chối nhận tin nhắn có nội dung rỗng
       if (prompt.system) messages.push({ role: 'system', content: prompt.system });
       messages.push(
         { role: 'user', content: prompt.user + hints },
         { role: 'system', content: RESUMMARY_THINKING_CHECKLIST },
       );
-      // 发请求 + 解析,失败按设置重试(请求报错或 JSON 无效/缺 summary 都算失败)
+      // Gửi yêu cầu + phân tích, thất bại thử lại theo cài đặt (yêu cầu báo lỗi hoặc JSON không hợp lệ / thiếu summary đều tính là thất bại)
       const delta = await sendAndParse(sender.send, messages, raw => {
-        console.log('[柏宝书] 总结原始返回(未清洗):\n', raw);
+        console.log('[Bách Bảo Thư] Kết quả tổng kết gốc trả về (chưa làm sạch):\n', raw);
         const d = extractJsonObject<{ summary?: string }>(raw);
         const summary = llmString(d?.summary);
         if (!summary) {
-          // 输出层级 level+1:为 1 是普通总结,≥2 是二次总结;有文本=掉格式,空白=空回
-          const what = level + 1 === 1 ? '总结' : '二次总结';
-          throw new Error(raw.trim() ? `${what}失败:AI道歉或掉格式` : `${what}失败:AI空回`);
+          // Cấp độ đầu ra level+1: bằng 1 là tổng kết thông thường, ≥2 là tổng kết lần hai; có văn bản = rơi định dạng, trống = trả về rỗng
+          const what = level + 1 === 1 ? 'Tổng kết' : 'Tổng kết lần hai';
+          throw new Error(raw.trim() ? `${what} thất bại: AI xin lỗi hoặc làm rơi định dạng` : `${what} thất bại: AI trả về rỗng`);
         }
         return { summary };
       });
 
-      // 生成上层节点收纳这批(**不删 batch**),时间戳取批内最新,排在它们之后
+      // Sinh nút tầng trên thu nạp đợt này (**không xóa batch**), dấu thời gian lấy mới nhất trong đợt, xếp ở sau chúng
       const newCreatedAt = Math.max(...batch.map(s => s.createdAt)) + 1;
-      // 起止时间:batch 已按时间升序 → 首个有起始的作 start,末个有结束的作 end
+      // Thời gian bắt đầu-kết thúc: batch đã tăng dần theo thời gian → cái đầu tiên có bắt đầu làm start, cái cuối cùng có kết thúc làm end
       const timeStart = batch.find(s => s.timeStart)?.timeStart;
       const timeEnd = [...batch].reverse().find(s => s.timeEnd)?.timeEnd;
       addSummary({
@@ -1655,45 +1658,45 @@ export async function checkResummary(): Promise<number> {
       });
       made += 1;
       refreshInjection();
-      // 不 break:继续外层 for,上一层可能也攒够了 → 连锁压更高层
+      // Không break: tiếp tục vòng for ngoài, tầng trên có thể cũng đã tích lũy đủ → dây chuyền nén lên tầng cao hơn
     } catch (e) {
       engineState.lastError = e instanceof Error ? e.message : String(e);
-      return made; // 本层失败则停止连锁,下次再试
+      return made; // Tầng này thất bại thì dừng dây chuyền, lần sau thử lại
     }
   }
   return made;
 }
 
-/* ============ 手动强制总结(多选合并,无视阈值) ============ */
+/* ============ Tổng kết cưỡng chế thủ công (chọn nhiều để gộp, bỏ qua ngưỡng) ============ */
 
-/** 一个可被合并的节点(叶子或压缩节点)在引擎里的统一视图。 */
+/** Khung nhìn thống nhất trong engine của một nút có thể được gộp (lá hoặc nút nén). */
 interface SelectableNode {
   id: string;
   text: string;
-  level: number; // 叶子=0,comp=其层级
+  level: number; // lá=0, comp=cấp độ của nó
   timeStart?: string;
   timeEnd?: string;
-  floorLo: number; // 覆盖楼层下界(叶子=自身楼层;comp=后代叶子最小);无则 -1
-  floorHi: number; // 覆盖楼层上界
+  floorLo: number; // Cận dưới tầng lầu bao phủ (lá = tầng của chính nó; comp = nhỏ nhất của lá hậu duệ); không có thì -1
+  floorHi: number; // Cận trên tầng lầu bao phủ
 }
 
 /**
- * 解析当前森林里「所有节点」的统一视图 + 覆盖楼层。
- * 叶子来自 chat(有效叶子),楼层 = msgIndex;comp 来自 memory.summaries,楼层 = 递归后代叶子 min..max。
- * 供 summarizeSelected 排序、取时间范围、算覆盖范围。
+ * Phân tích khung nhìn thống nhất + tầng lầu bao phủ của "tất cả các nút" trong rừng hiện tại.
+ * Lá đến từ chat (lá hợp lệ), tầng lầu = msgIndex; comp đến từ memory.summaries, tầng lầu = min..max đệ quy các lá hậu duệ.
+ * Phục vụ summarizeSelected sắp xếp, lấy phạm vi thời gian, tính phạm vi bao phủ.
  */
 function collectSelectableNodes(chat: STMessage[]): Map<string, SelectableNode> {
   const map = new Map<string, SelectableNode>();
-  // 叶子:id → 楼层
+  // Lá: id → tầng lầu
   const leafFloor = new Map<string, number>();
   for (let i = 0; i < chat.length; i++) {
-    if (chat[i]?.extra?.bbs_omit) continue; // 番外楼:不作为可选节点
+    if (chat[i]?.extra?.bbs_omit) continue; // Tầng ngoại truyện: không làm nút có thể chọn
     if (!leafValid(chat[i])) continue;
     const lf = getLeaf(chat[i]) as LeafExtra;
     leafFloor.set(lf.id, i);
     map.set(lf.id, { id: lf.id, text: llmString(lf.text), level: 0, timeStart: llmOptionalScalar(lf.timeStart), timeEnd: llmOptionalScalar(lf.timeEnd), floorLo: i, floorHi: i });
   }
-  // comp:递归解析后代叶子楼层
+  // comp: phân tích đệ quy tầng lầu của các lá hậu duệ
   const byComp = new Map(memory.summaries.map(s => [s.id, s]));
   const floorsOf = (id: string, seen: Set<string>, acc: number[]): void => {
     if (seen.has(id)) return;
@@ -1719,38 +1722,38 @@ function collectSelectableNodes(chat: STMessage[]): Map<string, SelectableNode> 
 }
 
 /**
- * 手动强制总结:把用户勾选的若干**根节点**(叶子/总结混层)无视阈值合并成一条上层总结。
- * 与自动 checkResummary 的区别:不看阈值、不看层级是否齐整,直接压这一批。
- *  - level = max(选中层级) + 1;时间范围 = 排序后首个 timeStart + 末个 timeEnd(同 checkResummary)。
- *  - 连续性兜底:选中节点覆盖楼层需连成一段(UI 已限制,这里防御);跨层混选允许。
- *  - 生成节点 auto=false 标手动。busy 互斥,收尾同 resummarizeNow + 隐藏/注入。
- * 返回 { made, error }:made=1 成功,0 未生成(error 说明原因)。
+ * Tổng kết cưỡng chế thủ công: đem một số **nút gốc** (trộn lẫn tầng lá / tổng kết) do người dùng tích chọn gộp thành một tổng kết tầng trên bất chấp ngưỡng.
+ * Khác biệt với checkResummary tự động: không xét ngưỡng, không xét cấp độ có đồng đều hay không, nén thẳng đợt này.
+ *  - level = max(cấp độ đã chọn) + 1; phạm vi thời gian = timeStart đầu tiên + timeEnd cuối cùng sau khi sắp xếp (giống checkResummary).
+ *  - Dự phòng tính liên tục: tầng lầu bao phủ của các nút được chọn phải nối liền thành một đoạn (UI đã giới hạn, ở đây phòng vệ); cho phép chọn trộn lẫn khác tầng.
+ *  - Nút sinh ra có auto=false đánh dấu thủ công. busy loại trừ lẫn nhau, thu dọn cuối giống resummarizeNow + ẩn/tiêm.
+ * Trả về { made, error }: made=1 thành công, 0 chưa tạo (error giải thích nguyên nhân).
  */
 export async function summarizeSelected(nodeIds: string[]): Promise<{ made: number; error?: string }> {
-  if (!engineActiveHere()) return { made: 0, error: '插件未在当前聊天生效' };
-  if (busy) return { made: 0, error: '正忙,请稍后再试' };
-  if (nodeIds.length < 2) return { made: 0, error: '至少选择两条才能合并' };
+  if (!engineActiveHere()) return { made: 0, error: 'Plugin không có hiệu lực trong cuộc trò chuyện hiện tại' };
+  if (busy) return { made: 0, error: 'Đang bận, vui lòng thử lại sau' };
+  if (nodeIds.length < 2) return { made: 0, error: 'Phải chọn ít nhất hai mục mới có thể gộp' };
 
   const ctx = getContext();
-  if (!ctx) return { made: 0, error: '无 ST 上下文' };
+  if (!ctx) return { made: 0, error: 'Không có ngữ cảnh ST' };
   const chat = ctx.chat ?? [];
 
   const all = collectSelectableNodes(chat);
   const picked: SelectableNode[] = [];
   for (const id of nodeIds) {
     const n = all.get(id);
-    if (!n) return { made: 0, error: '有选中项已失效,请刷新后重试' };
+    if (!n) return { made: 0, error: 'Có mục đã chọn không còn hợp lệ, vui lòng làm mới rồi thử lại' };
     picked.push(n);
   }
-  // 按覆盖楼层升序(与摘要森林时序一致);无楼层的排最后
+  // Tăng dần theo tầng lầu bao phủ (nhất quán với trình tự thời gian của rừng tóm tắt); không có tầng lầu xếp cuối cùng
   const key = (n: SelectableNode) => (n.floorLo < 0 ? Number.MAX_SAFE_INTEGER : n.floorLo);
   picked.sort((a, b) => key(a) - key(b));
 
-  // 连续性兜底:选中项必须是「当前根序列」里的一段连续切片(中间不能跳过其它根)。
-  // ⚠️ 不能用 msgIndex 差值(cur.floorLo > prev.floorHi + 1)判断——叶子的 floorLo/Hi 只记
-  // 自身那条 AI 楼的 index,不含前置 user 楼,而相邻 AI 楼之间必然隔着 user 楼(差≥2),
-  // 那样会把任意两条相邻叶子摘要误判为不连续(合并静默失败的根因)。改为按「根在森林里的次序」
-  // 判断,与 UI 的 canMerge(根序列数组索引相邻)同源。
+  // Dự phòng tính liên tục: các mục được chọn bắt buộc phải là một lát cắt liên tục trong "chuỗi gốc hiện tại" (ở giữa không được nhảy cóc qua gốc khác).
+  // ⚠️ Không thể dùng hiệu số msgIndex (cur.floorLo > prev.floorHi + 1) để phán đoán —— floorLo/Hi của lá chỉ ghi
+  // index của chính tầng AI đó, không bao gồm tầng user phía trước, mà giữa hai tầng AI liền kề tất nhiên cách nhau tầng user (hiệu số ≥2),
+  // làm vậy sẽ phán đoán nhầm bất kỳ hai tóm tắt lá liền kề nào thành không liên tục (nguyên nhân gốc rễ khiến việc gộp âm thầm thất bại). Đổi sang phán đoán theo
+  // "thứ tự của gốc trong rừng", cùng nguồn với canMerge của UI (chỉ mục mảng chuỗi gốc liền kề nhau).
   const referenced = new Set<string>();
   for (const s of memory.summaries) for (const c of s.childIds ?? []) referenced.add(c);
   const rootOrder = [...all.values()].filter(n => !referenced.has(n.id)).sort((a, b) => key(a) - key(b));
@@ -1758,13 +1761,13 @@ export async function summarizeSelected(nodeIds: string[]): Promise<{ made: numb
   const positions: number[] = [];
   for (const n of picked) {
     const p = posOf.get(n.id);
-    if (p === undefined) return { made: 0, error: '选中项里有已被收纳的摘要,请只选顶层摘要' };
+    if (p === undefined) return { made: 0, error: 'Trong các mục đã chọn có tóm tắt đã được thu nạp, vui lòng chỉ chọn tóm tắt tầng cao nhất' };
     positions.push(p);
   }
   positions.sort((a, b) => a - b);
   for (let i = 1; i < positions.length; i++) {
     if (positions[i] !== positions[i - 1] + 1) {
-      return { made: 0, error: '只能合并连续的摘要(中间不能跳过其它摘要)' };
+      return { made: 0, error: 'Chỉ có thể gộp các tóm tắt liên tiếp nhau (ở giữa không được bỏ qua tóm tắt khác)' };
     }
   }
 
@@ -1782,31 +1785,31 @@ export async function summarizeSelected(nodeIds: string[]): Promise<{ made: numb
     const jb = apiSettings.prompts.jailbreak.trim() || JAILBREAK_PROMPT;
     const messages: ChatMsg[] = [];
     if (jb) messages.push({ role: 'system', content: jb });
-    // 同自动压缩:system 可能为空,空消息不发
+    // Giống nén tự động: system có thể trống, tin nhắn trống không gửi
     if (prompt.system) messages.push({ role: 'system', content: prompt.system });
     messages.push(
       { role: 'user', content: prompt.user + hints },
       { role: 'system', content: RESUMMARY_THINKING_CHECKLIST },
     );
     const delta = await sendAndParse(sender.send, messages, raw => {
-      console.log('[柏宝书] 强制总结原始返回(未清洗):\n', raw);
+      console.log('[Bách Bảo Thư] Kết quả tổng kết cưỡng chế gốc trả về (chưa làm sạch):\n', raw);
       const d = extractJsonObject<{ summary?: string }>(raw);
       const summary = llmString(d?.summary);
       if (!summary) {
-        const what = level === 1 ? '总结' : '二次总结';
-        throw new Error(raw.trim() ? `${what}失败:AI道歉或掉格式` : `${what}失败:AI空回`);
+        const what = level === 1 ? 'Tổng kết' : 'Tổng kết lần hai';
+        throw new Error(raw.trim() ? `${what} thất bại: AI xin lỗi hoặc làm rơi định dạng` : `${what} thất bại: AI trả về rỗng`);
       }
       return { summary };
     });
 
-    // 时间范围:picked 已按楼层升序 → 首个有起始的作 start,末个有结束的作 end(同 checkResummary)
+    // Phạm vi thời gian: picked đã tăng dần theo tầng lầu → cái đầu tiên có bắt đầu làm start, cái cuối cùng có kết thúc làm end (giống checkResummary)
     const timeStart = picked.find(s => s.timeStart)?.timeStart;
     const timeEnd = [...picked].reverse().find(s => s.timeEnd)?.timeEnd;
     addSummary({
       text: delta.summary.trim(),
       level,
       childIds: picked.map(s => s.id),
-      auto: false, // 手动合并
+      auto: false, // Gộp thủ công
       timeStart,
       timeEnd,
     });
@@ -1825,9 +1828,9 @@ export async function summarizeSelected(nodeIds: string[]): Promise<{ made: numb
 }
 
 /**
- * 手动「立即检测并总结」:供摘要页按钮调用。
- * 与自动路径同一套阈值/连锁逻辑(checkResummary),但带 busy 互斥,
- * 避免与正在跑的摘要/总结撞车。返回新生成的总结条数(0 = 未达阈值,什么都没做)。
+ * "Kiểm tra và tổng kết ngay" thủ công: phục vụ nút bấm ở trang tóm tắt gọi.
+ * Cùng một bộ logic ngưỡng / dây chuyền với đường dẫn tự động (checkResummary), nhưng có kèm loại trừ lẫn nhau busy,
+ * tránh đụng độ với việc tóm tắt / tổng kết đang chạy. Trả về số lượng tổng kết mới tạo ra (0 = chưa đạt ngưỡng, chưa làm gì cả).
  */
 export async function resummarizeNow(): Promise<number> {
   if (!engineActiveHere()) return 0;
@@ -1844,19 +1847,19 @@ export async function resummarizeNow(): Promise<number> {
 }
 
 /**
- * 响应 chat 结构变动(翻页/删除/编辑):数据已随消息自动跟随,只需清坏链、重算派生、刷新,
- * 不做任何索引手术、**不触发摘要生成**(生成由 maybeSummarizePrevAi 按规则单独决定)。
- * debounce 合并快速连翻。
+ * Phản hồi biến động cấu trúc chat (lật trang / xóa / chỉnh sửa): dữ liệu đã tự động đi theo tin nhắn, chỉ cần dọn chuỗi hỏng, tính lại dẫn xuất, làm mới,
+ * không làm bất kỳ phẫu thuật chỉ mục nào, **không kích hoạt sinh tóm tắt** (việc sinh do maybeSummarizePrevAi quyết định riêng theo quy tắc).
+ * debounce gộp các lần lật liên tiếp nhanh.
  */
 let reactTimer: ReturnType<typeof setTimeout> | null = null;
 function reactToChatMutation(syncHidden = false): void {
-  // 缓存立即失效、索引另行防抖；UI/派生重算仍按下方 200ms 合并。
+  // Bộ nhớ đệm mất hiệu lực ngay lập tức, chỉ mục chống rung riêng; việc tính lại UI / dẫn xuất vẫn gộp theo mốc 200ms bên dưới.
   scheduleVectorIndex();
   if (reactTimer) clearTimeout(reactTimer);
   reactTimer = setTimeout(() => {
     reactTimer = null;
-    pruneBrokenComps(); // 叶子失效 → 删包含它的整条祖先压缩链
-    recomputeDerived(); // 删叶/陈旧 → 物品/计划回退;UI(derivedMeta)更新
+    pruneBrokenComps(); // Lá mất hiệu lực → xóa toàn bộ chuỗi nén tổ tiên có chứa nó
+    recomputeDerived(); // Xóa lá / lỗi thời → vật phẩm / kế hoạch lùi về; UI (derivedMeta) cập nhật
     if (syncHidden && engineActiveHere() && apiSettings.autoSummaryEnabled) {
       void syncWindowHiddenState(getContext()?.chat ?? [])
         .catch(e => {
@@ -1865,18 +1868,18 @@ function reactToChatMutation(syncHidden = false): void {
         .finally(() => refreshInjection());
       return;
     }
-    refreshInjection(); // 不再注入陈旧/已删叶子
+    refreshInjection(); // Không còn tiêm các lá lỗi thời / đã xóa nữa
   }, 200);
 }
 
 /**
- * 绑定事件。摘要触发规则:**只确保「上一条已定稿 AI 消息」有摘要**(单楼增量,非全量)。
- * 进入聊天 / 翻到没摘要的页,都不再自动立刻补摘。
- *  - USER_MESSAGE_RENDERED:发新消息 → 摘「上一条 AI」(skipLastAi=false)。
- *  - GENERATION_STARTED(regenerate/swipe):末尾 AI 正在被改写,跳过它 → 摘「之前那条 AI」(skipLastAi=true)。
- *  - MESSAGE_SWIPED / MESSAGE_EDITED:数据随消息跟随 → reactToChatMutation(清坏链+重算+刷新),不在此处生成。
- *  - MESSAGE_DELETED:同上,并同步一次滑动隐藏/取消隐藏。
- *  - CHAT_CHANGED:store 负责重载,这里刷新注入。
+ * Gắn kết sự kiện. Quy tắc kích hoạt tóm tắt: **chỉ đảm bảo "tin nhắn AI đã chốt bản thảo ngay trước đó" có tóm tắt** (tăng thêm đơn tầng, không phải toàn bộ).
+ * Vào cuộc trò chuyện / lật sang trang chưa có tóm tắt, đều không còn tự động tóm tắt bù ngay lập tức nữa.
+ *  - USER_MESSAGE_RENDERED: gửi tin nhắn mới → tóm tắt "AI ngay trước" (skipLastAi=false).
+ *  - GENERATION_STARTED(regenerate/swipe): AI ở cuối đang bị viết lại, bỏ qua nó → tóm tắt "AI trước đó nữa" (skipLastAi=true).
+ *  - MESSAGE_SWIPED / MESSAGE_EDITED: dữ liệu đi theo tin nhắn → reactToChatMutation (dọn chuỗi hỏng + tính lại + làm mới), không tạo mới tại đây.
+ *  - MESSAGE_DELETED: như trên, đồng thời đồng bộ một lần ẩn / bỏ ẩn trượt.
+ *  - CHAT_CHANGED: store phụ trách tải lại, ở đây làm mới tiêm.
  */
 export function bindEngine(): void {
   const ctx = getContext();
@@ -1885,38 +1888,38 @@ export function bindEngine(): void {
   const et = ctx.eventTypes;
 
   normalizeBacklogNotices(ctx.chat ?? []);
-  console.log('[柏宝书] bindEngine 执行,监听', et.USER_MESSAGE_RENDERED, et.GENERATION_STARTED);
+  console.log('[Bách Bảo Thư] bindEngine thực thi, lắng nghe', et.USER_MESSAGE_RENDERED, et.GENERATION_STARTED);
 
-  // 发新消息:此刻末尾 AI 是「上一条已定稿」的回复,从最早缺口开始顺序追赶到它。
+  // Gửi tin nhắn mới: lúc này AI ở cuối là câu trả lời "đã chốt bản thảo ngay trước", đuổi theo thứ tự từ khoảng trống sớm nhất đến nó.
   es.on(et.USER_MESSAGE_RENDERED, () => {
-    console.log('[柏宝书] USER_MESSAGE_RENDERED → 摘上一条 AI');
+    console.log('[Bách Bảo Thư] USER_MESSAGE_RENDERED → tóm tắt AI ngay trước');
     void maybeSummarizePrevAi(false);
   });
 
-  // 重新生成 / 翻页:聊天末尾实际是 AI 时才视为正在改写并跳过;
-  // 末尾是用户楼时(如失败后恢复生成),前一条 AI 已稳定,仍应正常补摘。
-  // ⚠️ 这里放行的 type(quiet/impersonate/continue)必须与 handleGenerationIntercept 第一道闸严格一致——
-  //    两者口径一旦不同步,重生/翻页会出现「补摘」与「正文生成」并行(见拦截器注释的「关键时序/口径」)。
+  // Tạo lại / lật trang: chỉ khi ở cuối cuộc trò chuyện thực sự là AI mới coi là đang viết lại và bỏ qua;
+  // khi ở cuối là tầng người dùng (như khôi phục tạo sau khi thất bại), tầng AI phía trước đã ổn định, vẫn nên tóm tắt bù bình thường.
+  // ⚠️ Các type được cho qua ở đây (quiet/impersonate/continue) bắt buộc phải nhất quán nghiêm ngặt với cổng đầu tiên của handleGenerationIntercept ——
+  //    một khi tiêu chuẩn hai bên không đồng bộ, khi tạo lại / lật trang sẽ xuất hiện việc "tóm tắt bù" và "tạo chính văn" chạy song song (xem phần "Trình tự / tiêu chuẩn then chốt" trong chú thích bộ chặn).
   if (et.GENERATION_STARTED) {
     es.on(et.GENERATION_STARTED, (type?: string, _opts?: unknown, dryRun?: boolean) => {
       if (dryRun) return;
-      if (type === 'quiet' || type === 'impersonate' || type === 'continue') return; // 非真实新回复
+      if (type === 'quiet' || type === 'impersonate' || type === 'continue') return; // Không phải câu trả lời mới thực sự
       const chat = getContext()?.chat ?? [];
       const skipLastAi = shouldSkipLastAiForGeneration(chat, type);
-      console.log('[柏宝书] GENERATION_STARTED → 自动摘要, type =', type, '| skipLastAi =', skipLastAi);
+      console.log('[Bách Bảo Thư] GENERATION_STARTED → tự động tóm tắt, type =', type, '| skipLastAi =', skipLastAi);
       void maybeSummarizePrevAi(skipLastAi);
     });
   }
 
-  // 以下三事件只让数据/UI 跟随,不主动生成摘要。
+  // Ba sự kiện dưới đây chỉ để dữ liệu / UI đi theo, không chủ động sinh tóm tắt.
   if (et.MESSAGE_SWIPED) es.on(et.MESSAGE_SWIPED, () => reactToChatMutation());
-  // 编辑消息:先把该楼正文里 <bbs_items> 旁注的改动反向同步回叶子 delta(用户手改物品),
-  // 再走通用善后(清坏链/重算/刷新)。延迟一拍确保 ST 已把编辑写回 chat[messageId].mes。
+  // Chỉnh sửa tin nhắn: trước tiên đồng bộ ngược thay đổi của chú thích <bbs_items> trong chính văn tầng đó về lại delta của lá (người dùng sửa tay vật phẩm),
+  // sau đó đi qua xử lý hậu kỳ chung (dọn chuỗi hỏng / tính lại / làm mới). Trễ một nhịp để đảm bảo ST đã ghi phần chỉnh sửa về lại chat[messageId].mes.
   if (et.MESSAGE_EDITED) {
     es.on(et.MESSAGE_EDITED, (messageId?: number) => {
       setTimeout(() => {
         if (typeof messageId === 'number') {
-          try { syncItemLogFromMessage(messageId); } catch (e) { console.warn('[柏宝书] 物品旁注反解析失败', e); }
+          try { syncItemLogFromMessage(messageId); } catch (e) { console.warn('[Bách Bảo Thư] Phân tích ngược chú thích vật phẩm thất bại', e); }
         }
         reactToChatMutation();
       }, 0);
@@ -1924,14 +1927,14 @@ export function bindEngine(): void {
   }
   if (et.MESSAGE_DELETED) es.on(et.MESSAGE_DELETED, () => reactToChatMutation(true));
 
-  // AI 新回复落定:不一定会触发摘要(自动摘要关闭 / 它不是「上一条 AI」),
-  // 但「未摘要楼层」列表必须跟上新增的 AI 楼,故无条件重算一次派生缓存(不发请求)。
+  // Câu trả lời mới của AI đã chốt: chưa chắc sẽ kích hoạt tóm tắt (tự động tóm tắt đang tắt / nó không phải là "AI ngay trước"),
+  // nhưng danh sách "Tầng chưa tóm tắt" bắt buộc phải bắt kịp tầng AI mới thêm, nên tính lại không điều kiện một lần bộ nhớ đệm dẫn xuất (không gửi yêu cầu).
   if (et.CHARACTER_MESSAGE_RENDERED) es.on(et.CHARACTER_MESSAGE_RENDERED, () => recomputeDerived());
 
   if (et.CHAT_CHANGED) {
     es.on(et.CHAT_CHANGED, () => {
-      // 记忆重载由 store 的 CHAT_CHANGED 监听负责;此处仅在其后刷新注入
-      clearRecallInjection(); // 切聊天先抹掉上个聊天的召回残留(新聊天下次生成再重算)
+      // Việc tải lại bộ nhớ do trình lắng nghe CHAT_CHANGED của store phụ trách; tại đây chỉ làm mới tiêm ở ngay sau đó
+      clearRecallInjection(); // Chuyển cuộc trò chuyện thì xóa sạch phần truy xuất còn sót của cuộc trò chuyện trước (cuộc trò chuyện mới lần tạo sau sẽ tính lại)
       setTimeout(() => {
         normalizeBacklogNotices(getContext()?.chat ?? []);
         refreshInjection();
@@ -1939,14 +1942,14 @@ export function bindEngine(): void {
     });
   }
 
-  // 总开关切换:关闭→清掉已注入的记忆槽(不动已隐藏楼层与已存摘要,符合「已有数据不处理」);
-  // 开启→把当前记忆重新注入回上下文。仅响应切换,不在首帧触发。
+  // Chuyển đổi công tắc tổng: tắt → xóa sạch các khe trí nhớ đã tiêm (không đụng các tầng đã ẩn và tóm tắt đã lưu, phù hợp với nguyên tắc "dữ liệu đã có không xử lý");
+  // bật → tiêm lại trí nhớ hiện tại về ngữ cảnh. Chỉ phản hồi việc chuyển đổi, không kích hoạt ở khung hình đầu tiên.
   watch(
     () => apiSettings.enabled,
     on => (on ? refreshInjection() : clearInjection()),
   );
 
-  // 自动摘要开关切换:时间标签(隐藏正则 + 固定提示词)随它启停,不再独立开关。
+  // Chuyển đổi công tắc tự động tóm tắt: thẻ thời gian (regex ẩn + prompt cố định) bật tắt theo nó, không còn công tắc độc lập nữa.
   watch(
     () => apiSettings.autoSummaryEnabled,
     () => {
@@ -1955,7 +1958,7 @@ export function bindEngine(): void {
     },
   );
 
-  // 仅摘要模式切换后立即刷新持久化的 ST 提示槽;正文中的既有旁注不主动清理。
+  // Sau khi chuyển đổi chế độ chỉ tóm tắt thì làm mới ngay khe gợi ý ST bền vững; các chú thích hiện có trong chính văn không chủ động dọn dẹp.
   watch(
     () => apiSettings.summaryOnlyMode,
     () => refreshInjection(),

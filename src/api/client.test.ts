@@ -7,7 +7,7 @@ import { buildRequestBody, requestCompletion } from './client';
 
 const channel: ApiChannel = {
   id: 'ch1',
-  name: '测试渠道',
+  name: 'Kênh kiểm thử',
   url: 'https://api.example.com',
   key: 'k',
   model: 'm',
@@ -19,12 +19,12 @@ const channel: ApiChannel = {
   reasoningEffort: '',
 };
 
-describe('buildRequestBody:思考强度与两条源分支', () => {
+describe('buildRequestBody: cường độ suy nghĩ và hai nhánh nguồn', () => {
   const msgs = [{ role: 'user' as const, content: 'hi' }];
   const build = (over: Partial<ApiChannel> = {}) =>
     buildRequestBody({ ...channel, ...over }, msgs, 'https://api.example.com/v1', false);
 
-  it('未设思考强度 → 走 openai 源(除新增的 tool_choice 外,请求体与加功能前一致)', () => {
+  it('Chưa đặt cường độ suy nghĩ → đi theo nguồn openai (ngoài tool_choice mới thêm, phần thân yêu cầu giống hệt trước khi thêm tính năng)', () => {
     expect(build()).toEqual({
       chat_completion_source: 'openai',
       reverse_proxy: 'https://api.example.com/v1',
@@ -40,25 +40,25 @@ describe('buildRequestBody:思考强度与两条源分支', () => {
     });
   });
 
-  it('两条源分支都带 tool_choice:none(给防截断类 fetch 拦截器的放行握手)', () => {
-    // Dramatron 等拦截器看到调用方自带 tool_choice 就不注入合成工具;
-    // 若用户真想让第三方改写,可用 excludeParams 删掉它。
+  it('Cả hai nhánh nguồn đều mang tool_choice:none (bắt tay cho phép qua đối với các bộ chặn fetch chống cắt cụt)', () => {
+    // Các bộ chặn như Dramatron thấy bên gọi có sẵn tool_choice sẽ không tiêm công cụ tổng hợp;
+    // nếu người dùng thực sự muốn để bên thứ ba viết lại, có thể dùng excludeParams xóa nó đi.
     expect(build().tool_choice).toBe('none');
     expect(build({ reasoningEffort: 'high' }).tool_choice).toBe('none');
     expect(build({ excludeParams: ['tool_choice'] }).tool_choice).toBeUndefined();
   });
 
-  it('设了思考强度 → 切 custom 源,并经 custom_include_body 透传', () => {
+  it('Đã đặt cường độ suy nghĩ → chuyển sang nguồn custom, và truyền xuyên qua custom_include_body', () => {
     const body = build({ reasoningEffort: 'high' });
     expect(body.chat_completion_source).toBe('custom');
     expect(body.custom_url).toBe('https://api.example.com/v1');
-    // 顶层不发 reasoning_effort:openai/custom 源都卡模型名白名单,
-    // 模型名恰好命中时会覆盖掉我们真正想发的值
+    // Tầng cao nhất không gửi reasoning_effort: nguồn openai/custom đều chặn theo danh sách trắng tên mô hình,
+    // khi tên mô hình tình cờ khớp sẽ ghi đè mất giá trị chúng ta thực sự muốn gửi
     expect(body.reasoning_effort).toBeUndefined();
     expect(JSON.parse(body.custom_include_body as string)).toEqual({ reasoning_effort: 'high' });
   });
 
-  it('custom 源必须靠 header 带 key:proxy_password 在该源下不被读取', () => {
+  it('Nguồn custom bắt buộc phải mang key qua header: proxy_password không được đọc dưới nguồn này', () => {
     const body = build({ reasoningEffort: 'high' });
     expect(body.proxy_password).toBeUndefined();
     expect(JSON.parse(body.custom_include_headers as string)).toEqual({
@@ -66,24 +66,24 @@ describe('buildRequestBody:思考强度与两条源分支', () => {
     });
   });
 
-  it('key 含 YAML 元字符时仍能安全注入(靠 JSON.stringify 转义)', () => {
-    // 手拼 YAML 会在这类 key 上解析失败;而 ST 的 mergeObjectWithYaml 是静默忽略,
-    // header 注入失败 → 退回读 ST 自己的 Custom 密钥 → 可能把别家的 key 发到本端点。
+  it('Khi key chứa siêu ký tự YAML vẫn có thể tiêm an toàn (nhờ JSON.stringify thoát ký tự)', () => {
+    // Tự ghép YAML thủ công sẽ phân tích thất bại trên loại key này; còn mergeObjectWithYaml của ST lại bỏ qua âm thầm,
+    // tiêm header thất bại → lùi về đọc khóa Custom của chính ST → có thể gửi nhầm key của nơi khác tới điểm cuối này.
     const nasty = 'sk-a:b#c{d}e*f "g"';
     const body = build({ reasoningEffort: 'high', key: nasty });
     expect(JSON.parse(body.custom_include_headers as string).Authorization).toBe(`Bearer ${nasty}`);
   });
 
-  it('空白字符串视同未设(不误切 custom 源)', () => {
+  it('Chuỗi khoảng trắng coi như chưa đặt (không chuyển nhầm sang nguồn custom)', () => {
     expect(build({ reasoningEffort: '   ' }).chat_completion_source).toBe('openai');
   });
 
-  it('取值不做白名单:非常规值原样透传', () => {
-    const body = build({ reasoningEffort: '我自己的档位' });
-    expect(JSON.parse(body.custom_include_body as string).reasoning_effort).toBe('我自己的档位');
+  it('Giá trị không làm danh sách trắng: giá trị phi tiêu chuẩn truyền xuyên qua nguyên trạng', () => {
+    const body = build({ reasoningEffort: 'mức của riêng tôi' });
+    expect(JSON.parse(body.custom_include_body as string).reasoning_effort).toBe('mức của riêng tôi');
   });
 
-  it('excludeParams 在两条分支下都照常生效', () => {
+  it('excludeParams vẫn có hiệu lực bình thường ở cả hai nhánh', () => {
     expect(build({ excludeParams: ['temperature'] }).temperature).toBeUndefined();
     expect(
       build({ excludeParams: ['temperature'], reasoningEffort: 'high' }).temperature,
@@ -115,7 +115,7 @@ describe('visible compression audit transport', () => {
 
     expect(await requestCompletion({ ...channel, stream }, messages)).toBe(raw);
     const body = JSON.parse(fetchMock.mock.calls[0][1]?.body as string);
-    // 已取消预填充:请求体逐字保留传入消息,不再裁掉尾 assistant
+    // Đã hủy bỏ điền sẵn: phần thân yêu cầu giữ nguyên từng chữ tin nhắn truyền vào, không còn cắt bỏ assistant ở cuối
     expect(body.messages).toEqual(messages);
     expect(body.messages[0]).toEqual(messages[0]);
     expect(body.messages).toContainEqual({ role: 'system', content: RESUMMARY_THINKING_CHECKLIST });

@@ -14,14 +14,14 @@ import type {
 export type SnapshotAt = 'before' | 'after';
 
 export interface SnapshotOptions {
-  /** ST 零基 mesid。省略时查询当前聊天末尾。 */
+  /** mesid cơ số 0 của ST. Khi lược bỏ sẽ truy vấn cuối cuộc trò chuyện hiện tại. */
   floor?: number;
-  /** before 不含目标楼；after 含目标楼。默认 after。 */
+  /** before không bao gồm tầng mục tiêu; after bao gồm tầng mục tiêu. Mặc định là after. */
   at?: SnapshotAt;
 }
 
 export interface HistoryOptions {
-  /** 仅返回 mesid < before 的剧情。省略时查询全部历史。 */
+  /** Chỉ trả về cốt truyện có mesid < before. Khi lược bỏ sẽ truy vấn toàn bộ lịch sử. */
   before?: number;
 }
 
@@ -65,7 +65,7 @@ export interface PublicSnapshot {
   scenes: MemScene[];
   npcs: MemNpc[];
   itemLog: ItemLogEntry[];
-  /** 主角及主要角色的生活小档案(三投放层:pinned 常驻 / active 时效 / archive 触发) */
+  /** Hồ sơ nhỏ đời sống của nhân vật chính và nhân vật chính yếu (ba tầng phân phối: pinned thường trú / active thời hiệu / archive kích hoạt) */
   lifeDetails: MemLifeDetail[];
 }
 

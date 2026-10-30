@@ -1,11 +1,11 @@
 <script setup lang="ts">
 /**
- * 通用确认弹窗。替代浏览器原生 confirm()——原生弹窗在 Shadow DOM 外、样式不统一。
- * 受控:用 v-model:open 控制显隐;点确定 emit confirm,点取消/遮罩/关闭 emit cancel。
+ * Hộp thoại xác nhận chung. Thay thế confirm() gốc của trình duyệt —— hộp thoại gốc nằm ngoài Shadow DOM, kiểu dáng không đồng nhất.
+ * Được điều khiển: dùng v-model:open điều khiển ẩn hiện; nhấn Xác nhận emit confirm, nhấn Hủy / lớp phủ / đóng emit cancel.
  *
- * Teleport 到 modalHost(.bbs-root 直接子级,在 .bbs-body 滚动容器之外):
- * 避开 iOS「可滚动祖先内 fixed 后代定位错乱」。宿主仍在 shadow root 内,
- * scoped 样式与 --bbs-* 变量照常生效——故 to 的是 shadow 内元素,而非 Teleport to="body"。
+ * Teleport tới modalHost (con trực tiếp của .bbs-root, nằm ngoài vùng chứa cuộn .bbs-body):
+ * Tránh lỗi "định vị hậu duệ fixed bên trong tổ tiên có thể cuộn bị lệch" trên iOS. Chủ thể vẫn nằm trong shadow root,
+ * kiểu dáng scoped và biến --bbs-* vẫn có hiệu lực như thường —— do đó đích to là phần tử trong shadow, chứ không phải Teleport to="body".
  */
 import Icon from '@/components/Icon.vue';
 import { modalHost } from '@/state/ui';
@@ -14,24 +14,24 @@ withDefaults(
   defineProps<{
     open: boolean;
     title: string;
-    /** 确定按钮文案 */
+    /** Văn bản nút xác nhận */
     confirmText?: string;
-    /** 取消按钮文案 */
+    /** Văn bản nút hủy */
     cancelText?: string;
-    /** 确定按钮风格:primary=主色,danger=危险(低调描边,hover 显红) */
+    /** Phong cách nút xác nhận: primary=màu chính, danger=nguy hiểm (viền trầm, hover hiện đỏ) */
     tone?: 'primary' | 'danger';
-    /** 确定按钮前的图标名(可选,如 trash) */
+    /** Tên biểu tượng trước nút xác nhận (tùy chọn, như trash) */
     confirmIcon?: string;
-    /** 忙碌中:禁用确定按钮并显示 busyText(供「更新中…」这类需保持弹窗的异步操作) */
+    /** Đang bận: vô hiệu hóa nút xác nhận và hiển thị busyText (dùng cho các thao tác bất đồng bộ cần giữ hộp thoại như "Đang cập nhật…") */
     busy?: boolean;
-    /** 忙碌时确定按钮文案 */
+    /** Văn bản nút xác nhận khi đang bận */
     busyText?: string;
-    /** 叠加在其它弹窗之上(更高 z-index),如渠道弹窗里再开删除确认 */
+    /** Chồng lên trên các hộp thoại khác (z-index cao hơn), ví dụ mở thêm xác nhận xóa bên trong hộp thoại kênh */
     topLayer?: boolean;
   }>(),
   {
-    confirmText: '确定',
-    cancelText: '取消',
+    confirmText: 'Xác nhận',
+    cancelText: 'Hủy',
     tone: 'primary',
     confirmIcon: '',
     busy: false,
@@ -92,7 +92,7 @@ function confirm() {
 </template>
 
 <style scoped>
-/* 确认弹窗特有样式(基础 .bbs-modal* 在 base.css 全局)。 */
+/* Kiểu dáng riêng của hộp thoại xác nhận (các .bbs-modal* cơ bản nằm ở toàn cục trong base.css). */
 .bbs-modal-mask-top {
   z-index: 10002;
 }
@@ -108,7 +108,7 @@ function confirm() {
 .bbs-modal-foot-spacer {
   flex: 1 1 auto;
 }
-/* 危险操作按钮:描边低调,hover 才显红,避免误触 */
+/* Nút thao tác nguy hiểm: viền trầm, hover mới hiện đỏ, tránh chạm nhầm */
 .bbs-btn-danger {
   color: var(--bbs-danger);
   border-color: var(--bbs-line-strong);

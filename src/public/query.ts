@@ -66,21 +66,21 @@ function activeChat(): {
 }
 
 function requireInteger(value: number, label: string): number {
-  if (!Number.isInteger(value)) throw new TypeError(`${label} 必须是整数`);
+  if (!Number.isInteger(value)) throw new TypeError(`${label} bắt buộc phải là số nguyên`);
   return value;
 }
 
 function requireFloor(floor: number, chatLength: number): number {
   const value = requireInteger(floor, 'floor');
   if (value < 0 || value >= chatLength) {
-    throw new RangeError(`floor 超出范围: ${value}，当前聊天有效范围为 0-${Math.max(0, chatLength - 1)}`);
+    throw new RangeError(`floor vượt quá phạm vi: ${value}, phạm vi hợp lệ của cuộc trò chuyện hiện tại là 0-${Math.max(0, chatLength - 1)}`);
   }
   return value;
 }
 
 function resolveAt(at: SnapshotAt | undefined): SnapshotAt {
   if (at === undefined) return 'after';
-  if (at !== 'before' && at !== 'after') throw new TypeError(`at 只能是 "before" 或 "after"`);
+  if (at !== 'before' && at !== 'after') throw new TypeError(`at chỉ có thể là "before" hoặc "after"`);
   return at;
 }
 
@@ -88,7 +88,7 @@ function resolveBefore(before: number | undefined, chatLength: number): number {
   if (before === undefined) return chatLength;
   const value = requireInteger(before, 'before');
   if (value < 0 || value > chatLength) {
-    throw new RangeError(`before 超出范围: ${value}，当前聊天有效范围为 0-${chatLength}`);
+    throw new RangeError(`before vượt quá phạm vi: ${value}, phạm vi hợp lệ của cuộc trò chuyện hiện tại là 0-${chatLength}`);
   }
   return value;
 }
@@ -356,16 +356,16 @@ export function getVar(path: string, options?: SnapshotOptions): JsonValue | und
 }
 
 function requiredQueryFloor(request: PublicQueryRequest): number {
-  if (request.floor === undefined) throw new TypeError(`${request.resource} 查询必须提供 floor`);
+  if (request.floor === undefined) throw new TypeError(`Truy vấn ${request.resource} bắt buộc phải cung cấp floor`);
   return request.floor;
 }
 
 export function query(request: PublicQueryRequest): PublicQueryResult {
-  if (!request || typeof request !== 'object') throw new TypeError('query request 必须是对象');
+  if (!request || typeof request !== 'object') throw new TypeError('query request bắt buộc phải là đối tượng');
   const snapshotOptions = { floor: request.floor, at: request.at };
   switch (request.resource) {
     case 'var':
-      if (typeof request.path !== 'string') throw new TypeError('var 查询必须提供 path');
+      if (typeof request.path !== 'string') throw new TypeError('Truy vấn var bắt buộc phải cung cấp path');
       return getVar(request.path, snapshotOptions);
     case 'vars':
       return getSnapshot(snapshotOptions).vars;
@@ -394,6 +394,6 @@ export function query(request: PublicQueryRequest): PublicQueryResult {
     case 'context':
       return getContextAtFloor({ floor: requiredQueryFloor(request) });
     default:
-      throw new TypeError(`未知 resource: ${String((request as { resource?: unknown }).resource)}`);
+      throw new TypeError(`resource không xác định: ${String((request as { resource?: unknown }).resource)}`);
   }
 }

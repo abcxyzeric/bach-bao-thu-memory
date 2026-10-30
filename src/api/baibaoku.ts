@@ -1,14 +1,14 @@
 /**
- * 柏宝库向量接口的前端纯传输层。
- * 只负责把 /api/plugins/baibaoku/v1/vec/* 请求发出去;database/scope 等业务参数由调用方传入。
- * 向量记忆的「选哪个库/哪个 scope」逻辑在 memory/vector/scope.ts,不在这里。
+ * Tầng truyền tải thuần frontend của giao diện vector Bách Bảo Khố.
+ * Chỉ phụ trách gửi các yêu cầu /api/plugins/baibaoku/v1/vec/* đi; các tham số nghiệp vụ như database/scope do bên gọi truyền vào.
+ * Logic "chọn kho nào / scope nào" của trí nhớ vector nằm ở memory/vector/scope.ts, không nằm tại đây.
  */
 
 import { getContext } from '@/st/context';
 
 const BASE_URL = '/api/plugins/baibaoku/v1';
 
-/** upsert 单条向量项(向量为 base64 编码的 float32 小端) */
+/** Một mục vector đơn lẻ khi upsert (vector là float32 little-endian được mã hóa base64) */
 export interface VecItem {
   leafId: string;
   docHash: string;
@@ -21,7 +21,7 @@ export interface VecItem {
   msgIndex?: number | null;
 }
 
-/** 摘要向量未变时，仅更新全文和故事时间。 */
+/** Khi vector tóm tắt không đổi, chỉ cập nhật toàn văn và thời gian câu chuyện. */
 export interface VecPayloadItem {
   leafId: string;
   payloadHash: string;
@@ -29,12 +29,12 @@ export interface VecPayloadItem {
   storyTime?: string | null;
 }
 
-/** search 单条命中 */
+/** Một mục trúng đơn lẻ khi search */
 export interface VecHit {
   leafId: string;
   scope: string;
   similarity: number;
-  /** 取得最佳相似度的 query 下标(来源 Q);旧后端未回传时为 -1 */
+  /** Chỉ mục query đạt độ tương đồng tốt nhất (Q nguồn); khi backend cũ không trả về thì là -1 */
   queryIndex: number;
   document: string;
   mesFull: string | null;
@@ -48,7 +48,7 @@ function headers(): Record<string, string> {
   return h ?? { 'Content-Type': 'application/json' };
 }
 
-/** 发一个 vec 动作请求;非 ok 抛错(带后端 code/message)。 */
+/** Gửi một yêu cầu hành động vec; không ok sẽ ném lỗi (kèm code/message của backend). */
 async function request<T>(action: string, body: Record<string, unknown>): Promise<T> {
   const resp = await fetch(`${BASE_URL}/${action}`, {
     method: 'POST',
@@ -60,7 +60,7 @@ async function request<T>(action: string, body: Record<string, unknown>): Promis
     | { ok: false; error?: { code?: string; message?: string } }
     | null;
   if (!resp.ok || !payload?.ok) {
-    const msg = (payload && !payload.ok && payload.error?.message) || `柏宝库请求失败:${action}`;
+    const msg = (payload && !payload.ok && payload.error?.message) || `Yêu cầu Bách Bảo Khố thất bại: ${action}`;
     const err = new Error(msg) as Error & { code?: string };
     if (payload && !payload.ok) err.code = payload.error?.code;
     throw err;
@@ -68,7 +68,7 @@ async function request<T>(action: string, body: Record<string, unknown>): Promis
   return payload.data;
 }
 
-/** 后端柏宝库是否可用(驱动就绪)。失败静默返回 false,不阻断主流程。 */
+/** Bách Bảo Khố ở backend có khả dụng hay không (trình điều khiển đã sẵn sàng). Thất bại âm thầm trả về false, không chặn quy trình chính. */
 export async function isBaiBaoKuAvailable(): Promise<boolean> {
   try {
     const resp = await fetch(`${BASE_URL}/status`, { method: 'GET' });
@@ -116,7 +116,7 @@ export function vecClearScope(database: string, scope: string): Promise<{ delete
   return request('vec/clear-scope', { database, scope });
 }
 
-/** 对账:删后端陈旧叶子,返回需(重新)embed 的 leafId。 */
+/** Đối chiếu: xóa các lá lỗi thời ở backend, trả về các leafId cần (lập lại) embed. */
 export function vecReconcile(
   database: string,
   scope: string,

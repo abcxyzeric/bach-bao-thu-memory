@@ -1,13 +1,13 @@
 /**
- * 楼内摘要面板注入(生命周期宿主)。
+ * Tiêm bảng tóm tắt trong tầng (chủ thể vòng đời).
  *
- * 每条**真实 AI 楼**(isRealAiReply,含已标番外者)在 .mes_text 后挂一个 host,
- * host 内 attachShadow + 共享 dist/index.css → 挂一个 FloorPanel.vue 实例(props: floor, tick)。
- * 卡片外观、抽屉动画、只读/编辑全在组件里;本模块只管:注入/清理、事件驱动、防重复、样式共享。
+ * Mỗi **tầng AI thực sự** (isRealAiReply, bao gồm cả những tầng đã đánh dấu ngoại truyện) sẽ gắn một host sau .mes_text,
+ * bên trong host attachShadow + chia sẻ dist/index.css → gắn một thực thể FloorPanel.vue (props: floor, tick).
+ * Ngoại hình thẻ, hoạt ảnh ngăn kéo, chỉ đọc/chỉnh sửa đều nằm trong component; module này chỉ quản lý: tiêm/dọn dẹp, dẫn động sự kiện, chống trùng lặp, chia sẻ kiểu dáng.
  *
- * chat 非 reactive:用一个共享 reactive tick,相关事件触发时 +1,组件 watch 它重读当前楼数据。
- * 样式隔离:每楼独立 shadow,共享同一份构造样式表(adoptedStyleSheets,一次解析 N 次采用),
- * 避免 Horae「每楼一份 CSS 副本」的开销;构造失败回退 <link>。
+ * chat không phải là reactive: dùng một reactive tick chia sẻ, khi sự kiện liên quan kích hoạt thì +1, component watch nó để đọc lại dữ liệu tầng hiện tại.
+ * Cô lập kiểu dáng: mỗi tầng có shadow độc lập, chia sẻ cùng một bảng kiểu dáng khởi tạo (adoptedStyleSheets, phân tích một lần áp dụng N lần),
+ * tránh chi phí "mỗi tầng một bản sao CSS" như Horae; nếu khởi tạo thất bại sẽ lùi về <link>.
  */
 import { createApp, reactive, type App } from 'vue';
 import FloorPanel from '@/components/FloorPanel.vue';
@@ -19,15 +19,15 @@ import { watch } from 'vue';
 import { versionedAssetUrl } from '@/version';
 
 const HOST_CLASS = 'bbs-fp-host';
-const MARK_ATTR = 'data-bbs-fp'; // 标在 .mes 上,防重复注入
+const MARK_ATTR = 'data-bbs-fp'; // Đánh dấu trên .mes, chống tiêm trùng lặp
 
 let enabled = false;
 let observer: MutationObserver | null = null;
 let sharedSheet: CSSStyleSheet | null = null;
 let cssHref = '';
-const bound = new Set<string>(); // 已绑定的事件名(幂等)
+const bound = new Set<string>(); // Tên các sự kiện đã gắn kết (idempotent)
 
-// 共享刷新信号:任何会改变楼层叶子/番外态的事件都 +1,组件据此重读 chat。
+// Tín hiệu làm mới chia sẻ: bất kỳ sự kiện nào làm thay đổi trạng thái lá/ngoại truyện của tầng đều +1, component dựa vào đó để đọc lại chat.
 const signal = reactive({ tick: 0 });
 function bumpTick(): void {
   signal.tick++;
@@ -39,7 +39,7 @@ interface Mounted {
 }
 const mountedByFloor = new Map<number, Mounted>();
 
-/* ============ 共享样式表 ============ */
+/* ============ Bảng kiểu dáng chia sẻ ============ */
 
 function resolveCssHref(): string {
   if (cssHref) return cssHref;
@@ -51,7 +51,7 @@ function resolveCssHref(): string {
   return cssHref;
 }
 
-/** 异步构造一份共享样式表(仅一次)。失败静默,注入时回退 <link>。 */
+/** Khởi tạo bất đồng bộ một bảng kiểu dáng chia sẻ (chỉ một lần). Thất bại im lặng, khi tiêm sẽ lùi về <link>. */
 async function ensureSharedSheet(): Promise<void> {
   if (sharedSheet || typeof CSSStyleSheet === 'undefined') return;
   const href = resolveCssHref();
@@ -62,7 +62,7 @@ async function ensureSharedSheet(): Promise<void> {
     const sheet = new CSSStyleSheet();
     sheet.replaceSync(text);
     sharedSheet = sheet;
-    // 已挂载的补采用(首屏可能先于样式表就绪注入)
+    // Những cái đã gắn kết thì áp dụng bổ sung (màn hình đầu tiên có thể được tiêm trước khi bảng kiểu dáng sẵn sàng)
     for (const host of document.querySelectorAll(`.${HOST_CLASS}`)) {
       const root = (host as HTMLElement).shadowRoot;
       if (root && !root.adoptedStyleSheets.includes(sheet)) {
@@ -70,7 +70,7 @@ async function ensureSharedSheet(): Promise<void> {
       }
     }
   } catch {
-    /* 回退 <link>,见 attachStyles */
+    /* Lùi về <link>, xem attachStyles */
   }
 }
 
@@ -91,7 +91,7 @@ function attachStyles(root: ShadowRoot): void {
   }
 }
 
-/* ============ 注入 / 清理 ============ */
+/* ============ Tiêm / Dọn dẹp ============ */
 
 function currentChatLen(): number {
   return getContext()?.chat?.length ?? 0;
@@ -103,16 +103,16 @@ function activeNow(): boolean {
   return enabled && engineActiveHere();
 }
 
-/** 给某楼注入 FloorPanel(幂等)。 */
+/** Tiêm FloorPanel cho một tầng nào đó (idempotent). */
 function injectFloor(idx: number): void {
   const chat = getContext()?.chat ?? [];
   if (!isRealAiReply(chat[idx])) return;
 
   const el = mesEl(idx);
   if (!el) return;
-  if (el.getAttribute(MARK_ATTR) === '1' && mountedByFloor.has(idx)) return; // 已挂
+  if (el.getAttribute(MARK_ATTR) === '1' && mountedByFloor.has(idx)) return; // Đã gắn
 
-  // 移除该楼可能残留的旧 host(mesid 复用/重渲)
+  // Gỡ bỏ host cũ có thể còn sót lại ở tầng đó (tái sử dụng mesid / kết xuất lại)
   el.querySelectorAll(`.${HOST_CLASS}`).forEach(n => n.remove());
 
   const host = document.createElement('div');
@@ -124,8 +124,8 @@ function injectFloor(idx: number): void {
   const container = document.createElement('div');
   root.appendChild(container);
 
-  // 传 reactive signal 对象本身(引用稳定):组件读 sig.tick 即可响应式追踪。
-  // createApp 的 props 是静态快照,传原始值(number)不会更新,故必须传对象。
+  // Truyền bản thân đối tượng reactive signal (tham chiếu ổn định): component đọc sig.tick là có thể theo dõi phản ứng.
+  // props của createApp là ảnh chụp tĩnh, truyền giá trị nguyên thủy (number) sẽ không cập nhật, nên bắt buộc phải truyền đối tượng.
   const app = createApp(FloorPanel, { floor: idx, sig: signal });
   app.mount(container);
 
@@ -147,7 +147,7 @@ function removeFloor(idx: number): void {
   mesEl(idx)?.removeAttribute(MARK_ATTR);
 }
 
-/** 全量重扫:清全部再逐楼补挂。切聊天/大改动用。 */
+/** Quét lại toàn lượng: xóa sạch toàn bộ rồi gắn bù từng tầng. Dùng khi chuyển trò chuyện / thay đổi lớn. */
 function rebuildAll(): void {
   for (const idx of [...mountedByFloor.keys()]) removeFloor(idx);
   document.querySelectorAll(`.${HOST_CLASS}`).forEach(n => n.remove());
@@ -158,7 +158,7 @@ function rebuildAll(): void {
   for (let i = 0; i < len; i++) if (isRealAiReply(chat[i])) injectFloor(i);
 }
 
-/** 补挂 DOM 里已有 .mes 但尚未挂载的 AI 楼(首屏、批量加载)。 */
+/** Gắn bù các tầng AI đã có .mes trong DOM nhưng chưa được gắn kết (màn hình đầu, tải hàng loạt). */
 function scanMissing(): void {
   if (!activeNow()) return;
   const chat = getContext()?.chat ?? [];
@@ -168,15 +168,15 @@ function scanMissing(): void {
   });
 }
 
-/* ============ 事件 ============ */
+/* ============ Sự kiện ============ */
 
 function onRendered(idx: unknown): void {
   if (!activeNow()) return;
   const i = Number(idx);
   setTimeout(() => {
     if (Number.isFinite(i)) injectFloor(i);
-    scanMissing(); // 兜底补漏
-    bumpTick(); // 摘要可能刚生成,通知已挂组件重读
+    scanMissing(); // Quét bù dự phòng
+    bumpTick(); // Tóm tắt có thể vừa được tạo, thông báo cho các component đã gắn đọc lại
   }, 50);
 }
 
@@ -185,7 +185,7 @@ function onSwiped(idx: unknown): void {
   const i = Number(idx);
   setTimeout(() => {
     if (!Number.isFinite(i)) return;
-    // 翻页:叶子可能失效/换页,组件重读即可(host 不必重建)
+    // Lật trang (swipe): lá có thể mất hiệu lực / đổi trang, component đọc lại là được (host không cần dựng lại)
     if (!mountedByFloor.has(i)) injectFloor(i);
     bumpTick();
   }, 50);
@@ -211,7 +211,7 @@ function bindEvents(): void {
   if (et.MORE_MESSAGES_LOADED) on(et.MORE_MESSAGES_LOADED, () => activeNow() && setTimeout(scanMissing, 50));
 }
 
-/** 盯聊天区:ST 重渲消息时补挂被冲掉的 host。防抖避免流式生成期高频触发。 */
+/** Theo dõi vùng trò chuyện: khi ST kết xuất lại tin nhắn thì gắn bù các host bị cuốn trôi. Chống rung (debounce) để tránh kích hoạt tần suất cao trong lúc tạo luồng (stream). */
 let obTimer: ReturnType<typeof setTimeout> | null = null;
 function startObserver(): void {
   if (observer) return;
@@ -223,7 +223,7 @@ function startObserver(): void {
       obTimer = null;
       if (!activeNow()) return;
       scanMissing();
-      // 校正:host 已从 DOM 脱离(被 ST 重建)但仍在表里 → 卸掉,清标记待补挂
+      // Hiệu chỉnh: host đã tách khỏi DOM (bị ST dựng lại) nhưng vẫn còn trong bảng → gỡ ra, xóa đánh dấu chờ gắn bù
       for (const [idx, m] of mountedByFloor) {
         if (!m.host.isConnected) {
           m.app.unmount();
@@ -245,14 +245,14 @@ function stopObserver(): void {
   }
 }
 
-/* ============ 对外 ============ */
+/* ============ Đối ngoại ============ */
 
-/** 按开关同步楼内面板的有无(幂等)。 */
+/** Đồng bộ sự tồn tại của bảng trong tầng theo công tắc (idempotent). */
 export function syncFloorPanel(on: boolean): void {
   enabled = on;
   if (!on) {
     stopObserver();
-    rebuildAll(); // activeNow=false → 只清不建
+    rebuildAll(); // activeNow=false → chỉ dọn dẹp không tạo mới
     return;
   }
   void ensureSharedSheet();
@@ -261,7 +261,7 @@ export function syncFloorPanel(on: boolean): void {
   rebuildAll();
 }
 
-/** 启动链调用一次:开关跟随(设置项 apiSettings.ui.showFloorPanel)。主题由组件内 ui.theme 响应式绑定。 */
+/** Chuỗi khởi động gọi một lần: đi theo công tắc (mục cài đặt apiSettings.ui.showFloorPanel). Giao diện được gắn kết phản ứng bởi ui.theme bên trong component. */
 export function bindFloorPanel(): void {
   watch(
     () => apiSettings.ui.showFloorPanel,

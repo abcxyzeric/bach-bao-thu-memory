@@ -3,8 +3,8 @@ import { openBook } from '@/state/ui';
 const MENU_ITEM_ID = 'bbs-menu-item';
 
 /**
- * 往 ST 的 #extensionsMenu(魔杖菜单)末尾注入"柏宝书"入口。
- * 菜单是懒加载的,用轮询等它出现;注入一次即可。
+ * Tiêm mục vào "Bách Bảo Thư" vào cuối #extensionsMenu (menu đũa phép) của ST.
+ * Menu được tải lười (lazy load), dùng polling đợi nó xuất hiện; chỉ cần tiêm một lần là đủ.
  */
 export function injectMenuButton() {
   const tryInject = () => {
@@ -14,9 +14,9 @@ export function injectMenuButton() {
 
     const $item = $(`
       <div class="extension_container interactable" tabindex="0">
-        <a id="${MENU_ITEM_ID}" class="list-group-item" href="#" title="柏宝书">
+        <a id="${MENU_ITEM_ID}" class="list-group-item" href="#" title="Bách Bảo Thư">
           <i class="fa-solid fa-book-bookmark"></i>
-          <span>柏宝书</span>
+          <span>Bách Bảo Thư</span>
         </a>
       </div>
     `);
@@ -24,7 +24,7 @@ export function injectMenuButton() {
     $item.on('click', (e: { preventDefault: () => void }) => {
       e.preventDefault();
       openBook();
-      // 点击后收起魔杖菜单,贴合原生行为
+      // Sau khi nhấn thì thu gọn menu đũa phép, bám sát hành vi gốc
       $('#extensionsMenu').hide();
     });
 

@@ -5,9 +5,9 @@ type LifeDetailAdd = NonNullable<LifeDetailsDelta['add']>[number];
 type LifeDetailUpdate = NonNullable<LifeDetailsDelta['update']>[number];
 
 export interface MergeLifeDetailsOptions {
-  /** 当前目标叶子 id，用于识别该叶子 add 数组生成的稳定 id。 */
+  /** ID lá mục tiêu hiện tại, dùng để nhận diện id ổn định sinh ra từ mảng add của lá đó. */
   leafId?: string;
-  /** 重放到目标叶子之前的生活档案，用于恢复更早叶子中被本叶删除的同文案条目。 */
+  /** Hồ sơ đời sống phát lại đến trước lá mục tiêu, dùng để khôi phục mục có cùng văn bản ở lá sớm hơn từng bị lá này xóa. */
   existingDetails?: MemLifeDetail[];
 }
 
@@ -15,19 +15,19 @@ export function normalizeLifeDetailText(text: string): string {
   return text.trim().toLowerCase().replace(/[，。！？!?、；;：:\s]+$/u, '');
 }
 
-/** 旧档案原本仅记录主角;缺主语时沿用旧语义,不从正文猜角色。 */
+/** Hồ sơ cũ vốn chỉ ghi nhận nhân vật chính; khi thiếu chủ ngữ thì kế thừa ngữ nghĩa cũ, không đoán nhân vật từ chính văn. */
 export function lifeDetailSubject(detail: { subject?: string }): string {
   return detail.subject?.trim() || 'user';
 }
 
-/** 同一句偏好属于不同人物时必须各自保留。 */
+/** Cùng một câu sở thích thuộc về những nhân vật khác nhau thì bắt buộc phải giữ lại riêng cho từng người. */
 export function sameLifeDetail(a: { subject?: string; text: string }, b: { subject?: string; text: string }): boolean {
   return lifeDetailSubject(a).toLowerCase() === lifeDetailSubject(b).toLowerCase()
     && normalizeLifeDetailText(a.text) === normalizeLifeDetailText(b.text);
 }
 
-/** 页面/副 API/主模型注入共用:每一条都明确标出是谁的,不依赖段落标题猜主语。 */
-export function fmtLifeDetail(detail: { subject?: string; text: string }, userName = '主角'): string {
+/** Giao diện trang / API phụ / tiêm mô hình chính dùng chung: mỗi một mục đều ghi rõ là của ai, không phụ thuộc tiêu đề đoạn để đoán chủ ngữ. */
+export function fmtLifeDetail(detail: { subject?: string; text: string }, userName = 'Nhân vật chính'): string {
   const subject = lifeDetailSubject(detail);
   return `${subject === 'user' ? userName : subject}：${detail.text}`;
 }
@@ -78,14 +78,14 @@ function reviveRemovedDetail(
 
   const sameLeafIndex = sameLeafAddIndex(id, options.leafId);
   if (sameLeafIndex !== null && out.add?.[sameLeafIndex]) {
-    // 原条目由本叶 add 产生：原位替换，稳定 id 与后续 add 序号都不变。
+    // Mục gốc do add của lá này tạo ra: thay thế tại chỗ, id ổn định và số thứ tự add phía sau đều không đổi.
     out.add[sameLeafIndex] = add;
     if (out.update) {
       out.update = out.update.filter(existing => existing.id !== id);
       if (!out.update.length) delete out.update;
     }
   } else {
-    // 原条目来自更早叶子：撤销删除，并用完整补丁恢复成一次全新的 active 手动记录。
+    // Mục gốc đến từ lá sớm hơn: hoàn tác việc xóa, và dùng bản vá đầy đủ khôi phục thành một bản ghi thủ công active hoàn toàn mới.
     upsertUpdate(out, {
       id,
       text: add.text,
@@ -100,8 +100,8 @@ function reviveRemovedDetail(
 }
 
 /**
- * 把一段生活小档案手动操作合并进叶子 delta。
- * update 按 id 压成 last-write-wins；add 不做裁剪，因为条目稳定 id 依赖 add 数组序号。
+ * Gộp một đoạn thao tác thủ công hồ sơ nhỏ đời sống vào delta của lá.
+ * update nén theo id thành last-write-wins; add không cắt gọt, vì id ổn định của mục phụ thuộc số thứ tự mảng add.
  */
 export function mergeLifeDetailsOp(
   target: StoredDelta,
@@ -126,7 +126,7 @@ export function mergeLifeDetailsOp(
   for (const update of incoming.update ?? []) {
     upsertUpdate(out, update);
 
-    // 手动切换层级必须覆盖同一叶子里 AI 先前给出的 archive 指令。
+    // Chuyển đổi tầng thủ công bắt buộc phải ghi đè chỉ thị archive mà AI đưa ra trước đó trong cùng một lá.
     if (update.tier && out.archive) {
       out.archive = out.archive.filter(id => id !== update.id);
       if (!out.archive.length) delete out.archive;

@@ -1,6 +1,6 @@
 /**
- * 轻量 toast 封装。ST 全局挂着 toastr(jQuery 插件),直接用它弹非模态提示。
- * 拿不到时静默退回 console.log,绝不抛错(提示失败不应影响主流程)。
+ * Lớp bọc toast gọn nhẹ. Toàn cục ST có gắn toastr (plugin jQuery), dùng trực tiếp nó để bật thông báo không chặn (non-modal).
+ * Khi không lấy được thì âm thầm lùi về console.log, tuyệt đối không ném lỗi (thông báo thất bại không nên ảnh hưởng quy trình chính).
  */
 
 type ToastType = 'info' | 'success' | 'warning' | 'error';
@@ -16,11 +16,11 @@ export function toast(message: string, type: ToastType = 'info'): void {
   try {
     const t = (window as unknown as { toastr?: Toastr }).toastr;
     if (t && typeof t[type] === 'function') {
-      t[type](message, '柏宝书');
+      t[type](message, 'Bách Bảo Thư');
       return;
     }
   } catch {
-    /* toastr 不可用 → 退回日志 */
+    /* toastr không khả dụng → lùi về ghi log */
   }
-  console.log('[柏宝书]', message);
+  console.log('[Bách Bảo Thư]', message);
 }

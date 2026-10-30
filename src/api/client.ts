@@ -2,11 +2,10 @@ import { getContext } from '@/st/context';
 import type { ApiChannel } from './settings';
 
 /**
- * 通过 SillyTavern 的服务端代理调用任意 OpenAI 兼容端点。
+ * Gọi điểm cuối tương thích OpenAI bất kỳ thông qua proxy máy chủ của SillyTavern.
  *
- * 关键:以 chat_completion_source='openai' + reverse_proxy(base url)+ proxy_password(key)
- * 走 /api/backends/chat-completions/generate。请求由 ST 服务端转发,
- * 因此没有浏览器 CORS 问题,也无需把密钥存进 ST 的 secrets。
+ * Then chốt: đi qua /api/backends/chat-completions/generate bằng chat_completion_source='openai' + reverse_proxy(base url) + proxy_password(key).
+ * Yêu cầu do máy chủ ST chuyển tiếp, do đó không gặp vấn đề CORS trên trình duyệt, cũng không cần lưu khóa vào secrets của ST.
  */
 
 export const GENERATE_URL = '/api/backends/chat-completions/generate';
@@ -25,10 +24,10 @@ export class ApiError extends Error {
 }
 
 /**
- * 规范化 OpenAI 兼容 base url:
- * - 用户填完整 /chat/completions 时只去掉端点后缀;
- * - 纯域名自动补 /v1;
- * - 已带路径的地址原样保留,避免破坏 /v2/coding 等自定义路由。
+ * Chuẩn hóa base url tương thích OpenAI:
+ * - Khi người dùng điền đầy đủ /chat/completions thì chỉ bỏ hậu tố điểm cuối;
+ * - Tên miền thuần tự động bù thêm /v1;
+ * - Địa chỉ đã có đường dẫn thì giữ nguyên, tránh làm hỏng các định tuyến tùy chỉnh như /v2/coding.
  */
 function normalizeUrl(url: string): string {
   const u = url.trim().replace(/\/+$/, '');
@@ -38,7 +37,7 @@ function normalizeUrl(url: string): string {
   return u;
 }
 
-/** 测试渠道时备用的 /v1 形式。只在首个地址明确返回 404/405 时才会尝试。 */
+/** Dạng /v1 dự phòng khi kiểm tra kênh. Chỉ thử khi địa chỉ đầu tiên trả về rõ ràng 404/405. */
 function alternateUrl(url: string): string {
   return /\/v1$/i.test(url) ? url.replace(/\/v1$/i, '') : `${url}/v1`;
 }
@@ -54,8 +53,8 @@ function validTimeoutSec(value: unknown): number {
 }
 
 /**
- * 给完整请求生命周期套超时:不仅覆盖 fetch 建连,也覆盖非流式 JSON 读取和流式 SSE 读取。
- * 外部 signal 仍可提前取消;只有本定时器触发时才转换成明确的超时报错。
+ * Bọc giới hạn thời gian (timeout) cho toàn bộ vòng đời yêu cầu: không chỉ bao phủ việc thiết lập kết nối fetch, mà còn bao phủ cả đọc JSON phi luồng và đọc SSE luồng.
+ * Signal bên ngoài vẫn có thể hủy sớm; chỉ khi bộ hẹn giờ này kích hoạt mới chuyển thành thông báo lỗi quá thời gian rõ ràng.
  */
 async function withTimeout<T>(
   timeoutSec: number,
@@ -77,7 +76,7 @@ async function withTimeout<T>(
   try {
     return await task(ctrl.signal);
   } catch (e) {
-    if (timedOut) throw new ApiError(`${label}超时(>${timeoutSec}秒)`);
+    if (timedOut) throw new ApiError(`${label} quá thời gian (>${timeoutSec} giây)`);
     throw e;
   } finally {
     clearTimeout(timer);
@@ -86,7 +85,7 @@ async function withTimeout<T>(
 }
 
 /**
- * 发起一次补全请求,返回文本内容。
+ * Phát đi một yêu cầu hoàn thành (completion), trả về nội dung văn bản.
  */
 export async function requestCompletion(
   channel: ApiChannel,
@@ -97,40 +96,40 @@ export async function requestCompletion(
 }
 
 /**
- * 构造发给 ST 代理的请求体(纯函数,便于测两条分支的产物)。
+ * Xây dựng thân yêu cầu gửi cho proxy ST (hàm thuần, tiện kiểm thử sản phẩm của hai nhánh).
  *
- * 两条分支,按渠道有没有设思考强度二选一:
+ * Hai nhánh, chọn một trong hai tùy theo kênh có đặt cường độ suy nghĩ hay không:
  *
- * ① 未设(reasoningEffort 为空 = auto):走 `chat_completion_source: 'openai'`,
- *    与加本功能之前**逐字节一致**——存量用户零变化。
+ * ① Chưa đặt (reasoningEffort trống = auto): đi qua `chat_completion_source: 'openai'`,
+ *    **giống hệt từng byte** so với trước khi thêm tính năng này —— người dùng hiện tại không có bất kỳ thay đổi nào.
  *
- * ② 已设:走 `'custom'`。因为 ST 代理对 openai 源的 reasoning_effort 卡**模型名白名单**
- *    (src/constants.js 的 OPENAI_REASONING_EFFORT_MODELS,精确匹配 o1/o3/gpt-5 那批),
- *    模型名对不上就静默丢弃、还照样返回 200(实测确认),用户设了却无效且看不出来。
- *    custom 源的 custom_include_body 由服务端 mergeObjectWithYaml 直接并进上游请求体,
- *    不过任何白名单,任意字段/嵌套对象都能透传。
+ * ② Đã đặt: đi qua `'custom'`. Bởi vì proxy ST đối với reasoning_effort của nguồn openai có chặn **danh sách trắng tên mô hình**
+ *    (OPENAI_REASONING_EFFORT_MODELS trong src/constants.js, chỉ khớp chính xác nhóm o1/o3/gpt-5),
+ *    tên mô hình không khớp là âm thầm vứt bỏ mà vẫn trả về 200 như thường (đã kiểm chứng thực tế), người dùng đặt nhưng không có tác dụng mà cũng không nhìn ra.
+ *    custom_include_body của nguồn custom được máy chủ dùng mergeObjectWithYaml gộp thẳng vào thân yêu cầu gửi lên nguồn cấp trên,
+ *    không qua bất kỳ danh sách trắng nào, mọi trường / đối tượng lồng nhau đều truyền thẳng qua được.
  *
- * 两条路都仍然走 ST 服务端转发(同一个 /generate 端点),没有浏览器直连,
- * 因此 CORS、密钥不落浏览器、SSE 转发等性质完全不变。
+ * Cả hai nhánh đều vẫn đi qua chuyển tiếp máy chủ ST (cùng một điểm cuối /generate), không kết nối thẳng từ trình duyệt,
+ * do đó các tính chất như CORS, khóa không lưu ở trình duyệt, chuyển tiếp SSE v.v. hoàn toàn không đổi.
  *
- * custom 源的两个坑(都已规避):
- * - 它**不读 proxy_password**,只读 ST 自己存的 Custom 密钥,所以 key 必须靠
- *   custom_include_headers 注入 Authorization(服务端 `...headers` 排在默认
- *   Authorization 之后,覆盖成立);
- * - custom_include_* 是 YAML 字符串且**解析失败会静默忽略**(util.js 的 catch 是空的)。
- *   key 里带 `:` `#` `{` 或以 `*` 开头都会让 YAML 解析炸 → header 没注入 →
- *   退回用 ST 的 Custom 密钥,可能把用户另一个服务商的 key 发到本端点。
- *   故一律用 JSON.stringify 生成(YAML 是 JSON 的超集),转义交给它,不手拼。
+ * Hai cái bẫy của nguồn custom (đều đã né tránh):
+ * - Nó **không đọc proxy_password**, chỉ đọc khóa Custom do ST tự lưu, vì vậy key bắt buộc phải dựa vào
+ *   custom_include_headers để tiêm Authorization (`...headers` ở máy chủ xếp sau Authorization
+ *   mặc định, việc ghi đè có hiệu lực);
+ * - custom_include_* là chuỗi YAML và **nếu phân tích thất bại sẽ bị âm thầm bỏ qua** (khối catch trong util.js để trống).
+ *   Trong key có chứa `:` `#` `{` hoặc bắt đầu bằng `*` đều sẽ làm nổ phân tích YAML → header không được tiêm →
+ *   lùi về dùng khóa Custom của ST, có thể gửi nhầm key của nhà cung cấp khác của người dùng tới điểm cuối này.
+ *   Do đó nhất loạt dùng JSON.stringify để sinh ra (YAML là tập cha của JSON), giao việc thoát ký tự cho nó, không ghép tay.
  *
- * 另:请求体固定带 `tool_choice: 'none'`,这是给第三方 fetch 拦截器的声明式放行握手。
- * 酒馆助手预设脚本(如 Kemini Dramatron 面板)可能 monkey-patch `window.parent.fetch`,
- * 拦截所有 `/api/backends/…/generate` 请求并塞入合成工具 + 控制消息,把摘要劫持成
- * 工具调用(实测拖慢数倍)。这类拦截器普遍支持「调用方自带 tool_choice 就放行」
- * (Dramatron 的 callerControlsTools 对 'none' 明确 bypass),所以我们主动声明不用工具。
- * 对上游无影响:ST 服务端只在 tools 为非空数组时才转发 tool_choice
- * (src/endpoints/backends/chat-completions.js),本函数从不发 tools,该字段到不了服务商。
+ * Ngoài ra: thân yêu cầu cố định mang `tool_choice: 'none'`, đây là cái bắt tay khai báo cho qua dành cho bộ chặn fetch của bên thứ ba.
+ * Các kịch bản thiết lập sẵn của Tavern Helper (như bảng Kemini Dramatron) có thể monkey-patch `window.parent.fetch`,
+ * chặn mọi yêu cầu `/api/backends/…/generate` và nhét công cụ tổng hợp + tin nhắn điều khiển vào, chiếm quyền bản tóm tắt thành
+ * lời gọi công cụ (thực tế làm chậm đi gấp nhiều lần). Các bộ chặn loại này nhìn chung đều hỗ trợ nguyên tắc "bên gọi tự mang tool_choice thì cho qua"
+ * (callerControlsTools của Dramatron bypass rõ ràng đối với 'none'), vì vậy chúng ta chủ động khai báo không dùng công cụ.
+ * Không ảnh hưởng tới nguồn cấp trên: máy chủ ST chỉ chuyển tiếp tool_choice khi tools là mảng khác rỗng
+ * (src/endpoints/backends/chat-completions.js), hàm này không bao giờ gửi tools, trường đó không tới được nhà cung cấp dịch vụ.
  *
- * (与柏宝绘 src/api/client.ts 的同名函数同源,行为保持一致。)
+ * (Cùng nguồn với hàm cùng tên trong src/api/client.ts của Bách Bảo Hội, hành vi giữ nhất quán.)
  */
 export function buildRequestBody(
   channel: ApiChannel,
@@ -145,9 +144,9 @@ export function buildRequestBody(
     temperature: channel.temperature ?? 1.0,
     max_tokens: channel.maxTokens ?? 65535,
     stream,
-    // 不用工具:见函数头注释,防第三方 fetch 拦截器把摘要改写成工具调用
+    // Không dùng công cụ: xem chú thích đầu hàm, chống bộ chặn fetch bên thứ ba viết lại tóm tắt thành lời gọi công cụ
     tool_choice: 'none',
-    // 静默:不影响主对话状态
+    // Im lặng: không ảnh hưởng trạng thái đối thoại chính
     presence_penalty: 0,
     frequency_penalty: 0,
   };
@@ -167,9 +166,9 @@ export function buildRequestBody(
         ...common,
       };
 
-  // 排除参数:把用户指定的字段从 body 删掉,规避不接受这些参数的兼容端点报错。
-  // 注:固定路由字段(chat_completion_source/reverse_proxy 等)不应被删,但全凭用户填写,
-  // 这里只做忠实剔除——文案会提示填采样参数名(temperature/max_tokens/...)。
+  // Tham số loại trừ: xóa các trường do người dùng chỉ định khỏi body, tránh lỗi ở các điểm cuối tương thích không chấp nhận những tham số này.
+  // Lưu ý: các trường định tuyến cố định (chat_completion_source/reverse_proxy v.v.) không nên bị xóa, nhưng hoàn toàn tùy thuộc người dùng điền,
+  // ở đây chỉ loại bỏ trung thực —— văn bản giao diện sẽ nhắc điền tên tham số lấy mẫu (temperature/max_tokens/...).
   for (const p of channel.excludeParams ?? []) {
     const key = p.trim();
     if (key) delete body[key];
@@ -184,14 +183,14 @@ async function requestCompletionAtUrl(
   opts: RequestOptions = {},
 ): Promise<string> {
   const ctx = getContext();
-  if (!ctx) throw new ApiError('SillyTavern 上下文不可用');
-  if (!channel.url || !channel.model) throw new ApiError('副 API 渠道未配置完整(缺 url 或 model)');
+  if (!ctx) throw new ApiError('Ngữ cảnh SillyTavern không khả dụng');
+  if (!channel.url || !channel.model) throw new ApiError('Kênh API phụ chưa được cấu hình đầy đủ (thiếu url hoặc model)');
 
   const stream = channel.stream ?? false;
   const body = buildRequestBody(channel, messages, reverseProxy, stream);
 
   const timeoutSec = validTimeoutSec(channel.timeoutSec);
-  return withTimeout(timeoutSec, opts.signal, '副 API 请求', async signal => {
+  return withTimeout(timeoutSec, opts.signal, 'Yêu cầu API phụ', async signal => {
     const resp = await fetch(GENERATE_URL, {
       method: 'POST',
       headers: ctx.getRequestHeaders(),
@@ -201,35 +200,35 @@ async function requestCompletionAtUrl(
 
     if (!resp.ok) {
       const text = await resp.text().catch(() => '');
-      throw new ApiError(`副 API 请求失败 (${resp.status}): ${text.slice(0, 300)}`, resp.status);
+      throw new ApiError(`Yêu cầu API phụ thất bại (${resp.status}): ${text.slice(0, 300)}`, resp.status);
     }
 
-    // 流式:按 SSE 增量拼接;非流式:直接解析 JSON。
+    // Luồng (stream): ghép tăng thêm theo SSE; Phi luồng: phân tích trực tiếp JSON.
     if (stream) {
       const content = await readSseContent(resp);
-      if (!content) throw new ApiError('副 API 返回空内容');
+      if (!content) throw new ApiError('API phụ trả về nội dung rỗng');
       return content;
     }
 
     const data = await resp.json();
     if (data?.error) {
-      throw new ApiError(data.error.message || '副 API 返回错误');
+      throw new ApiError(data.error.message || 'API phụ trả về lỗi');
     }
 
     const content = extractContent(data);
-    if (!content) throw new ApiError('副 API 返回空内容');
+    if (!content) throw new ApiError('API phụ trả về nội dung rỗng');
     return content;
   });
 }
 
 /**
- * 读取 SSE 流(text/event-stream),拼接 delta.content。
- * ST 的 generate 端点在 stream=true 时透传上游 SSE:每行 `data: {json}`,以 `data: [DONE]` 结束。
+ * Đọc luồng SSE (text/event-stream), ghép delta.content.
+ * Điểm cuối generate của ST khi stream=true sẽ truyền thẳng SSE của nguồn cấp trên: mỗi dòng `data: {json}`, kết thúc bằng `data: [DONE]`.
  */
 async function readSseContent(resp: Response): Promise<string> {
   const reader = resp.body?.getReader();
   if (!reader) {
-    // 无法流式读取(理论上不会):退回当作整体 JSON 处理
+    // Không thể đọc dạng luồng (về lý thuyết sẽ không xảy ra): lùi về xử lý như JSON tổng thể
     const data = await resp.json().catch(() => null);
     return data ? extractContent(data) : '';
   }
@@ -240,7 +239,7 @@ async function readSseContent(resp: Response): Promise<string> {
     const { done, value } = await reader.read();
     if (done) break;
     buf += decoder.decode(value, { stream: true });
-    // 按行解析,保留最后一段不完整的行到下次
+    // Phân tích theo dòng, giữ lại đoạn dòng chưa hoàn chỉnh cuối cùng cho lần sau
     const lines = buf.split('\n');
     buf = lines.pop() ?? '';
     for (const line of lines) {
@@ -250,19 +249,19 @@ async function readSseContent(resp: Response): Promise<string> {
       if (payload === '[DONE]') continue;
       try {
         const json = JSON.parse(payload);
-        if (json?.error) throw new ApiError(json.error.message || '副 API 返回错误');
+        if (json?.error) throw new ApiError(json.error.message || 'API phụ trả về lỗi');
         const delta = json?.choices?.[0]?.delta?.content ?? json?.choices?.[0]?.message?.content ?? json?.choices?.[0]?.text;
         if (typeof delta === 'string') out += delta;
       } catch (e) {
         if (e instanceof ApiError) throw e;
-        // 单行解析失败忽略(可能是注释行/心跳)
+        // Phân tích một dòng đơn lẻ thất bại thì bỏ qua (có thể là dòng chú thích / nhịp tim)
       }
     }
   }
   return out.trim();
 }
 
-/** 从标准 OpenAI 响应体提取文本 */
+/** Trích xuất văn bản từ thân phản hồi OpenAI chuẩn */
 function extractContent(data: any): string {
   return (
     data?.choices?.[0]?.message?.content ??
@@ -272,51 +271,51 @@ function extractContent(data: any): string {
   ).trim();
 }
 
-/* ============ 跟随主 API(主界面当前在用的 API 设置) ============ */
+/* ============ Đi theo API chính (cài đặt API đang dùng trên giao diện chính hiện tại) ============ */
 
-/** 摘要/总结跟随主 API 时的响应上限:够装下思维链 + JSON,避免被主 API 默认 max tokens 截断。 */
+/** Trần phản hồi khi tóm tắt / tổng kết đi theo API chính: đủ để chứa chuỗi suy nghĩ + JSON, tránh bị max tokens mặc định của API chính cắt cụt. */
 const MAIN_API_RESPONSE_LENGTH = 65535;
 
 /**
- * 是否具备「跟随主 API」的条件:ST 暴露了 generateRaw(稳定 API)即可。
- * 不再依赖连接管理/连接档——直接借用主界面当前正在用的 API。
+ * Có đủ điều kiện để "Đi theo API chính" hay không: chỉ cần ST bộc lộ generateRaw (API ổn định) là được.
+ * Không còn phụ thuộc quản lý kết nối / hồ sơ kết nối —— mượn trực tiếp API đang dùng trên giao diện chính hiện tại.
  */
 export function mainApiAvailable(): boolean {
   return typeof getContext()?.generateRaw === 'function';
 }
 
 /**
- * 用「当前主 API」(主界面正在用的聊天补全/文本补全设置)发一次补全。
- * 走 ST 的 generateRaw:只发我们给的这几条消息,不带聊天历史/角色卡;无需连接档。
- * quiet 类型内部强制非流式,返回清洗后的整段文本;失败抛 ApiError。
+ * Dùng "API chính hiện tại" (cài đặt hoàn thành trò chuyện / hoàn thành văn bản đang dùng trên giao diện chính) để gửi một lần hoàn thành.
+ * Đi qua generateRaw của ST: chỉ gửi mấy tin nhắn chúng ta đưa, không mang lịch sử trò chuyện / thẻ nhân vật; không cần hồ sơ kết nối.
+ * Loại quiet bên trong cưỡng chế phi luồng, trả về toàn bộ đoạn văn bản sau khi làm sạch; thất bại ném ApiError.
  *
- * ⚠️ 这条路径的请求体由 ST 构造,带不上 `tool_choice: 'none'`,第三方 fetch 拦截器
- * (如防截断脚本)仍可能改写它。摘要/重摘要尽量指派副 API 渠道,走 buildRequestBody 那条路。
+ * ⚠️ Thân yêu cầu của đường dẫn này do ST xây dựng, không mang theo được `tool_choice: 'none'`, bộ chặn fetch của bên thứ ba
+ * (như kịch bản chống cắt cụt) vẫn có thể viết lại nó. Tóm tắt / tóm tắt lại nên cố gắng chỉ định kênh API phụ để đi theo nhánh buildRequestBody.
  */
 export async function requestViaMainApi(messages: ChatMsg[], _opts: RequestOptions = {}): Promise<string> {
   const ctx = getContext();
   if (typeof ctx?.generateRaw !== 'function') {
-    throw new ApiError('当前 ST 版本不支持 generateRaw,无法跟随主 API');
+    throw new ApiError('Phiên bản ST hiện tại không hỗ trợ generateRaw, không thể đi theo API chính');
   }
   const content = (await ctx.generateRaw({ prompt: messages, responseLength: MAIN_API_RESPONSE_LENGTH }))?.trim();
-  if (!content) throw new ApiError('主 API 返回空内容');
+  if (!content) throw new ApiError('API chính trả về nội dung rỗng');
   return content;
 }
 
-/** 连通性测试:发一条极短请求 */
+/** Kiểm tra kết nối: gửi một yêu cầu cực ngắn */
 export async function testChannel(channel: ApiChannel): Promise<{ ok: boolean; message: string }> {
   const primaryUrl = normalizeUrl(channel.url);
   try {
     const reply = await requestCompletionAtUrl(
       channel,
-      [{ role: 'user', content: '回复"ok"两个字符即可。' }],
+      [{ role: 'user', content: 'Chỉ cần trả lời hai ký tự "ok".' }],
       primaryUrl,
     );
     const changed = channel.url.trim().replace(/\/+$/, '') !== primaryUrl;
     if (changed) channel.url = primaryUrl;
     return {
       ok: true,
-      message: `连通正常${changed ? `,已采用:${primaryUrl}` : ''},返回:${reply.slice(0, 40)}`,
+      message: `Kết nối bình thường${changed ? `, đã áp dụng: ${primaryUrl}` : ''}, trả về: ${reply.slice(0, 40)}`,
     };
   } catch (e) {
     if (!(e instanceof ApiError) || (e.status !== 404 && e.status !== 405)) {
@@ -330,16 +329,16 @@ export async function testChannel(channel: ApiChannel): Promise<{ ok: boolean; m
     try {
       const reply = await requestCompletionAtUrl(
         channel,
-        [{ role: 'user', content: '回复"ok"两个字符即可。' }],
+        [{ role: 'user', content: 'Chỉ cần trả lời hai ký tự "ok".' }],
         fallbackUrl,
       );
       channel.url = fallbackUrl;
       return {
         ok: true,
-        message: `连通正常,已自动改用:${fallbackUrl},返回:${reply.slice(0, 40)}`,
+        message: `Kết nối bình thường, đã tự động đổi sang dùng: ${fallbackUrl}, trả về: ${reply.slice(0, 40)}`,
       };
     } catch {
-      // 备用地址也失败时保留首个错误,避免把模型名等真实问题掩盖成路径错误。
+      // Khi địa chỉ dự phòng cũng thất bại thì giữ lại lỗi đầu tiên, tránh che lấp vấn đề thực sự như tên mô hình thành lỗi đường dẫn.
       return { ok: false, message: e.message };
     }
   }
@@ -348,15 +347,15 @@ export async function testChannel(channel: ApiChannel): Promise<{ ok: boolean; m
 const STATUS_URL = '/api/backends/chat-completions/status';
 
 /**
- * 拉取渠道可用的模型列表(走 ST 的 /status 代理,标准 /v1/models)。
- * 只需 url + key,不需要先填 model。
+ * Kéo danh sách mô hình khả dụng của kênh (đi qua proxy /status của ST, chuẩn /v1/models).
+ * Chỉ cần url + key, không cần điền model trước.
  */
 export async function fetchModels(
   channel: Pick<ApiChannel, 'url' | 'key'> & Partial<Pick<ApiChannel, 'timeoutSec'>>,
 ): Promise<string[]> {
   const ctx = getContext();
-  if (!ctx) throw new ApiError('SillyTavern 上下文不可用');
-  if (!channel.url) throw new ApiError('请先填写 API 地址');
+  if (!ctx) throw new ApiError('Ngữ cảnh SillyTavern không khả dụng');
+  if (!channel.url) throw new ApiError('Vui lòng điền địa chỉ API trước');
 
   const body = {
     chat_completion_source: 'openai',
@@ -365,7 +364,7 @@ export async function fetchModels(
   };
 
   const timeoutSec = validTimeoutSec(channel.timeoutSec);
-  return withTimeout(timeoutSec, undefined, '拉取模型', async signal => {
+  return withTimeout(timeoutSec, undefined, 'Kéo danh sách mô hình', async signal => {
     const resp = await fetch(STATUS_URL, {
       method: 'POST',
       headers: ctx.getRequestHeaders(),
@@ -375,12 +374,12 @@ export async function fetchModels(
 
     if (!resp.ok) {
       const text = await resp.text().catch(() => '');
-      throw new ApiError(`拉取模型失败 (${resp.status}): ${text.slice(0, 200)}`);
+      throw new ApiError(`Kéo danh sách mô hình thất bại (${resp.status}): ${text.slice(0, 200)}`);
     }
 
     const data = await resp.json();
     if (data?.error && !Array.isArray(data?.data)) {
-      throw new ApiError(data?.message || '拉取模型失败');
+      throw new ApiError(data?.message || 'Kéo danh sách mô hình thất bại');
     }
 
     const list: unknown = data?.data ?? data?.models ?? [];

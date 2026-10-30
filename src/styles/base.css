@@ -1,10 +1,10 @@
 /*
- * 基础样式:作用域全部收在 .bbs-root 下,避免污染 ST 宿主页面。
- * 不写颜色字面量,一律取 theme.css 的变量。
+ * Kiểu dáng cơ bản: toàn bộ phạm vi thu gọn dưới .bbs-root, tránh làm ô nhiễm trang chủ ST.
+ * Không viết cứng mã màu, nhất loạt lấy biến từ theme.css.
  */
 
-/* shadow root 宿主:回到初始值,切断从 ST 继承下来的排版属性。
-   配合 index.ts 里 host 的内联 !important,双保险。 */
+/* Chủ thể shadow root: đưa về giá trị ban đầu, cắt đứt các thuộc tính dàn trang kế thừa từ ST.
+   Phối hợp với inline !important của host trong index.ts, bảo hiểm kép. */
 :host {
   all: initial;
 }
@@ -22,11 +22,11 @@
   line-height: 1.6;
 }
 
-/* —— 遮罩层 —— */
+/* —— Lớp phủ —— */
 .bbs-overlay {
   position: fixed;
-  /* 不用 inset 简写:部分移动端 WebView 不认,会让 overlay 高度塌成 auto,
-     进而使子级 height:100% 解析失败(高度为 0)。展开成四个属性更稳。 */
+  /* Không dùng viết tắt inset: một số WebView di động không nhận diện, sẽ làm chiều cao overlay sụp về auto,
+     từ đó khiến height:100% của cấp con phân giải thất bại (chiều cao bằng 0). Triển khai thành bốn thuộc tính ổn định hơn. */
   top: 0;
   right: 0;
   bottom: 0;
@@ -43,7 +43,7 @@
   padding: 24px;
 }
 
-/* —— 窗口外壳 —— */
+/* —— Vỏ cửa sổ —— */
 .bbs-window {
   position: relative;
   display: flex;
@@ -59,7 +59,7 @@
   overflow: hidden;
 }
 
-/* —— 内容区(分页容器) —— */
+/* —— Vùng nội dung (vùng chứa phân trang) —— */
 .bbs-body {
   flex: 1 1 auto;
   min-height: 0;
@@ -67,7 +67,7 @@
   padding: var(--bbs-page-pad);
 }
 
-/* —— 通用排版原子,供各分页复用 —— */
+/* —— Nguyên tử dàn trang chung, dùng lại cho các phân trang —— */
 .bbs-title {
   font-weight: 600;
   font-size: 22px;
@@ -76,7 +76,7 @@
   margin: 0;
 }
 
-/* 区块/分页标题:比主标题(22px)小一号,跨页统一(摘要/悬念簿/物品/设置) */
+/* Tiêu đề phân khu / phân trang: nhỏ hơn tiêu đề chính (22px) một cỡ, thống nhất xuyên suốt các trang (Tóm tắt / Sổ nghi vấn / Vật phẩm / Cài đặt) */
 .bbs-title-sub {
   font-size: 18px;
 }
@@ -87,7 +87,7 @@
   }
 }
 
-/* —— 通用按钮 —— */
+/* —— Nút bấm chung —— */
 .bbs-btn {
   display: inline-flex;
   align-items: center;
@@ -133,7 +133,7 @@
   opacity: 0.9;
 }
 
-/* —— 通用输入 —— */
+/* —— Ô nhập liệu chung —— */
 .bbs-input {
   width: 100%;
   padding: 8px 10px;
@@ -157,7 +157,7 @@
   margin: var(--bbs-gap) 0;
 }
 
-/* —— 区块标题行 + 标题旁小「+」按钮:供各分页复用(摘要、场景…) —— */
+/* —— Dòng tiêu đề phân khu + nút "+" nhỏ cạnh tiêu đề: dùng lại cho các phân trang (Tóm tắt, Khung cảnh…) —— */
 .bbs-section-head {
   display: flex;
   align-items: center;
@@ -165,7 +165,7 @@
   gap: 12px;
 }
 
-/* 标题旁的小「+」:无框、muted,平时低调,hover 才浮现强调色 */
+/* Nút "+" nhỏ cạnh tiêu đề: không khung, muted, bình thường trầm lắng, hover mới hiện màu nhấn */
 .bbs-add-mini {
   flex: 0 0 auto;
   display: inline-flex;
@@ -193,16 +193,16 @@
   cursor: default;
 }
 
-/* —— 通用弹窗:供各分页复用(summary 编辑、settings 渠道编辑等)——
-   各页弹窗经 ModalMask 组件 Teleport 到 modalHost(.bbs-root 直接子级,在 .bbs-body
-   滚动容器之外),修复 iOS「可滚动祖先内 fixed 后代定位错乱」。宿主仍在 shadow root 内,
-   故 scoped 样式与 --bbs-* 变量照常生效——不可用会逃出 shadow 的 Teleport to="body"。 */
+/* —— Hộp thoại chung: dùng lại cho các phân trang (chỉnh sửa summary, chỉnh sửa kênh settings, v.v.) ——
+   Hộp thoại các trang qua component ModalMask Teleport tới modalHost (con trực tiếp của .bbs-root, nằm ngoài vùng chứa
+   cuộn .bbs-body), sửa lỗi "định vị hậu duệ fixed bên trong tổ tiên có thể cuộn bị lệch" trên iOS. Chủ thể vẫn nằm trong shadow root,
+   nên kiểu dáng scoped và biến --bbs-* vẫn có hiệu lực như thường —— không được dùng Teleport to="body" sẽ thoát ra ngoài shadow. */
 .bbs-modal-mask {
   position: fixed;
-  /* 必须显式 width/height 撑满视口,不能只靠 top/bottom:0——部分移动端 WebView 不认,
-     高度会塌成内容高(auto),align-items:center 随之失效、弹窗挤向顶部跑出屏幕。
-     与 .bbs-overlay 同款写法(见其注释)。teleport 出滚动容器后这点尤其关键:
-     之前嵌在 .bbs-body 里被滚动祖先撑高掩盖了,搬成视口级 fixed 后塌陷才暴露。 */
+  /* Bắt buộc phải có width/height tường minh căng đầy khung nhìn, không thể chỉ dựa vào top/bottom:0 —— một số WebView di động không nhận diện,
+     chiều cao sẽ sụp về chiều cao nội dung (auto), align-items:center mất hiệu lực theo, hộp thoại bị dồn lên đỉnh vọt ra khỏi màn hình.
+     Cùng cách viết với .bbs-overlay (xem chú thích của nó). Sau khi teleport ra khỏi vùng chứa cuộn thì điểm này đặc biệt quan trọng:
+     trước đây nhúng trong .bbs-body được tổ tiên cuộn chống cao che lấp đi, khi dời thành fixed cấp khung nhìn thì sự sụp đổ mới lộ ra. */
   top: 0;
   right: 0;
   bottom: 0;
@@ -235,11 +235,11 @@
   box-shadow: var(--bbs-shadow);
 }
 
-/* 标题栏固定:弹窗内容超长时整体滚动,但标题+关闭键随 sticky 钉在顶部不跟滚。
-   负 margin 抵消 .bbs-modal 的 18px 内边距,让标题栏横向铺满、滚动时其不透明背景
-   盖住下方滚上来的内容(否则内容会从标题区透出)。padding 补回内边距。
-   top:-18px 而非 0:.bbs-modal 有 18px 内边距,其滚动视口顶边在内边距处(距窗口边 18px);
-   若 top:0,标题栏会吸附在视口顶边、上方露出 18px 缝隙让内容滚上来。-18px 抵消内边距,贴齐真实顶边。 */
+/* Thanh tiêu đề cố định: khi nội dung hộp thoại quá dài sẽ cuộn tổng thể, nhưng tiêu đề + nút đóng đi theo sticky ghim ở đỉnh không cuộn theo.
+   margin âm triệt tiêu lề trong 18px của .bbs-modal, để thanh tiêu đề trải kín chiều ngang, khi cuộn nền đục của nó
+   che khuất nội dung cuộn từ dưới lên (nếu không nội dung sẽ lộ xuyên qua vùng tiêu đề). padding bù lại lề trong.
+   top:-18px chứ không phải 0: .bbs-modal có lề trong 18px, cạnh đỉnh khung nhìn cuộn của nó nằm ở chỗ lề trong (cách mép cửa sổ 18px);
+   nếu top:0, thanh tiêu đề sẽ hít ở cạnh đỉnh khung nhìn, phía trên lộ ra khe hở 18px để nội dung cuộn lên. -18px triệt tiêu lề trong, bám sát cạnh đỉnh thực sự. */
 .bbs-modal-head {
   position: sticky;
   top: -18px;
@@ -275,10 +275,10 @@
   gap: 10px;
 }
 
-/* —— 弹窗进出场:比窗口(--bbs-dur 0.28s)更快更利落,~0.15s,不墨迹。开关都带动画。
-   Vue Transition name="bbs-modal",由 ModalMask / ConfirmDialog 内部常驻的 Transition 驱动
-   (容器常驻、内部 v-if 切换弹窗,故离场也能播)。遮罩(.bbs-modal-mask)是过渡根元素,
-   卡片(.bbs-modal)靠后代选择器联动——与 App.vue 窗口同款手法。 */
+/* —— Hộp thoại ra vào: nhanh và gọn hơn cửa sổ (--bbs-dur 0.28s), ~0.15s, không rề rà. Đóng mở đều kèm hoạt ảnh.
+   Vue Transition name="bbs-modal", được dẫn động bởi Transition thường trực bên trong ModalMask / ConfirmDialog
+   (vùng chứa thường trực, v-if bên trong chuyển đổi hộp thoại, nên khi rời đi cũng phát được). Lớp phủ (.bbs-modal-mask) là phần tử gốc chuyển tiếp,
+   thẻ (.bbs-modal) liên động nhờ bộ chọn hậu duệ —— cùng thủ pháp với cửa sổ trong App.vue. */
 .bbs-modal-enter-active,
 .bbs-modal-leave-active {
   transition: opacity 0.15s var(--bbs-ease);
@@ -312,7 +312,7 @@
   }
 }
 
-/* —— 空状态:不是错误,是邀请 —— */
+/* —— Trạng thái trống: không phải lỗi, mà là lời mời —— */
 .bbs-empty {
   display: flex;
   flex-direction: column;
@@ -342,10 +342,10 @@
   max-width: 32ch;
 }
 
-/* ========== 摘要卡片(summary card)==========
-   摘要页默认视图(SummaryNode.vue 递归)与搜索/选择的平铺列表(index.vue)共用同一张卡片。
-   scoped 样式不跨子组件边界(shadow DOM 内同理),故卡片视觉提到全局 base.css,
-   两处渲染才一致——与 .bbs-btn / .bbs-modal 等跨页原子同款处置。 */
+/* ========== Thẻ tóm tắt (summary card) ==========
+   Chế độ xem mặc định của trang Tóm tắt (SummaryNode.vue đệ quy) và danh sách phẳng của Tìm kiếm / Chọn (index.vue) dùng chung một thẻ.
+   Kiểu dáng scoped không vượt qua ranh giới component con (trong shadow DOM cũng tương tự), nên phần thị giác thẻ được đưa lên toàn cục trong base.css,
+   hai nơi kết xuất mới đồng nhất —— cùng cách xử lý với các nguyên tử xuyên trang như .bbs-btn / .bbs-modal. */
 .bbs-summary-card {
   border: 1px solid var(--bbs-line);
   border-radius: var(--bbs-radius);
@@ -353,13 +353,13 @@
   padding: 14px 16px;
 }
 
-/* 展开出的子行:弱化(淡底 + 虚线边),视觉上从属于上方的总结 */
+/* Dòng con được mở rộng ra: làm dịu đi (nền nhạt + viền nét đứt), về mặt thị giác phụ thuộc vào đại tóm tắt phía trên */
 .bbs-summary-card.is-child {
   background: var(--bbs-surface-2);
   border-style: dashed;
 }
 
-/* 深层总结 / 展开态:左缘点亮强调色(展开态即时反馈「这条已展开」) */
+/* Đại tóm tắt tầng sâu / trạng thái mở rộng: viền trái bật sáng màu nhấn (trạng thái mở rộng phản hồi tức thì "mục này đã mở rộng") */
 .bbs-summary-card.is-deep,
 .bbs-summary-card.is-expanded {
   border-left: 3px solid var(--bbs-accent);
@@ -377,13 +377,13 @@
   flex-wrap: wrap;
 }
 
-/* 绝对时间作题首文本,line-height:1 让它与同行等高标签的视觉中心对齐 */
+/* Thời gian tuyệt đối làm văn bản đầu đề, line-height:1 để tâm thị giác của nó căn chỉnh với các nhãn cùng chiều cao trên cùng dòng */
 .bbs-summary-dateline,
 .bbs-summary-time {
   line-height: 1;
 }
 
-/* 摘要题首:故事内时间升为主标题,稍大、半粗、tabular 数字像账册日期 */
+/* Đầu đề tóm tắt: thời gian trong truyện được nâng lên làm tiêu đề chính, hơi lớn hơn, bán đậm, chữ số tabular giống ngày tháng sổ cái */
 .bbs-summary-dateline {
   font-size: 14px;
   font-weight: 600;
@@ -392,7 +392,7 @@
   letter-spacing: 0.01em;
 }
 
-/* 标签与楼层号:高度一致(同 height + 居中);楼层号最小宽 = 摘要标签宽,数字变长再撑开 */
+/* Nhãn và số tầng: chiều cao đồng nhất (cùng height + căn giữa); chiều rộng tối thiểu của số tầng = chiều rộng nhãn tóm tắt, khi chữ số dài ra sẽ tự giãn thêm */
 .bbs-summary-badge,
 .bbs-summary-loc {
   box-sizing: border-box;
@@ -411,10 +411,10 @@
   color: var(--bbs-accent-ink);
   background: var(--bbs-accent);
   border: 1px solid var(--bbs-accent);
-  /* 与 loc 同样 1px 边框,保证两者等高 */
+  /* Cùng viền 1px với loc, đảm bảo hai bên cao bằng nhau */
 }
 
-/* 楼层号/收纳数:描边定位标签;tabular 数字对齐 */
+/* Số tầng / số lượng thu nạp: nhãn định vị nét viền; chữ số tabular căn chỉnh */
 .bbs-summary-loc {
   color: var(--bbs-ink-soft);
   background: var(--bbs-surface-2);
@@ -427,7 +427,7 @@
   color: var(--bbs-ink-soft);
 }
 
-/* 相对时间(昨天/3天前…):等高小标签,与楼层药丸同高,靠盒子居中免去 CJK 基线下沉 */
+/* Thời gian tương đối (Hôm qua / 3 ngày trước…): nhãn nhỏ cùng chiều cao, cao bằng viên nang tầng, căn giữa nhờ hộp để khỏi bị chìm đường cơ sở CJK */
 .bbs-summary-rel {
   box-sizing: border-box;
   height: 22px;
@@ -450,7 +450,7 @@
   padding: 2px 8px;
 }
 
-/* 动作组靠右;平时隐身,hover/聚焦该卡才浮现 */
+/* Nhóm hành động dạt sang phải; bình thường ẩn đi, hover/focus vào thẻ đó mới hiện lên */
 .bbs-summary-acts {
   margin-left: auto;
   display: inline-flex;
@@ -499,8 +499,8 @@
   white-space: pre-wrap;
 }
 
-/* —— 展开开关:卡片底部整条(而非左侧小箭头),整条可点、目标大(移动端友好),
-   顶部细线与正文隔开,像卡片的「页脚操作区」。明确标注「展开/收起下层 N 条」。 */
+/* —— Công tắc mở rộng: nguyên thanh ở đáy thẻ (thay vì mũi tên nhỏ bên trái), nguyên thanh nhấn được, mục tiêu lớn (thân thiện với di động),
+   đường kẻ mảnh phía trên ngăn cách với nội dung chính, giống "vùng thao tác chân trang" của thẻ. Ghi rõ "Mở rộng / Thu gọn N mục tầng dưới". */
 .bbs-expand-bar {
   display: inline-flex;
   align-items: center;
@@ -531,8 +531,8 @@
   transform: rotate(-90deg);
 }
 
-/* —— 组尾收起条:展开内容末尾的就地收回入口(滚到底不必翻回顶部)。
-   虚线上边、无卡底,像「合上这一叠」的收口。 */
+/* —— Thanh thu gọn cuối nhóm: lối vào thu gọn tại chỗ ở cuối nội dung mở rộng (cuộn tới đáy không cần lật ngược lên đỉnh).
+   Viền trên nét đứt, không nền thẻ, giống nút khép "gấp xấp này lại". */
 .bbs-collapse-footer {
   display: inline-flex;
   align-items: center;
@@ -554,12 +554,12 @@
   background: var(--bbs-accent-soft);
 }
 
-/* 收起条箭头恒朝上(收起方向) */
+/* Mũi tên thanh thu gọn luôn hướng lên trên (hướng thu gọn) */
 .bbs-collapse-caret {
   transform: rotate(180deg);
 }
 
-/* 触屏无 hover:动作键常显但保持小而 muted;触达区放大到 ~32px */
+/* Màn hình cảm ứng không có hover: các nút hành động hiển thị thường trực nhưng giữ nhỏ và muted; vùng chạm phóng to lên ~32px */
 @media (hover: none) {
   .bbs-summary-acts {
     opacity: 1;
@@ -579,7 +579,7 @@
   }
 }
 
-/* 窄屏:绝对时间(纯文本较长)排到末尾独占一行,首行只留标签 + 操作键 */
+/* Màn hình hẹp: thời gian tuyệt đối (văn bản thuần khá dài) xếp xuống cuối chiếm riêng một dòng, dòng đầu chỉ để lại nhãn + nút thao tác */
 @media (max-width: 640px) {
 
   .bbs-summary-dateline,
@@ -589,12 +589,12 @@
   }
 }
 
-/* —— 隐藏滚动条(保留滚动能力):整个 UI 内统一 —— */
+/* —— Ẩn thanh cuộn (giữ nguyên khả năng cuộn): thống nhất trong toàn bộ UI —— */
 .bbs-root * {
   scrollbar-width: none;
   /* Firefox */
   -ms-overflow-style: none;
-  /* 旧 Edge/IE */
+  /* Edge/IE cũ */
 }
 
 .bbs-root *::-webkit-scrollbar {
@@ -604,7 +604,7 @@
   /* Chrome/Safari */
 }
 
-/* ============ 响应式:移动端整屏(底部抽屉式) ============ */
+/* ============ Đáp ứng (Responsive): toàn màn hình trên di động (kiểu ngăn kéo đáy) ============ */
 @media (max-width: 640px) {
   .bbs-overlay {
     padding: 0;
@@ -614,18 +614,18 @@
   .bbs-window {
     max-width: 100%;
     width: 100%;
-    /* 直接用视口高,不依赖父级百分比链 */
+    /* Dùng trực tiếp chiều cao khung nhìn, không phụ thuộc chuỗi phần trăm cấp cha */
     height: 96vh;
     height: 96dvh;
     max-height: 96vh;
     max-height: 96dvh;
     border: 0;
-    /* 仅顶部圆角:贴底的抽屉观感 */
+    /* Chỉ bo góc đỉnh: cảm giác ngăn kéo bám đáy */
     border-radius: 18px 18px 0 0;
   }
 }
 
-/* ============ 尊重减少动效 ============ */
+/* ============ Tôn trọng giảm chuyển động ============ */
 @media (prefers-reduced-motion: reduce) {
   .bbs-root * {
     animation-duration: 0.001ms !important;

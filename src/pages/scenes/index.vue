@@ -13,13 +13,13 @@ import { toast } from '@/st/toast';
 import type { MemItem, MemScene } from '@/memory/types';
 import { computed, nextTick, ref, watch } from 'vue';
 
-// 场景是从叶子摘要重放出的派生数据,手动操作写入「最新一条有效叶子」;无有效叶子时无处挂载。
+// Khung cảnh là dữ liệu dẫn xuất được phát lại từ tóm tắt lá, thao tác thủ công ghi vào "lá hợp lệ mới nhất"; khi không có lá hợp lệ thì không có chỗ gắn kết.
 const hasLeaf = computed(() => derivedMeta.hasLeaf);
 
-// 触屏判定:跳过弹窗自动聚焦(移动端自动聚焦会弹输入法挡界面),与摘要页一致。
+// Phán đoán màn hình cảm ứng: bỏ qua tự động focus hộp thoại (trên di động tự động focus sẽ bật bộ gõ che khuất giao diện), đồng nhất với trang Tóm tắt.
 const isTouch = typeof window !== 'undefined' && window.matchMedia?.('(hover: none)').matches;
 
-/* —— 折叠状态:纯本机 UI 态,按聊天分桶存 localStorage(切走再回保持) —— */
+/* —— Trạng thái thu gọn: trạng thái UI thuần trên máy, chia thùng theo cuộc trò chuyện lưu ở localStorage (chuyển đi rồi quay lại vẫn giữ) —— */
 const COLLAPSE_KEY = 'bbs.scenes.collapsed.v1';
 function chatKey(): string {
   return getContext()?.getCurrentChatId?.() || '_';
@@ -32,7 +32,7 @@ function loadCollapsed(): Set<string> {
     return new Set();
   }
 }
-// 折叠的节点 id 集合(响应式);默认全展开
+// Tập hợp id các nút bị thu gọn (phản ứng); mặc định mở rộng toàn bộ
 const collapsed = ref<Set<string>>(loadCollapsed());
 function persistCollapsed() {
   try {
@@ -40,40 +40,40 @@ function persistCollapsed() {
     all[chatKey()] = [...collapsed.value];
     localStorage.setItem(COLLAPSE_KEY, JSON.stringify(all));
   } catch {
-    /* localStorage 不可用时静默 */
+    /* Khi localStorage không khả dụng thì im lặng */
   }
 }
 function toggleCollapse(id: string) {
   const next = new Set(collapsed.value);
   if (next.has(id)) next.delete(id);
   else next.add(id);
-  collapsed.value = next; // 换引用触发响应式
+  collapsed.value = next; // Đổi tham chiếu kích hoạt tính phản ứng
   persistCollapsed();
 }
 
-/* —— 把扁平 scenes 按 parentId 组装成嵌套树,深度优先展平成带 depth 的可渲染行 —— */
+/* —— Lắp ghép các scenes phẳng thành cây lồng nhau theo parentId, ưu tiên chiều sâu trải phẳng thành các dòng có thể kết xuất kèm depth —— */
 interface SceneRow {
   node: MemScene;
   depth: number;
-  /** 该行是否在「当前所在」的祖先脉络上(根→当前地点) */
+  /** Dòng đó có nằm trên mạch tổ tiên của "nơi ở hiện tại" (gốc → địa điểm hiện tại) hay không */
   onCurrentPath: boolean;
-  /** 是否就是当前所在地点本身 */
+  /** Có phải chính là bản thân địa điểm hiện tại hay không */
   isCurrent: boolean;
-  /** 同级里是否最后一个(画引导线收尾用) */
+  /** Có phải con cuối cùng trong cùng cấp hay không (dùng để vẽ kết thúc đường dẫn hướng) */
   lastChild: boolean;
-  /** 是否有子节点(决定是否显示折叠箭头) */
+  /** Có nút con hay không (quyết định có hiển thị mũi tên thu gọn hay không) */
   hasChildren: boolean;
-  /** 当前是否处于折叠态(子树已收起) */
+  /** Hiện có đang ở trạng thái thu gọn (cây con đã thu lại) hay không */
   isCollapsed: boolean;
 }
 
-// 当前所在节点:与注入端共用 apply.findCurrentSceneId(优先权威 locationPath,否则收紧模糊匹配)。
-// 单一来源,保证场景页高亮 = 提示词里「当前所在」链,不再分叉。
+// Nút đang ở hiện tại: dùng chung apply.findCurrentSceneId với đầu tiêm (ưu tiên locationPath có thẩm quyền, nếu không thì siết chặt khớp mờ).
+// Một nguồn duy nhất, đảm bảo tô sáng ở trang Khung cảnh = chuỗi "Địa điểm hiện tại" trong lời nhắc, không còn phân nhánh.
 const currentId = computed(() =>
   findCurrentSceneId(memory.scenes, memory.state.location || '', memory.state.locationPath),
 );
 
-// 当前所在的祖先脉络(含自身)id 集合
+// Tập hợp id mạch tổ tiên (bao gồm bản thân) của nơi ở hiện tại
 const currentChain = computed(() => {
   const ids = new Set<string>();
   const byId = new Map(memory.scenes.map(s => [s.id, s]));
@@ -87,8 +87,8 @@ const currentChain = computed(() => {
   return ids;
 });
 
-// 所在地点变化时,自动展开新脉络一次(避免「我在哪」被折叠藏起);但只在 currentId 真的
-// 变了时触发,之后用户仍能手动折叠该脉络——这正是和旧「强制展开」的关键区别。
+// Khi địa điểm hiện tại thay đổi, tự động mở rộng mạch mới một lần (tránh việc "tôi đang ở đâu" bị thu gọn giấu mất); nhưng chỉ kích hoạt khi currentId thực sự
+// thay đổi, sau đó người dùng vẫn có thể thu gọn thủ công mạch đó —— đây chính là điểm khác biệt mấu chốt so với "ép mở rộng" cũ.
 watch(
   () => currentId.value,
   () => {
@@ -112,7 +112,7 @@ const rows = computed<SceneRow[]>(() => {
     byParent.set(s.parentId, arr);
   }
   for (const arr of byParent.values()) {
-    // 同级:当前脉络上的排前(让活动主干稳定靠上),再按创建序
+    // Cùng cấp: xếp theo thứ tự tạo, rồi theo tên
     arr.sort((a, b) => a.createdAt - b.createdAt || a.name.localeCompare(b.name));
   }
   const out: SceneRow[] = [];
@@ -120,8 +120,8 @@ const rows = computed<SceneRow[]>(() => {
     const children = byParent.get(parentId) ?? [];
     children.forEach((node, i) => {
       const kids = byParent.get(node.id) ?? [];
-      // onCurrentPath 仅用于主干线高亮;折叠完全由用户的 collapsed 决定(不再强制展开,
-      // 否则「所在」脉络上的行点了收不起来)。脉络变化时由 watch 自动展开一次,见下方。
+      // onCurrentPath chỉ dùng để tô sáng đường trục chính; việc thu gọn hoàn toàn do collapsed của người dùng quyết định (không ép mở rộng nữa,
+      // nếu không các dòng trên mạch "Đang ở" nhấn vào sẽ không thu lại được). Khi mạch thay đổi sẽ do watch tự động mở rộng một lần, xem bên trên.
       const onCurrentPath = currentChain.value.has(node.id);
       const isCollapsed = kids.length > 0 && collapsed.value.has(node.id);
       out.push({
@@ -133,14 +133,14 @@ const rows = computed<SceneRow[]>(() => {
         hasChildren: kids.length > 0,
         isCollapsed,
       });
-      if (!isCollapsed) walk(node.id, depth + 1); // 折叠则跳过整段子树
+      if (!isCollapsed) walk(node.id, depth + 1); // Nếu thu gọn thì bỏ qua toàn bộ đoạn cây con
     });
   };
-  walk('', 0); // 根 = parentId 为空
+  walk('', 0); // Gốc = parentId rỗng
   return out;
 });
 
-// 存放在某地点的物品:先解析到唯一 sceneId,避免子地点误挂到所有祖先/旁支。
+// Vật phẩm cất giữ tại một địa điểm nào đó: phân giải tới sceneId duy nhất trước, tránh việc địa điểm con bị gắn nhầm lên toàn bộ tổ tiên / nhánh phụ.
 const sceneItems = computed(() => {
   const index = buildSceneLocationIndex(memory.scenes);
   const out = new Map<string, MemItem[]>();
@@ -159,38 +159,38 @@ function itemsAt(node: MemScene) {
   return sceneItems.value.get(node.id) ?? [];
 }
 
-// 折叠时展示的后代地点数(整段子树,id 前缀匹配)
+// Số lượng địa điểm hậu duệ hiển thị khi thu gọn (toàn bộ đoạn cây con, khớp tiền tố id)
 function childCount(node: MemScene): string {
   const prefix = `${node.id}/`;
   const n = memory.scenes.filter(s => s.id.startsWith(prefix)).length;
   return n ? `+${n}` : '';
 }
 
-/** 上级地点下拉选项:全部节点按完整路径排序(父先于子),depth 决定缩进前缀。不受折叠影响。 */
+/** Tùy chọn thả xuống của địa điểm cấp trên: toàn bộ các nút sắp xếp theo đường dẫn đầy đủ (cha trước con), depth quyết định tiền tố thụt lề. Không bị ảnh hưởng bởi thu gọn. */
 const sceneOptions = computed(() =>
   [...memory.scenes]
     .sort((a, b) => a.path.join('/').localeCompare(b.path.join('/')))
     .map(s => ({ id: s.id, name: s.name, depth: s.path.length - 1 })),
 );
 
-/** 转成 BbsSelect 选项:层级仍用全角空格缩进(自绘菜单里同样保留前导空白,不像 HTML 会折叠) */
+/** Chuyển thành tùy chọn BbsSelect: phân cấp vẫn dùng khoảng trắng toàn giác để thụt lề (trong menu tự vẽ vẫn giữ nguyên khoảng trắng đầu dòng, không bị gộp như HTML) */
 function parentOptions(list: { id: string; name: string; depth: number }[]) {
   return [
-    { value: '', label: '（顶级地点）' },
+    { value: '', label: '(Địa điểm cấp cao nhất)' },
     ...list.map(o => ({ value: o.id, label: '　'.repeat(o.depth) + o.name })),
   ];
 }
 
-/* —— 新增地点(弹窗):选上级(已有路径 / 顶级)+ 填新名 + 描述 —— */
+/* —— Thêm địa điểm mới (hộp thoại): chọn cấp trên (đường dẫn đã có / cấp cao nhất) + điền tên mới + mô tả —— */
 const composerOpen = ref(false);
-const newParentId = ref(''); // 选中的上级 id;'' = 顶级
+const newParentId = ref(''); // id cấp trên đã chọn; '' = cấp cao nhất
 const newName = ref('');
 const newDesc = ref('');
 const nameInput = ref<HTMLInputElement | null>(null);
 
 function openComposer() {
   if (!hasLeaf.value) return;
-  newParentId.value = currentId.value || ''; // 默认挂在当前所在地点下,顺手
+  newParentId.value = currentId.value || ''; // Mặc định gắn dưới địa điểm hiện tại, thuận tay
   newName.value = '';
   newDesc.value = '';
   composerOpen.value = true;
@@ -201,27 +201,27 @@ function closeComposer() {
 }
 function addScene() {
   const name = newName.value.trim();
-  // 描述可空:与 AI 同规则(建点宽、描述严),写不出描述也先把地点记下
+  // Mô tả có thể để trống: cùng quy tắc với AI (tạo điểm rộng rãi, mô tả nghiêm ngặt), chưa viết ra mô tả cũng ghi nhận địa điểm lại trước
   if (!name) return;
   const parent = memory.scenes.find(s => s.id === newParentId.value);
   const path = parent ? [...parent.path, name] : [name];
   if (memory.scenes.some(s => s.id === sceneId(path))) {
-    toast(`地点「${path.join(' › ')}」已经存在，请直接编辑原地点。`, 'warning');
+    toast(`Địa điểm "${path.join(' › ')}" đã tồn tại, vui lòng chỉnh sửa trực tiếp địa điểm gốc.`, 'warning');
     return;
   }
   if (!upsertScene(path, newDesc.value)) {
-    toast('无法保存地点，请确认当前聊天已有有效摘要。', 'error');
+    toast('Không thể lưu địa điểm, vui lòng xác nhận cuộc trò chuyện hiện tại đã có tóm tắt hợp lệ.', 'error');
     return;
   }
   composerOpen.value = false;
 }
 
-/* —— 编辑弹窗:改本级名 + 上级(下拉选)+ 描述 —— */
+/* —— Hộp thoại chỉnh sửa: đổi tên cấp này + cấp trên (chọn thả xuống) + mô tả —— */
 interface SceneEditing {
-  id: string; // 原始节点 id
-  path: string[]; // 原始完整路径
+  id: string; // id nút gốc
+  path: string[]; // Đường dẫn đầy đủ gốc
   name: string;
-  parentId: string; // 选中的上级 id;'' = 顶级
+  parentId: string; // id cấp trên đã chọn; '' = cấp cao nhất
   desc: string;
 }
 const editing = ref<SceneEditing | null>(null);
@@ -239,7 +239,7 @@ function cancelEdit() {
   editing.value = null;
 }
 
-/** 编辑态下的可选上级:排除节点自身及其后代(否则会把节点变成自己的祖先,成环)。 */
+/** Cấp trên có thể chọn ở trạng thái chỉnh sửa: loại trừ bản thân nút và hậu duệ của nó (nếu không sẽ biến nút thành tổ tiên của chính mình, tạo thành vòng lặp). */
 const editParentOptions = computed(() => {
   const e = editing.value;
   if (!e) return sceneOptions.value;
@@ -251,7 +251,7 @@ function saveEdit() {
   const e = editing.value;
   const name = e?.name.trim();
   if (!e || !name) return;
-  const desc = e.desc.trim(); // 可空:删空=清除描述,节点保留
+  const desc = e.desc.trim(); // Có thể trống: xóa trống = xóa bỏ mô tả, giữ lại nút
   const parent = memory.scenes.find(s => s.id === e.parentId);
   const newPath = parent ? [...parent.path, name] : [name];
   const pathChanged = sceneId(newPath) !== sceneId(e.path);
@@ -259,22 +259,22 @@ function saveEdit() {
   let saved = false;
   if (pathChanged) {
     if (memory.scenes.some(s => s.id === sceneId(newPath))) {
-      toast(`地点「${newPath.join(' › ')}」已经存在，不能覆盖或合并。`, 'warning');
+      toast(`Địa điểm "${newPath.join(' › ')}" đã tồn tại, không thể ghi đè hoặc gộp.`, 'warning');
       return;
     }
-    // 换父 / 改名 / 插层:一条 reparent 原子完成,连子树平移 + 顺带写新名描述(删空=清除原描述)
+    // Đổi cha / đổi tên / chèn tầng: hoàn tất nguyên tử bằng một lệnh reparent, dịch chuyển cả cây con + tiện thể ghi mô tả tên mới (xóa trống = xóa mô tả gốc)
     saved = reparentScene(e.path, newPath, { [name]: desc });
   } else {
     saved = editSceneDesc(e.path, desc);
   }
   if (!saved) {
-    toast('无法保存地点，请确认当前聊天已有有效摘要。', 'error');
+    toast('Không thể lưu địa điểm, vui lòng xác nhận cuộc trò chuyện hiện tại đã có tóm tắt hợp lệ.', 'error');
     return;
   }
   editing.value = null;
 }
 
-/* —— 删除确认(连带子级)—— */
+/* —— Xác nhận xóa (kèm theo cấp con) —— */
 const removing = ref<MemScene | null>(null);
 function askRemove(node: MemScene) {
   removing.value = node;
@@ -290,7 +290,7 @@ const removeChildCount = computed(() => {
   return memory.scenes.filter(s => s.id.startsWith(prefix)).length;
 });
 
-/* —— 前往地点:只生成草稿,不提前修改派生状态 —— */
+/* —— Đi tới địa điểm: chỉ tạo bản nháp, không sửa đổi trước trạng thái dẫn xuất —— */
 const traveling = ref<MemScene | null>(null);
 function askTravel(node: MemScene) {
   traveling.value = node;
@@ -299,30 +299,30 @@ function confirmTravel() {
   const target = traveling.value;
   if (!target) return;
   if (!appendChatInput(buildTravelDraft(target))) {
-    toast('无法写入 ST 输入框', 'error');
+    toast('Không thể ghi vào khung nhập liệu của ST', 'error');
     return;
   }
   traveling.value = null;
   closeBook();
-  toast('前往地点草稿已填入输入框', 'success');
+  toast('Bản nháp đi tới địa điểm đã được điền vào khung nhập liệu', 'success');
 }
 </script>
 
 <template>
   <section class="bbs-page">
     <div class="bbs-section-head">
-      <h2 class="bbs-title bbs-title-sub">场景</h2>
+      <h2 class="bbs-title bbs-title-sub">Khung cảnh</h2>
       <button
         class="bbs-add-mini"
         type="button"
         :disabled="!hasLeaf"
-        :title="hasLeaf ? '手动添加地点' : '需先有摘要才能手动添加'"
+        :title="hasLeaf ? 'Thêm địa điểm thủ công' : 'Cần có tóm tắt trước mới có thể thêm thủ công'"
         @click="openComposer"
       >
         <Icon name="plus" />
       </button>
     </div>
-    <SummaryOnlyNotice subject="地点、场景层级与当前位置" />
+    <SummaryOnlyNotice subject="địa điểm, phân cấp khung cảnh và vị trí hiện tại" />
 
     <hr class="bbs-rule" />
 
@@ -334,10 +334,10 @@ function confirmTravel() {
         :class="{ 'is-current': r.isCurrent, 'on-path': r.onCurrentPath }"
         :style="{ '--depth': r.depth }"
       >
-        <!-- 层级引导轨:每级一条细竖线,在当前脉络上点亮成主干 -->
+        <!-- Đường ray dẫn hướng phân cấp: mỗi cấp một đường kẻ dọc mảnh, trên mạch hiện tại sẽ bật sáng thành trục chính -->
         <span v-for="d in r.depth" :key="d" class="bbs-scene-rail" :class="{ active: r.onCurrentPath && d <= r.depth }"></span>
 
-        <!-- 有子节点的整张卡片可点折叠(含描述/物品区);叶子卡不可点。操作按钮 @click.stop 不触发 -->
+        <!-- Toàn bộ thẻ có nút con có thể nhấn để thu gọn (bao gồm vùng mô tả/vật phẩm); thẻ lá không nhấn được. Nút thao tác @click.stop không kích hoạt -->
         <div
           class="bbs-scene-card"
           :class="{ clickable: r.hasChildren }"
@@ -348,17 +348,17 @@ function confirmTravel() {
               v-if="r.hasChildren"
               class="bbs-scene-toggle"
               :class="{ collapsed: r.isCollapsed }"
-              :title="r.isCollapsed ? '展开下属地点' : '收起下属地点'"
+              :title="r.isCollapsed ? 'Mở rộng địa điểm trực thuộc' : 'Thu gọn địa điểm trực thuộc'"
             >
               <Icon name="chevron" />
             </span>
             <span class="bbs-scene-name">{{ r.node.name }}</span>
-            <span v-if="r.isCurrent" class="bbs-scene-here"><Icon name="scenes" />所在</span>
+            <span v-if="r.isCurrent" class="bbs-scene-here"><Icon name="scenes" />Đang ở</span>
             <span v-else-if="r.isCollapsed" class="bbs-scene-count">{{ childCount(r.node) }}</span>
             <span class="bbs-scene-acts">
-              <button v-if="!r.isCurrent" class="bbs-item-act" type="button" title="前往" @click.stop="askTravel(r.node)"><Icon name="navigate" /></button>
-              <button class="bbs-item-act" type="button" title="编辑" @click.stop="openEdit(r.node)"><Icon name="edit" /></button>
-              <button class="bbs-item-act bbs-item-del" type="button" title="删除" @click.stop="askRemove(r.node)"><Icon name="trash" /></button>
+              <button v-if="!r.isCurrent" class="bbs-item-act" type="button" title="Đi tới" @click.stop="askTravel(r.node)"><Icon name="navigate" /></button>
+              <button class="bbs-item-act" type="button" title="Chỉnh sửa" @click.stop="openEdit(r.node)"><Icon name="edit" /></button>
+              <button class="bbs-item-act bbs-item-del" type="button" title="Xóa" @click.stop="askRemove(r.node)"><Icon name="trash" /></button>
             </span>
           </div>
           <p v-if="r.node.desc" class="bbs-scene-desc">{{ r.node.desc }}</p>
@@ -373,85 +373,85 @@ function confirmTravel() {
 
     <div v-else class="bbs-empty">
       <span class="bbs-empty-icon"><Icon name="scenes" /></span>
-      <p>还没有去过的地点。摘要时会记下走过的场景,也可点右上角「+」手动添加。</p>
+      <p>Chưa có địa điểm nào từng đi qua. Khi tóm tắt sẽ ghi lại các khung cảnh đã đi qua, cũng có thể nhấn nút "+" ở góc trên bên phải để thêm thủ công.</p>
     </div>
 
-    <!-- 添加弹窗:选上级(已有地点 / 顶级)+ 填新名 + 描述 -->
+    <!-- Hộp thoại thêm mới: chọn cấp trên (địa điểm đã có / cấp cao nhất) + điền tên mới + mô tả -->
     <ModalMask :open="composerOpen" @close="closeComposer">
-      <div class="bbs-modal" role="dialog" aria-modal="true" aria-label="添加地点">
+      <div class="bbs-modal" role="dialog" aria-modal="true" aria-label="Thêm địa điểm">
         <header class="bbs-modal-head">
-          <span class="bbs-modal-title">添加地点</span>
-          <button class="bbs-item-act" type="button" title="关闭" @click="closeComposer"><Icon name="close" /></button>
+          <span class="bbs-modal-title">Thêm địa điểm</span>
+          <button class="bbs-item-act" type="button" title="Đóng" @click="closeComposer"><Icon name="close" /></button>
         </header>
         <div class="bbs-modal-field">
-          <span class="bbs-modal-label">上级地点(从已有地点里选,或设为顶级)</span>
-          <BbsSelect v-model="newParentId" :options="parentOptions(sceneOptions)" aria-label="上级地点" />
+          <span class="bbs-modal-label">Địa điểm cấp trên (chọn từ địa điểm đã có, hoặc đặt làm cấp cao nhất)</span>
+          <BbsSelect v-model="newParentId" :options="parentOptions(sceneOptions)" aria-label="Địa điểm cấp trên" />
         </div>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">名称</span>
-          <input ref="nameInput" v-model="newName" class="bbs-input" type="text" placeholder="新地点名" @keydown.enter="addScene" />
+          <span class="bbs-modal-label">Tên</span>
+          <input ref="nameInput" v-model="newName" class="bbs-input" type="text" placeholder="Tên địa điểm mới" @keydown.enter="addScene" />
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">描述(可选)</span>
-          <textarea v-model="newDesc" class="bbs-input bbs-modal-textarea" rows="3" placeholder="这地方是什么、有何特征"></textarea>
+          <span class="bbs-modal-label">Mô tả (tùy chọn)</span>
+          <textarea v-model="newDesc" class="bbs-input bbs-modal-textarea" rows="3" placeholder="Nơi này là gì, có đặc điểm gì"></textarea>
         </label>
         <footer class="bbs-modal-foot">
-          <button class="bbs-btn" type="button" @click="closeComposer">取消</button>
-          <button class="bbs-btn bbs-btn-primary" type="button" :disabled="!newName.trim()" @click="addScene">添加</button>
+          <button class="bbs-btn" type="button" @click="closeComposer">Hủy</button>
+          <button class="bbs-btn bbs-btn-primary" type="button" :disabled="!newName.trim()" @click="addScene">Thêm</button>
         </footer>
       </div>
     </ModalMask>
 
-    <!-- 编辑弹窗:Teleport 出滚动容器,见 ModalMask -->
+    <!-- Hộp thoại chỉnh sửa: Teleport ra khỏi vùng chứa cuộn, xem ModalMask -->
     <ModalMask :open="!!editing" @close="cancelEdit">
-      <div v-if="editing" class="bbs-modal" role="dialog" aria-modal="true" aria-label="编辑地点">
+      <div v-if="editing" class="bbs-modal" role="dialog" aria-modal="true" aria-label="Chỉnh sửa địa điểm">
         <header class="bbs-modal-head">
-          <span class="bbs-modal-title">编辑地点</span>
-          <button class="bbs-item-act" type="button" title="关闭" @click="cancelEdit"><Icon name="close" /></button>
+          <span class="bbs-modal-title">Chỉnh sửa địa điểm</span>
+          <button class="bbs-item-act" type="button" title="Đóng" @click="cancelEdit"><Icon name="close" /></button>
         </header>
         <p class="bbs-scene-crumb">{{ editing.path.join(' › ') }}</p>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">名称</span>
-          <input v-model="editing.name" class="bbs-input" type="text" placeholder="地点名" />
+          <span class="bbs-modal-label">Tên</span>
+          <input v-model="editing.name" class="bbs-input" type="text" placeholder="Tên địa điểm" />
         </label>
         <div class="bbs-modal-field">
-          <span class="bbs-modal-label">上级地点(改这里会连同下属一起移动)</span>
-          <BbsSelect v-model="editing.parentId" :options="parentOptions(editParentOptions)" aria-label="上级地点" />
+          <span class="bbs-modal-label">Địa điểm cấp trên (sửa ở đây sẽ di chuyển cùng toàn bộ các địa điểm trực thuộc)</span>
+          <BbsSelect v-model="editing.parentId" :options="parentOptions(editParentOptions)" aria-label="Địa điểm cấp trên" />
         </div>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">描述(可选)</span>
-          <textarea v-model="editing.desc" class="bbs-input bbs-modal-textarea" rows="3" placeholder="这地方是什么、有何特征"></textarea>
+          <span class="bbs-modal-label">Mô tả (tùy chọn)</span>
+          <textarea v-model="editing.desc" class="bbs-input bbs-modal-textarea" rows="3" placeholder="Nơi này là gì, có đặc điểm gì"></textarea>
         </label>
         <footer class="bbs-modal-foot">
-          <button class="bbs-btn" type="button" @click="cancelEdit">取消</button>
-          <button class="bbs-btn bbs-btn-primary" type="button" :disabled="!editing.name.trim()" @click="saveEdit">保存</button>
+          <button class="bbs-btn" type="button" @click="cancelEdit">Hủy</button>
+          <button class="bbs-btn bbs-btn-primary" type="button" :disabled="!editing.name.trim()" @click="saveEdit">Lưu</button>
         </footer>
       </div>
     </ModalMask>
 
     <ConfirmDialog
       :open="!!traveling"
-      title="前往地点"
-      confirm-text="填入输入框"
+      title="Đi tới địa điểm"
+      confirm-text="Điền vào khung nhập liệu"
       confirm-icon="navigate"
       @update:open="v => { if (!v) traveling = null; }"
       @confirm="confirmTravel"
       @cancel="traveling = null"
     >
-      确定前往「{{ traveling?.path.join(' › ') }}」？将按抵达后的地点状态生成草稿；不会自动发送，也不会提前修改记忆。输入框已有内容时会追加在末尾。
+      Xác nhận đi tới "{{ traveling?.path.join(' › ') }}"? Sẽ tạo bản nháp theo trạng thái địa điểm sau khi đến nơi; không tự động gửi đi, cũng không sửa đổi trước trí nhớ. Khi khung nhập liệu đã có sẵn nội dung sẽ nối thêm vào cuối.
     </ConfirmDialog>
 
     <ConfirmDialog
       :open="!!removing"
-      title="删除地点"
+      title="Xóa địa điểm"
       tone="danger"
-      confirm-text="删除"
+      confirm-text="Xóa"
       confirm-icon="trash"
       @update:open="v => { if (!v) removing = null; }"
       @confirm="confirmRemove"
       @cancel="removing = null"
     >
-      删除「{{ removing?.name }}」<template v-if="removeChildCount">,及其下属 {{ removeChildCount }} 个地点</template>。此操作写入最新摘要,删除楼层可回退。
+      Xóa "{{ removing?.name }}"<template v-if="removeChildCount">, cùng {{ removeChildCount }} địa điểm trực thuộc của nó</template>. Thao tác này được ghi vào tóm tắt mới nhất, xóa tầng có thể hoàn tác.
     </ConfirmDialog>
   </section>
 </template>
@@ -463,20 +463,20 @@ function confirmTravel() {
   flex-direction: column;
 }
 
-/* —— 嵌套树:层级引导轨是这页的标识元素 —— */
+/* —— Cây lồng nhau: đường ray dẫn hướng phân cấp là yếu tố nhận diện của trang này —— */
 .bbs-scene-tree {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  position: relative; /* 作离场行 position:absolute 的定位上下文 */
+  position: relative; /* Làm ngữ cảnh định vị cho position:absolute của dòng rời đi */
 }
 .bbs-scene-row {
   display: flex;
   align-items: stretch;
 }
 
-/* 展开/收起动画:进出淡入淡出 + 轻微上滑;留下的行用 move 平滑补位。
-   用比 --bbs-dur(0.28s) 更快的 0.16s,折叠交互要干脆。 */
+/* Hoạt ảnh mở rộng / thu gọn: vào ra mờ dần + trượt nhẹ lên trên; các dòng còn lại dùng move lấp chỗ mượt mà.
+   Dùng 0.16s nhanh hơn --bbs-dur (0.28s), tương tác thu gọn phải dứt khoát. */
 .scene-enter-active,
 .scene-leave-active {
   transition: opacity 0.16s var(--bbs-ease), transform 0.16s var(--bbs-ease);
@@ -486,7 +486,7 @@ function confirmTravel() {
   opacity: 0;
   transform: translateY(-6px);
 }
-/* 离场的行脱离文档流,避免它占位导致下方行不平滑补位 */
+/* Dòng rời đi tách khỏi luồng tài liệu, tránh việc nó chiếm chỗ làm các dòng phía dưới lấp chỗ không mượt */
 .scene-leave-active {
   position: absolute;
   width: 100%;
@@ -494,7 +494,7 @@ function confirmTravel() {
 .scene-move {
   transition: transform 0.16s var(--bbs-ease);
 }
-/* 每级一条 14px 宽的轨道槽,中间一条 hairline 竖线 */
+/* Mỗi cấp một rãnh đường ray rộng 14px, ở giữa là một đường kẻ dọc hairline */
 .bbs-scene-rail {
   flex: 0 0 14px;
   position: relative;
@@ -503,12 +503,12 @@ function confirmTravel() {
   content: '';
   position: absolute;
   left: 6px;
-  top: -6px; /* 接上一行的间隙,连成贯穿线 */
+  top: -6px; /* Nối khe hở với dòng trên, liền thành đường xuyên suốt */
   bottom: -6px;
   width: 1px;
   background: var(--bbs-line);
 }
-/* 当前所在脉络:轨道点亮成主干 */
+/* Mạch đang ở hiện tại: đường ray bật sáng thành trục chính */
 .bbs-scene-rail.active::before {
   background: var(--bbs-accent);
   opacity: 0.55;
@@ -525,7 +525,7 @@ function confirmTravel() {
   background: var(--bbs-surface);
   transition: border-color var(--bbs-dur) var(--bbs-ease), background var(--bbs-dur) var(--bbs-ease);
 }
-/* 当前所在地点本身:实心强调,作脉络的终点 */
+/* Bản thân địa điểm hiện tại: nhấn mạnh đặc ruột, làm điểm cuối của mạch */
 .bbs-scene-row.is-current .bbs-scene-card {
   border-color: var(--bbs-accent);
   background: var(--bbs-accent-soft);
@@ -535,14 +535,14 @@ function confirmTravel() {
   align-items: center;
   gap: 8px;
 }
-/* 有子节点的卡片:整卡可点折叠,光标提示 + hover 时箭头变深 */
+/* Thẻ có nút con: toàn bộ thẻ nhấn được để thu gọn, gợi ý con trỏ + khi hover mũi tên đậm lên */
 .bbs-scene-card.clickable {
   cursor: pointer;
 }
 .bbs-scene-card.clickable:hover .bbs-scene-toggle {
   color: var(--bbs-ink);
 }
-/* 折叠箭头:展开时朝下(chevron 原样),折叠时朝右(-90°)。纯视觉指示,点击由整行承接。 */
+/* Mũi tên thu gọn: khi mở rộng hướng xuống (nguyên dạng chevron), khi thu gọn hướng sang phải (-90°). Chỉ báo thuần thị giác, thao tác nhấn do toàn dòng đảm nhận. */
 .bbs-scene-toggle {
   display: inline-flex;
   align-items: center;
@@ -558,7 +558,7 @@ function confirmTravel() {
 .bbs-scene-toggle.collapsed {
   transform: rotate(-90deg);
 }
-/* 折叠态:显示隐藏的后代数 */
+/* Trạng thái thu gọn: hiển thị số lượng hậu duệ đang ẩn */
 .bbs-scene-count {
   flex: 0 0 auto;
   font-size: 11px;
@@ -623,7 +623,7 @@ function confirmTravel() {
   color: var(--bbs-accent);
 }
 
-/* 编辑弹窗里的路径面包屑 */
+/* Đường dẫn breadcrumb trong hộp thoại chỉnh sửa */
 .bbs-scene-crumb {
   margin: 0 0 2px;
   font-family: var(--bbs-font-mono);
@@ -631,7 +631,7 @@ function confirmTravel() {
   color: var(--bbs-ink-muted);
 }
 
-/* 复用 items 页的行内操作按钮样式(scoped 不继承,这里重声明同款) */
+/* Tái sử dụng kiểu dáng nút thao tác nội tuyến của trang items (scoped không kế thừa, ở đây khai báo lại cùng kiểu) */
 .bbs-item-act {
   display: inline-flex;
   align-items: center;

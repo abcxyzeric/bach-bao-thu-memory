@@ -9,8 +9,8 @@ defineProps<{ subject: string }>();
   <aside v-if="apiSettings.summaryOnlyMode" class="bbs-summary-only-notice" role="status">
     <span class="bbs-summary-only-icon"><Icon name="eye-off" /></span>
     <div class="bbs-summary-only-copy">
-      <strong>仅记录，不发送给主对话 AI</strong>
-      <p>副 API 仍会分析并更新{{ subject }}，用于生成摘要和维护柏宝书账本；这些数据不会作为当前状态注入。</p>
+      <strong>Chỉ ghi nhận, không gửi cho AI đối thoại chính</strong>
+      <p>API phụ vẫn sẽ phân tích và cập nhật {{ subject }} để tạo tóm tắt và duy trì sổ cái Bách Bảo Thư; những dữ liệu này sẽ không được tiêm vào làm trạng thái hiện tại.</p>
     </div>
   </aside>
 </template>

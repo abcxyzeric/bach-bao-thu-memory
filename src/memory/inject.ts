@@ -1,13 +1,13 @@
 /**
- * 把记忆注入回主对话上下文。
+ * Tiêm trí nhớ trở lại ngữ cảnh đối thoại chính.
  *
- * 机制:走 ST 标准的 setExtensionPrompt(key, value, position, depth, scan, role, filter),
- * 而不是手动 splice eventData.chat。setExtensionPrompt 是持久化的——一次设置后,
- * 每次主对话生成都会带上,直到下次用同 key 覆盖。所以只需「记忆变了就刷新」即可。
+ * Cơ chế: đi qua hàm chuẩn của ST là setExtensionPrompt(key, value, position, depth, scan, role, filter),
+ * thay vì splice thủ công eventData.chat. setExtensionPrompt có tính bền vững —— sau một lần thiết lập,
+ * mỗi lần đối thoại chính sinh nội dung đều sẽ mang theo, cho đến lần sau ghi đè bằng cùng key. Vì vậy chỉ cần "trí nhớ thay đổi thì làm mới" là được.
  *
- * 与隐藏机制配套:旧楼层被 is_system=true 踢出主上下文(见 engine.ts),
- * 这里把它们压缩后的摘要 + 当前结构化状态作为 system 提示重新注入,
- * 主模型因此仍能感知被隐藏的剧情。历史摘要放在聊天顶部附近,当前状态贴近最近对话。
+ * Đi kèm với cơ chế ẩn: các tầng cũ bị is_system=true đá khỏi ngữ cảnh chính (xem engine.ts),
+ * tại đây đem bản tóm tắt đã nén của chúng + trạng thái có cấu trúc hiện tại tiêm ngược lại làm gợi ý system,
+ * nhờ đó mô hình chính vẫn cảm nhận được cốt truyện đã bị ẩn. Tóm tắt lịch sử đặt gần đỉnh cuộc trò chuyện, trạng thái hiện tại bám sát cuộc đối thoại gần nhất.
  */
 
 import { apiSettings, engineActiveHere } from '@/api/settings';
@@ -24,42 +24,42 @@ import { relativeTimeLabel, weekdayLabel, ageDisplay, calculateRelativeDays } fr
 import { selectViewNodes, selectLifeDetailsForInjection, type ViewNode } from './select';
 import type { LeafExtra, MemItem, MemLifeDetail, MemNpc, MemProtagonist, MemScene, MemSummary, SceneFocus } from './types';
 
-// 摘要页列表复用同一套选择逻辑,经此 re-export(纯算法在 select.ts,零依赖、可单测)
+// Danh sách trang tóm tắt tái sử dụng cùng một bộ logic lựa chọn, re-export qua đây (thuật toán thuần nằm ở select.ts, không phụ thuộc, có thể kiểm thử đơn vị)
 export { selectViewNodes, type ViewNode };
 
-// 以下常量来源:SillyTavern public/script.js
+// Nguồn gốc các hằng số dưới đây: SillyTavern public/script.js
 //   extension_prompt_types.IN_CHAT = 1   (script.js:486)
 //   extension_prompt_roles.SYSTEM = 0    (script.js:494)
-// getContext() 未暴露这两个枚举,故硬编码并注明出处。
+// getContext() không bộc lộ hai enum này, nên mã hóa cứng và ghi chú xuất xứ.
 const IN_CHAT = 1;
 const ROLE_SYSTEM = 0;
 
-/** 旧版单槽位 key;刷新时清空,避免升级后 D2 残留重复注入 */
+/** Key khe đơn bản cũ; khi làm mới sẽ xóa trống, tránh sau khi nâng cấp D2 còn sót gây tiêm trùng lặp */
 const LEGACY_INJECT_KEY = 'baibai_book_memory';
-/** 拆分后的 setExtensionPrompt keys;同 key 重复 set 即覆盖,天然幂等 */
+/** Các key setExtensionPrompt sau khi tách; cùng key set lặp lại tức là ghi đè, tự nhiên bất biến (idempotent) */
 const HISTORY_INJECT_KEY = 'baibai_book_memory_history';
 const STATE_INJECT_KEY = 'baibai_book_memory_state';
-/** 时间标签固定提示词槽:注入主对话,要求每条正文前后输出 <bbs_start>/<bbs_end> */
+/** Khe prompt cố định thẻ thời gian: tiêm vào đối thoại chính, yêu cầu trước sau mỗi chính văn xuất <bbs_start>/<bbs_end> */
 const TIMETAG_INJECT_KEY = 'baibai_book_time_tag';
-/** 历史摘要尽量放到聊天上下文顶部;当前状态贴近最近对话 */
+/** Tóm tắt lịch sử cố gắng đặt gần đỉnh ngữ cảnh cuộc trò chuyện; trạng thái hiện tại bám sát đối thoại gần nhất */
 const HISTORY_INJECT_DEPTH = 9999;
 const STATE_INJECT_DEPTH_AFTER_LATEST_AI = 1;
 const STATE_INJECT_DEPTH_BEFORE_LATEST_AI = 2;
-/** 时间标签提示词独立注入到 D0(最底、最贴近下一条回复),作为对「下一条回复」的最强指令,
- *  不与状态快照(D1/D2)同层 */
+/** Prompt thẻ thời gian tiêm độc lập vào D0 (dưới cùng, sát câu trả lời tiếp theo nhất), làm chỉ thị mạnh nhất cho "câu trả lời tiếp theo",
+ *  không cùng tầng với ảnh chụp trạng thái (D1/D2) */
 const TIMETAG_INJECT_DEPTH = 0;
 
 /**
- * 一条叶子是否「已启用」(应注入)。
- * 生成与使用解耦:叶子对所有楼层提前生成,但只有当它所在消息已被隐藏(is_system,
- * 原文移出主上下文)时才注入顶替原文;仍在保留窗口发全文的叶子暂不注入,避免与全文重复。
+ * Một lá có đang "được kích hoạt" (nên tiêm) hay không.
+ * Tách rời giữa việc tạo và việc sử dụng: lá được tạo trước cho mọi tầng, nhưng chỉ khi tin nhắn chứa nó đã bị ẩn (is_system,
+ * nguyên văn rời khỏi ngữ cảnh chính) thì mới tiêm để thay thế nguyên văn; lá vẫn nằm trong cửa sổ giữ lại gửi toàn văn thì tạm không tiêm, tránh lặp lại với toàn văn.
  */
 function leafActiveAt(chat: STMessage[] | null, i: number): boolean {
   if (!chat) return false;
   return chat[i]?.is_system === true;
 }
 
-/** 用于决定状态快照相对最新 AI 楼的位置;与 engine.ts 的可追踪 AI 楼规则保持一致。 */
+/** Dùng để quyết định vị trí của ảnh chụp trạng thái so với tầng AI mới nhất; giữ nhất quán với quy tắc tầng AI có thể theo dõi của engine.ts. */
 function isTrackableAiMessage(m: STMessage | undefined): boolean {
   if (!m || m.is_user) return false;
   if (m.extra?.bbs_omit) return false;
@@ -68,7 +68,7 @@ function isTrackableAiMessage(m: STMessage | undefined): boolean {
   return !m.is_system;
 }
 
-/** 触发匹配的近期上下文:最近几楼正文(新旧都可,含用户楼)拼一起,截断防暴。 */
+/** Ngữ cảnh gần đây để khớp kích hoạt: ghép chính văn vài tầng gần nhất (mới cũ đều được, gồm cả tầng người dùng), cắt gọn chống tràn. */
 function recentContextText(): string {
   const chat = getContext()?.chat;
   if (!chat?.length) return '';
@@ -82,9 +82,9 @@ function recentContextText(): string {
 }
 
 /**
- * 当前状态的注入位置:
- *  - 最新 AI 已有有效摘要 → 状态已包含它,放在它之后(D1)。
- *  - 最新 AI 尚无有效摘要 → 状态不包含它,保持放在它之前(D2)。
+ * Vị trí tiêm của trạng thái hiện tại:
+ *  - Tầng AI mới nhất đã có tóm tắt hợp lệ → trạng thái đã bao gồm nó, đặt ở sau nó (D1).
+ *  - Tầng AI mới nhất chưa có tóm tắt hợp lệ → trạng thái chưa bao gồm nó, giữ đặt ở trước nó (D2).
  */
 function resolveStateInjectionDepth(chat: STMessage[] | null): number {
   if (!chat) return STATE_INJECT_DEPTH_BEFORE_LATEST_AI;
@@ -95,7 +95,7 @@ function resolveStateInjectionDepth(chat: STMessage[] | null): number {
   return STATE_INJECT_DEPTH_BEFORE_LATEST_AI;
 }
 
-/** 构建统一森林视图:叶子(leafValid)+ 压缩节点,根 = 未被任何 childIds 引用者 */
+/** Xây dựng khung nhìn rừng thống nhất: lá (leafValid) + nút nén, gốc = những nút không bị bất kỳ childIds nào tham chiếu */
 function buildView(
   summaries: MemSummary[],
   chat: STMessage[] | null,
@@ -104,8 +104,8 @@ function buildView(
 
   if (chat) {
     for (let i = 0; i < chat.length; i++) {
-      if (chat[i]?.extra?.bbs_omit) continue; // 番外楼:不进注入视图
-      if (!leafValid(chat[i])) continue; // 陈旧叶子不进视图 → 不注入
+      if (chat[i]?.extra?.bbs_omit) continue; // Tầng ngoại truyện: không đưa vào khung nhìn tiêm
+      if (!leafValid(chat[i])) continue; // Lá cũ lỗi thời không đưa vào khung nhìn → không tiêm
       const leaf = getLeaf(chat[i]) as LeafExtra;
       byId.set(leaf.id, {
         id: leaf.id,
@@ -133,7 +133,7 @@ function buildView(
       timeLabel: s.timeLabel,
       createdAt: s.createdAt,
       childIds: s.childIds ?? [],
-      // 导入历史以覆盖截止楼作为“历史发生位置”,便于 beforeIndex 判定;普通 comp 仍由后代叶子决定。
+      // Lịch sử nhập vào lấy tầng kết thúc bao phủ làm "vị trí xảy ra lịch sử", tiện cho việc phán đoán beforeIndex; comp thông thường vẫn do lá hậu duệ quyết định.
       msgIndex: s.imported ? (s.importedFloorEnd ?? -1) : -1,
       active: s.imported === true,
       atomic: s.imported === true,
@@ -149,16 +149,16 @@ function buildView(
 }
 
 /**
- * 通用节点选择:每个「合格」叶子由其祖先链上**最高的、全部后代叶子都合格**的节点代表一次
- * (省 token);否则压缩节点降级、逐子递归。叶子「合格」由 leafEligible 判定。
- *  - 注入场景:合格 = 已隐藏(active),用 selectInjectionNodes。
- *  - 分析历史场景:合格 = 楼层在被分析楼之前,用 selectHistoryNodesBefore。
+ * Lựa chọn nút tổng quát: mỗi lá "đạt chuẩn" được đại diện một lần bởi nút **cao nhất trên chuỗi tổ tiên mà toàn bộ lá hậu duệ đều đạt chuẩn**
+ * (tiết kiệm token); nếu không nút nén sẽ hạ cấp, đệ quy từng nút con. Lá "đạt chuẩn" do leafEligible phán đoán.
+ *  - Kịch bản tiêm: đạt chuẩn = đã ẩn (active), dùng selectInjectionNodes.
+ *  - Kịch bản phân tích lịch sử: đạt chuẩn = tầng nằm trước tầng đang phân tích, dùng selectHistoryNodesBefore.
  *
- * ⚠️ 完好性(intact):一个压缩节点的某个 childId 指向的叶子若已失效(翻页到别的 swipe →
- * leafValid=false → 不在 byId 里),则该节点**不完整**,不能作为整体代表注入(它的压缩文本
- * 嵌着失效那页的旧叙事,会与当前正文冲突)。此时降级递归,改用它**仍完好的子节点**各自代表:
- * 受影响的那条链一路拆到叶子层、跳过失效叶子,而旁支完好的子节点(如同层另一条 L1)整条保留。
- * 节点失活只是「当前不展示/不注入」,森林数据不删除——翻回原页 leafValid 恢复,即自动复活。
+ * ⚠️ Tính nguyên vẹn (intact): nếu một childId nào đó của một nút nén trỏ tới lá đã mất hiệu lực (lật sang swipe khác →
+ * leafValid=false → không có trong byId), thì nút đó **không nguyên vẹn**, không thể đại diện tổng thể để tiêm (văn bản nén của nó
+ * có nhúng tự sự cũ của trang đã mất hiệu lực, sẽ xung đột với chính văn hiện tại). Lúc này hạ cấp đệ quy, đổi sang dùng **các nút con vẫn nguyên vẹn** của nó tự đại diện riêng:
+ * nhánh bị ảnh hưởng tách dọc xuống tận tầng lá, bỏ qua lá mất hiệu lực, còn nút con nguyên vẹn ở nhánh bên (như một L1 khác cùng tầng) giữ nguyên cả nhánh.
+ * Nút mất hoạt tính chỉ là "hiện tại không hiển thị / không tiêm", dữ liệu rừng không xóa —— lật về trang cũ leafValid khôi phục, tức thì tự động sống lại.
  */
 function selectNodes(
   summaries: MemSummary[],
@@ -169,17 +169,17 @@ function selectNodes(
 }
 
 /**
- * 选出注入用的节点:每个「已启用(已隐藏)」叶子由其祖先链最高的全-启用节点代表一次;
- * 窗口内仍发全文的叶子不注入。
+ * Chọn ra các nút dùng để tiêm: mỗi lá "đã kích hoạt (đã ẩn)" được đại diện một lần bởi nút toàn-kích-hoạt cao nhất trên chuỗi tổ tiên của nó;
+ * lá trong cửa sổ vẫn gửi toàn văn thì không tiêm.
  */
 export function selectInjectionNodes(summaries: MemSummary[], chat: STMessage[] | null): ViewNode[] {
   return selectNodes(summaries, chat, n => n.active);
 }
 
 /**
- * 选出「被分析楼之前」的历史节点,供生成摘要时注入上下文:
- * 楼层 < beforeIndex 的叶子,由其祖先链最高的「全部后代都在 beforeIndex 之前」的节点代表一次
- * (有总结就用总结的压缩文本)。不要求隐藏。
+ * Chọn ra các nút lịch sử "trước tầng đang được phân tích", dùng để tiêm ngữ cảnh khi sinh tóm tắt:
+ * lá có tầng < beforeIndex, được đại diện một lần bởi nút cao nhất trên chuỗi tổ tiên mà "toàn bộ hậu duệ đều ở trước beforeIndex"
+ * (có tổng kết thì dùng văn bản nén của tổng kết). Không yêu cầu phải ẩn.
  */
 export function selectHistoryNodesBefore(
   summaries: MemSummary[],
@@ -189,16 +189,16 @@ export function selectHistoryNodesBefore(
   return selectNodes(summaries, chat, n => n.msgIndex >= 0 && n.msgIndex < beforeIndex);
 }
 
-/** 节点展示时间:新数据用起止合成,旧数据回退 timeLabel */
+/** Thời gian hiển thị của nút: dữ liệu mới dùng bắt đầu-kết thúc ghép lại, dữ liệu cũ lùi về timeLabel */
 function nodeTime(n: ViewNode): string {
   if (n.timeStart || n.timeEnd) return formatRange(n.timeStart, n.timeEnd);
   return n.timeLabel ? compactTimeLabel(n.timeLabel) : '';
 }
 
 /**
- * 把选出的节点拼成只带绝对时间的历史摘要文本块;空则返回空串。
- * 这套渲染器供摘要/批量摘要/查询重写等副任务复用:它们各自有历史截止点,
- * 不能沿用主对话「相对当前最新剧情」的口径,因此这里刻意不计算相对时间。
+ * Ghép các nút đã chọn thành khối văn bản tóm tắt lịch sử chỉ mang thời gian tuyệt đối; trống thì trả về chuỗi rỗng.
+ * Bộ kết xuất này dùng chung cho các tác vụ phụ như tóm tắt / tóm tắt hàng loạt / viết lại truy vấn: mỗi tác vụ có điểm cắt lịch sử riêng,
+ * không thể dùng chung tiêu chuẩn "tương đối so với cốt truyện mới nhất hiện tại" của đối thoại chính, do đó ở đây cố ý không tính thời gian tương đối.
  */
 export function renderHistoryNodes(nodes: ViewNode[]): string {
   return nodes
@@ -209,14 +209,14 @@ export function renderHistoryNodes(nodes: ViewNode[]): string {
     .join('\n\n');
 }
 
-/** 节点的「事件时间」:用结束时间(剧情已到达的时刻);缺则回退起始,再回退旧 timeLabel 的结束端 */
+/** "Thời gian sự kiện" của nút: dùng thời gian kết thúc (thời khắc cốt truyện đã đi tới); thiếu thì lùi về bắt đầu, rồi lùi tiếp về đầu kết thúc của timeLabel cũ */
 function nodeEventTime(n: ViewNode): string {
   if (n.timeEnd) return n.timeEnd;
   if (n.timeStart) return n.timeStart;
   return n.timeLabel ? splitTimeLabel(n.timeLabel).end ?? '' : '';
 }
 
-/** 取节点未压缩的起止时间;新字段优先,缺失端再从旧 timeLabel 回退。 */
+/** Lấy thời gian bắt đầu và kết thúc chưa nén của nút; ưu tiên trường mới, đầu bị thiếu mới lùi về từ timeLabel cũ. */
 function nodeTimeRange(n: ViewNode): { start: string; end: string } {
   const legacy = n.timeLabel ? splitTimeLabel(n.timeLabel) : {};
   return {
@@ -225,7 +225,7 @@ function nodeTimeRange(n: ViewNode): { start: string; end: string } {
   };
 }
 
-/** 给一个完整时间点追加相对时间与周几;无法推断的部分自然省略。 */
+/** Bổ sung thời gian tương đối và thứ trong tuần vào một mốc thời gian đầy đủ; phần không thể suy đoán tự nhiên lược bỏ. */
 function timePointWithRelative(time: string, now: string): string {
   const value = time.trim();
   if (!value) return '';
@@ -234,9 +234,9 @@ function timePointWithRelative(time: string, now: string): string {
 }
 
 /**
- * 总结节点跨越一段时间,不能用单个「昨天」代表整段。
- * 因此起点、终点分别相对同一个 now 计算,并保留两端完整绝对时间:
- * 【1988/9/28 22:00(前天·周三) - 1988/9/29 08:00(昨天·周四)】
+ * Nút tổng kết trải dài qua một khoảng thời gian, không thể dùng một chữ "Hôm qua" đơn lẻ để đại diện cho cả đoạn.
+ * Vì vậy điểm đầu và điểm cuối được tính tương đối riêng biệt so với cùng một now, và giữ nguyên thời gian tuyệt đối đầy đủ ở cả hai đầu:
+ * 【1988/9/28 22:00(Hôm kia·Thứ tư) - 1988/9/29 08:00(Hôm qua·Thứ năm)】
  */
 function nodeRangeWithRelative(n: ViewNode, now: string): string {
   const { start, end } = nodeTimeRange(n);
@@ -248,13 +248,13 @@ function nodeRangeWithRelative(n: ViewNode, now: string): string {
 }
 
 /**
- * 主对话注入/公开历史宏使用:为历史节点补相对时间,帮模型感知剧情距离。
- * 参照点 now = 故事内最新时间;无法解析相对差的(架空纪年等)降级为只显示绝对时间。
- * 不并入 renderHistoryNodes —— 后者被摘要模型等副任务复用,截止点和参照点不同。
+ * Dùng cho tiêm đối thoại chính / macro lịch sử công khai: bù thêm thời gian tương đối cho các nút lịch sử, giúp mô hình cảm nhận khoảng cách cốt truyện.
+ * Điểm tham chiếu now = thời gian mới nhất trong truyện; những chỗ không phân tích được độ lệch tương đối (kỷ nguyên hư cấu, v.v.) hạ cấp xuống chỉ hiển thị thời gian tuyệt đối.
+ * Không gộp vào renderHistoryNodes —— hàm đó được các tác vụ phụ như mô hình tóm tắt tái sử dụng, điểm cắt và điểm tham chiếu khác nhau.
  *
- * 叶子摘要指向单楼,维持【(昨天·周三) 绝对时间】格式。
- * 总结跨多楼,按起止端分别标注为【起始(相对) - 结束(相对)】,避免用单个相对时间误代表整段。
- * 周几与相对时间并入同一个括号;仅标准公历带年份才有周几(weekdayLabel 自带门槛)。
+ * Tóm tắt lá trỏ tới một tầng đơn, giữ định dạng 【(Hôm qua·Thứ tư) thời gian tuyệt đối】.
+ * Tổng kết trải qua nhiều tầng, gắn nhãn riêng theo hai đầu bắt đầu và kết thúc thành 【bắt đầu(tương đối) - kết thúc(tương đối)】, tránh dùng một thời gian tương đối đơn lẻ đại diện nhầm cho cả đoạn.
+ * Thứ trong tuần và thời gian tương đối gộp vào cùng một cặp ngoặc đơn; chỉ dương lịch chuẩn có kèm năm mới có thứ trong tuần (weekdayLabel tự mang ngưỡng lọc).
  */
 export function renderHistoryNodesWithRelative(nodes: ViewNode[], now: string): string {
   return nodes
@@ -272,22 +272,22 @@ export function renderHistoryNodesWithRelative(nodes: ViewNode[], now: string): 
     .join('\n\n');
 }
 
-/** 组合历史摘要注入文本;无启用摘要时返回空串(注入空串等于清除)。 */
+/** Tổ hợp văn bản tiêm tóm tắt lịch sử; khi không có tóm tắt được kích hoạt thì trả về chuỗi rỗng (tiêm chuỗi rỗng đồng nghĩa với xóa sạch). */
 export function buildHistoryInjectionText(): string {
   const chat = getContext()?.chat ?? null;
 
-  // 从森林选「最高存活压缩层」节点(被收纳的不重复、窗口内全文叶子不注入)
+  // Chọn nút "tầng nén còn sống cao nhất" từ rừng (nút đã được thu nạp không lặp lại, lá toàn văn trong cửa sổ không tiêm)
   const sums = selectInjectionNodes(memory.summaries, chat);
   if (!sums.length) return '';
-  // 注入路径带相对时间前缀;参照点 = 故事内最新时间(读正文标签,不受是否已摘影响)
-  // 首尾私密简报框定,避免主模型把摘要当成要复述/输出的模板
-  return `${MEMORY_BRIEFING_NOTE}\n[历史剧情摘要]\n${renderHistoryNodesWithRelative(sums, latestStoryTime(chat))}\n${MEMORY_BRIEFING_END}`;
+  // Đường dẫn tiêm mang tiền tố thời gian tương đối; điểm tham chiếu = thời gian mới nhất trong truyện (đọc thẻ chính văn, không bị ảnh hưởng bởi việc đã tóm tắt hay chưa)
+  // Đầu cuối đóng khung bằng bản tin mật, tránh mô hình chính coi tóm tắt là khuôn mẫu cần thuật lại / xuất ra
+  return `${MEMORY_BRIEFING_NOTE}\n[Tóm tắt cốt truyện lịch sử]\n${renderHistoryNodesWithRelative(sums, latestStoryTime(chat))}\n${MEMORY_BRIEFING_END}`;
 }
 
 /**
- * 在场景树里定位「当前节点」:优先 AI 给的权威 locationPath,否则按 here 收紧模糊匹配。
- * 与场景页共用 apply.findCurrentSceneId(单一来源,杜绝页面/注入分叉),这里再把 id 解析回节点。
- * 找不到返回 null(退回纯字符串行为)。
+ * Định vị "nút hiện tại" trong cây bối cảnh: ưu tiên locationPath có thẩm quyền do AI đưa ra, nếu không thì thu hẹp khớp mờ theo here.
+ * Dùng chung apply.findCurrentSceneId với trang bối cảnh (một nguồn duy nhất, triệt tiêu việc rẽ nhánh giữa trang giao diện và tiêm), ở đây giải ngược id về lại nút.
+ * Không tìm thấy trả về null (lùi về hành vi chuỗi thuần).
  */
 function findCurrentScene(scenes: MemScene[], here: string, locationPath?: string[]): MemScene | null {
   const id = findCurrentSceneId(scenes, here, locationPath);
@@ -295,7 +295,7 @@ function findCurrentScene(scenes: MemScene[], here: string, locationPath?: strin
   return scenes.find(s => s.id === id) ?? null;
 }
 
-/** 回溯祖先链(由粗到细,含当前节点本身)。 */
+/** Truy ngược chuỗi tổ tiên (từ lớn đến nhỏ, bao gồm cả bản thân nút hiện tại). */
 function sceneChain(scenes: MemScene[], node: MemScene | null): MemScene[] {
   if (!node) return [];
   const byId = new Map(scenes.map(s => [s.id, s]));
@@ -311,10 +311,10 @@ function sceneChain(scenes: MemScene[], node: MemScene | null): MemScene[] {
 }
 
 /**
- * 渲染场景注入块(分三档省 token):
- *  - 当前地点 + 祖先链:逐级「名称(描述)」详细。
- *  - 其他去过的地点:仅列名称(完整路径名),帮 AI 复用既有命名、避免重复记录。
- * 无场景数据返回空串。
+ * Kết xuất khối tiêm bối cảnh (chia làm các mức để tiết kiệm token):
+ *  - Địa điểm hiện tại + chuỗi tổ tiên: chi tiết từng cấp "Tên(mô tả)".
+ *  - Các địa điểm khác từng đi qua: chỉ liệt kê tên (tên đường dẫn đầy đủ), giúp AI tái sử dụng cách đặt tên đã có, tránh ghi trùng lặp.
+ * Không có dữ liệu bối cảnh trả về chuỗi rỗng.
  */
 function fmtSceneContext(scenes: MemScene[], here: string, locationPath?: string[]): string {
   if (!scenes.length) return '';
@@ -327,80 +327,80 @@ function fmtSceneContext(scenes: MemScene[], here: string, locationPath?: string
     const detailed = chain
       .map(n => (oneLine(n.desc) ? `${n.name}(${oneLine(n.desc)})` : n.name))
       .join(' › ');
-    lines.push(`当前所在(由大到小):${detailed}`);
+    lines.push(`Nơi đang ở hiện tại (từ lớn đến nhỏ):${detailed}`);
   }
-  // 其他地点:仅名称(用完整路径表达层级),排除已在祖先链里详述的
+  // Địa điểm khác: chỉ tên (dùng đường dẫn đầy đủ biểu đạt cấp bậc), loại trừ những nơi đã mô tả chi tiết trong chuỗi tổ tiên
   const others = scenes
     .filter(s => !chainIds.has(s.id))
     .map(s => s.path.join(' › '));
   if (others.length) {
-    lines.push(`其他已知地点(仅名称,勿重复记录):\n${others.map(o => `  - ${o}`).join('\n')}`);
+    lines.push(`Các địa điểm đã biết khác (chỉ tên, đừng ghi trùng lặp):\n${others.map(o => `  - ${o}`).join('\n')}`);
   }
   return lines.join('\n');
 }
 
 /**
- * 单行化:把值里的换行/回车折叠成空格。
- * NPC 名册是「一个角色一行、字段用 ;/—— 拼接」的格式,值内含换行会把一条信息拆成多行、
- * 后续行丢掉「  - 」前缀,破坏注入结构、误导 AI。故所有内联字段渲染前都过此函数。
- * (UI 里字段可软换行显示,但注入必须压平——trim 只去首尾,拦不住中间换行。)
+ * Đơn dòng hóa: gộp các ký tự xuống dòng / về đầu dòng trong giá trị thành khoảng trắng.
+ * Danh sách NPC có định dạng "mỗi nhân vật một dòng, các trường ghép bằng ;/——", nếu bên trong giá trị chứa dấu xuống dòng sẽ tách một mẩu thông tin thành nhiều dòng,
+ * các dòng sau mất tiền tố "  - ", phá hỏng cấu trúc tiêm và làm AI hiểu lầm. Do đó mọi trường nội tuyến trước khi kết xuất đều đi qua hàm này.
+ * (Trong UI trường có thể xuống dòng mềm để hiển thị, nhưng khi tiêm bắt buộc phải ép phẳng —— trim chỉ bỏ đầu cuối, không chặn được xuống dòng ở giữa.)
  */
 function oneLine(s: string | undefined): string {
   return (s ?? '').replace(/\s*[\r\n]+\s*/g, ' ').trim();
 }
 
-/** 主角不参与 NPC 在场分档;已有字段始终完整注入。年龄按锚点+当前故事时间推算(now)。 */
+/** Nhân vật chính không tham gia phân mức có mặt của NPC; các trường đã có luôn được tiêm đầy đủ. Tuổi tác suy tính theo mốc neo + thời gian câu chuyện hiện tại (now). */
 function fmtProtagonistContext(protagonist: MemProtagonist, name: string, now: string): string {
   const fields: Array<[string, string | undefined]> = [
-    ['性别', protagonist.gender],
-    ['年龄', ageDisplay(protagonist.age, protagonist.ageTime, now)],
-    ['身份', protagonist.identity],
-    ['外貌', protagonist.appearance],
-    ['着装', protagonist.outfit],
-    ['状态', protagonist.condition],
+    ['Giới tính', protagonist.gender],
+    ['Tuổi tác', ageDisplay(protagonist.age, protagonist.ageTime, now)],
+    ['Thân phận', protagonist.identity],
+    ['Ngoại hình', protagonist.appearance],
+    ['Trang phục', protagonist.outfit],
+    ['Trạng thái', protagonist.condition],
   ];
   const lines = fields
     .filter(([, value]) => oneLine(value))
     .map(([label, value]) => `  - ${label}:${oneLine(value)}`);
   if (!lines.length) return '';
-  return `${oneLine(name) || '主角'}:\n${lines.join('\n')}`;
+  return `${oneLine(name) || 'Nhân vật chính'}:\n${lines.join('\n')}`;
 }
 
-/** 把 NPC 的「即时状态」(着装/状态/所在)拼成一段尾注;无则空串。供在场与主要角色组复用。 */
+/** Ghép "trạng thái tức thời" (trang phục / trạng thái / nơi ở) của NPC thành một đoạn chú thích đuôi; không có thì trả về chuỗi rỗng. Dùng chung cho nhóm có mặt và nhóm nhân vật chính yếu. */
 function npcStateTail(n: MemNpc, withPlace: boolean): string {
   const tail: string[] = [];
-  if (oneLine(n.outfit)) tail.push(`着装:${oneLine(n.outfit)}`);
-  if (oneLine(n.condition)) tail.push(`状态:${oneLine(n.condition)}`);
+  if (oneLine(n.outfit)) tail.push(`Trang phục:${oneLine(n.outfit)}`);
+  if (oneLine(n.condition)) tail.push(`Trạng thái:${oneLine(n.condition)}`);
   if (withPlace) {
-    if (n.follow) tail.push('随行');
-    else if (oneLine(n.location)) tail.push(`在:${oneLine(n.location)}`);
+    if (n.follow) tail.push('Đi cùng');
+    else if (oneLine(n.location)) tail.push(`Ở:${oneLine(n.location)}`);
   }
   return tail.length ? ` 〔${tail.join(';')}〕` : '';
 }
 
 /**
- * 关系的「称谓头」:取 relation 第一个逗号/分号/破折号前的部分(引导 AI 把称谓写在开头)。
- * 供不在场档用——「主角之兄」这种短称谓和性别同级重要(把亲哥写成陌生人与搞错性别同样致命),
- * 但整句态度描述在不在场档太贵,只留称谓。
+ * "Phần đầu xưng hô" của quan hệ: lấy phần trước dấu phẩy / chấm phẩy / gạch ngang dài đầu tiên của relation (hướng dẫn AI viết danh xưng ở đầu).
+ * Dùng cho mức vắng mặt —— danh xưng ngắn kiểu "Anh trai nhân vật chính" quan trọng ngang với giới tính (viết anh ruột thành người dưng cũng chí mạng như nhầm giới tính),
+ * nhưng cả câu mô tả thái độ ở mức vắng mặt thì quá tốn, chỉ giữ lại danh xưng.
  */
 function relationHead(relation: string | undefined): string {
   const r = oneLine(relation);
   if (!r) return '';
   const head = r.split(/[,,;;、——]/)[0].trim();
-  // 称谓应当很短;拿到一长句说明 AI 没按「称谓在前」写,整句注入反而贵 → 放弃
-  return head.length <= 12 ? head : '';
+  // Danh xưng lẽ ra phải ngắn; lấy ra cả một câu dài chứng tỏ AI không viết theo kiểu "danh xưng ở trước", tiêm cả câu ngược lại tốn kém → bỏ qua
+  return head.length <= 24 ? head : '';
 }
 
 /**
- * 渲染 NPC 名册注入块(分四档省 token):
- *  - **主要角色**(important):永远全量置顶,**突出即时状态面板**(着装/状态/所在),身份/性格/外貌从简。
- *  - 与其他角色的长期关系(ties)独立全局输出一次，不受以下在场分档影响。
- *  - 在场(随行 / 所在地=主角当前节点)→ 全量:名 + 性别 + 年龄 + 身份 + 关系 + 性格 + 外貌 + 即时状态。
- *  - **同区域**(抬头最多一级就与主角共处)→ 轻量:名 + 性别 + 年龄 + 身份 + 关系 + 性格 + 所在地。留个性格,免得 AI
- *    临时拉其出场时凭空 OOC;但砍掉外貌/即时状态这俩大头,人多时省得多。
- *  - 不在场(更上级祖先/更远旁支)→ 只发 名 + 性别 + 关系称谓 + 身份(title) + 已有好感档位(省略说明)。
- * **性别在所有档都发**(包括不在场),防 AI 搞错性别;关系的**称谓头**同理(把亲哥写成陌生人同级严重)。
- * 年龄按锚点+当前故事时间(now)推算后注入,时间跳跃自动长岁。无 NPC 返回空串。
+ * Kết xuất khối tiêm danh sách NPC (chia bốn mức để tiết kiệm token):
+ *  - **Nhân vật chính yếu** (important): luôn luôn đưa toàn bộ lên đầu, **làm nổi bật bảng trạng thái tức thời** (trang phục/trạng thái/nơi ở), thân phận/tính cách/ngoại hình viết gọn.
+ *  - Quan hệ dài hạn với các nhân vật khác (ties) xuất toàn cục độc lập một lần, không bị ảnh hưởng bởi việc phân mức có mặt dưới đây.
+ *  - Có mặt (đi cùng / nơi ở = nút hiện tại của nhân vật chính) → toàn bộ: tên + giới tính + tuổi + thân phận + quan hệ + tính cách + ngoại hình + trạng thái tức thời.
+ *  - **Cùng khu vực** (ngước lên tối đa một cấp là ở chung với nhân vật chính) → gọn nhẹ: tên + giới tính + tuổi + thân phận + quan hệ + tính cách + nơi ở. Giữ lại tính cách để tránh AI
+ *    tạm thời kéo họ xuất hiện lại bị OOC vô căn cứ; nhưng cắt bỏ hai phần nặng nhất là ngoại hình / trạng thái tức thời, khi đông người sẽ tiết kiệm được rất nhiều.
+ *  - Vắng mặt (tổ tiên cấp cao hơn / nhánh bên xa hơn) → chỉ gửi tên + giới tính + danh xưng quan hệ + thân phận (title) + mức hảo cảm đã có (lược bỏ giải thích).
+ * **Giới tính được gửi ở tất cả các mức** (bao gồm cả vắng mặt), chống việc AI nhầm giới tính; **phần đầu danh xưng** của quan hệ cũng tương tự (viết anh ruột thành người lạ nghiêm trọng ngang nhau).
+ * Tuổi tác được suy tính theo mốc neo + thời gian câu chuyện hiện tại (now) rồi mới tiêm, thời gian nhảy vọt tự động tăng tuổi. Không có NPC trả về chuỗi rỗng.
  */
 function fmtNpcContext(npcs: MemNpc[], scenes: MemScene[], here: string, locationPath: string[] | undefined, now: string): string {
   if (!npcs.length) return '';
@@ -409,15 +409,15 @@ function fmtNpcContext(npcs: MemNpc[], scenes: MemScene[], here: string, locatio
   const nearby: MemNpc[] = [];
   const absent: MemNpc[] = [];
   for (const n of npcs) {
-    if (n.important) { main.push(n); continue; } // 主要角色单列,不再进在场判定
-    const p = classifyNpcPresence(n, scenes, here, locationPath); // 与 NPC 页共用同一权威判定
+    if (n.important) { main.push(n); continue; } // Nhân vật chính yếu liệt kê riêng, không đưa vào phán đoán có mặt nữa
+    const p = classifyNpcPresence(n, scenes, here, locationPath); // Dùng chung cùng một phán đoán có thẩm quyền với trang NPC
     if (p === 'present') present.push(n);
     else if (p === 'nearby') nearby.push(n);
     else absent.push(n);
   }
   const age = (n: MemNpc): string => oneLine(ageDisplay(n.age, n.ageTime, now));
-  // 好感注入开关(设置页「注入设置」):关闭后名册照发,只不附带好感估计。
-  // 摘要副 API 走 fmtNpcSummaryList,不受此开关影响——记录始终照常。
+  // Công tắc tiêm hảo cảm (trang cài đặt "Cài đặt tiêm"): sau khi tắt danh sách vẫn gửi như thường, chỉ không kèm theo ước lượng hảo cảm.
+  // API phụ tóm tắt đi qua fmtNpcSummaryList, không bị ảnh hưởng bởi công tắc này —— việc ghi chép luôn diễn ra bình thường.
   const affinityOn = apiSettings.injection.npcAffinity;
   const aff = (n: MemNpc, partial = false, includeNote = true): string =>
     affinityOn ? fmtNpcAffinity(n, partial, includeNote) : '';
@@ -427,17 +427,17 @@ function fmtNpcContext(npcs: MemNpc[], scenes: MemScene[], here: string, locatio
   const ties = fmtNpcTiesContext(npcs);
   if (ties) lines.push(ties);
   if (main.length) {
-    // 主要角色:状态面板优先。身份/关系留一句帮定位,外貌/性格从简(卡里通常已有),重点是即时状态。
+    // Nhân vật chính yếu: ưu tiên bảng trạng thái. Thân phận / quan hệ giữ một câu giúp định vị, ngoại hình / tính cách viết gọn (trong thẻ nhân vật thường đã có), trọng tâm là trạng thái tức thời.
     const detailed = main
       .map(n => {
         const inBracket = [oneLine(n.gender), age(n), oneLine(n.title)].filter(Boolean);
         const head = inBracket.length ? `${n.name}(${inBracket.join('·')})` : n.name;
-        const rel = oneLine(n.relation) ? ` —— 与主角:${oneLine(n.relation)}` : '';
+        const rel = oneLine(n.relation) ? ` —— Với nhân vật chính:${oneLine(n.relation)}` : '';
         const affinity = aff(n);
-        return `  - ${head}${rel}${affinity ? ` 〔好感估计:${affinity}〕` : ''}${npcStateTail(n, true)}`;
+        return `  - ${head}${rel}${affinity ? ` 〔Ước lượng hảo cảm:${affinity}〕` : ''}${npcStateTail(n, true)}`;
       })
       .join('\n');
-    lines.push(`主要角色(核心主演,需始终保持其当前状态连贯):\n${detailed}`);
+    lines.push(`Nhân vật chính yếu (diễn viên chính cốt lõi, cần luôn giữ trạng thái hiện tại của họ liền mạch):\n${detailed}`);
   }
   if (present.length) {
     const detailed = present
@@ -446,55 +446,55 @@ function fmtNpcContext(npcs: MemNpc[], scenes: MemScene[], here: string, locatio
         const inBracket = [oneLine(n.gender), age(n), oneLine(n.title)].filter(Boolean);
         if (inBracket.length) parts.push(`(${inBracket.join('·')})`);
         const profile: string[] = [];
-        if (oneLine(n.relation)) profile.push(`与主角:${oneLine(n.relation)}`);
+        if (oneLine(n.relation)) profile.push(`Với nhân vật chính:${oneLine(n.relation)}`);
         const affinity = aff(n);
-        if (affinity) profile.push(`好感估计:${affinity}`);
-        if (oneLine(n.personality)) profile.push(`性格:${oneLine(n.personality)}`);
+        if (affinity) profile.push(`Ước lượng hảo cảm:${affinity}`);
+        if (oneLine(n.personality)) profile.push(`Tính cách:${oneLine(n.personality)}`);
         if (oneLine(n.desc)) profile.push(oneLine(n.desc));
         const profileStr = profile.length ? ` —— ${profile.join(';')}` : '';
-        const place = n.follow ? ' [随行]' : '';
+        const place = n.follow ? ' [Đi cùng]' : '';
         return `  - ${parts.join('')}${place}${profileStr}${npcStateTail(n, false)}`;
       })
       .join('\n');
-    lines.push(`在场角色:\n${detailed}`);
+    lines.push(`Nhân vật có mặt:\n${detailed}`);
   }
   if (nearby.length) {
-    // 同区域:名 + 性别 + 年龄 + 身份 + 关系 + 性格 + 所在地;砍掉外貌/人际/即时状态。留性格以稳住临时出场时的人设。
+    // Cùng khu vực: tên + giới tính + tuổi + thân phận + quan hệ + tính cách + nơi ở; cắt bỏ ngoại hình / nhân tế / trạng thái tức thời. Giữ lại tính cách để giữ vững thiết lập khi tạm thời xuất hiện.
     const brief = nearby
       .map(n => {
         const inBracket = [oneLine(n.gender), age(n), oneLine(n.title)].filter(Boolean);
         const bracket = inBracket.length ? `(${inBracket.join('·')})` : '';
         const profile: string[] = [];
-        if (oneLine(n.relation)) profile.push(`与主角:${oneLine(n.relation)}`);
+        if (oneLine(n.relation)) profile.push(`Với nhân vật chính:${oneLine(n.relation)}`);
         const affinity = aff(n);
-        if (affinity) profile.push(`好感估计:${affinity}`);
-        if (oneLine(n.personality)) profile.push(`性格:${oneLine(n.personality)}`);
+        if (affinity) profile.push(`Ước lượng hảo cảm:${affinity}`);
+        if (oneLine(n.personality)) profile.push(`Tính cách:${oneLine(n.personality)}`);
         const pers = profile.length ? ` —— ${profile.join(';')}` : '';
-        const place = oneLine(n.location) ? ` [在:${oneLine(n.location)}]` : '';
+        const place = oneLine(n.location) ? ` [Ở:${oneLine(n.location)}]` : '';
         return `  - ${n.name}${bracket}${pers}${place}`;
       })
       .join('\n');
-    lines.push(`同区域角色(在附近但未必照面;需要时可让其自然登场,勿凭空改设定):\n${brief}`);
+    lines.push(`Nhân vật cùng khu vực (ở gần đây nhưng chưa chắc đã chạm mặt; khi cần có thể để họ xuất hiện tự nhiên, đừng tự ý sửa thiết lập):\n${brief}`);
   }
   if (absent.length) {
-    // 不在场:仅名 + 性别 + 关系称谓 + 身份 + 好感档位,按所在地括注;无外貌/性格/状态
+    // Vắng mặt: chỉ tên + giới tính + danh xưng quan hệ + thân phận + mức hảo cảm, chú thích nơi ở trong ngoặc; không có ngoại hình / tính cách / trạng thái
     const brief = absent
       .map(n => {
         const inBracket = [oneLine(n.gender), relationHead(n.relation), oneLine(n.title)].filter(Boolean);
         const bracket = inBracket.length ? `(${inBracket.join('·')})` : '';
         const loc = oneLine(n.location);
         const affinity = aff(n, false, false);
-        return `  - ${n.name}${bracket}${loc ? ` [在:${loc}]` : ''}${affinity ? ` 〔好感估计:${affinity}〕` : ''}`;
+        return `  - ${n.name}${bracket}${loc ? ` [Ở:${loc}]` : ''}${affinity ? ` 〔Ước lượng hảo cảm:${affinity}〕` : ''}`;
       })
       .join('\n');
-    lines.push(`其他已知角色(不在当前场景,简要名册):\n${brief}`);
+    lines.push(`Các nhân vật đã biết khác (không ở bối cảnh hiện tại, danh sách tóm lược):\n${brief}`);
   }
   return lines.join('\n');
 }
 
 /**
- * 渲染指定地点视角下的物品上下文。
- * 正常状态注入与「前往地点」草稿共用这一入口，确保寄存物品的可达判定不会分叉。
+ * Kết xuất ngữ cảnh vật phẩm dưới góc nhìn địa điểm chỉ định.
+ * Việc tiêm trạng thái bình thường và bản nháp "Đi tới địa điểm" dùng chung cổng này, đảm bảo phán đoán khả năng tiếp cận của vật phẩm cất gửi không bị rẽ nhánh.
  */
 function fmtItemContext(items: MemItem[], scenes: MemScene[], here: string, locationPath?: string[]): string[] {
   const current = findCurrentScene(scenes, here, locationPath);
@@ -511,20 +511,20 @@ function fmtItemContext(items: MemItem[], scenes: MemScene[], here: string, loca
   }
 
   const blocks = [
-    `物品清单:\n${fmtItems(reachable.map(i => ({ name: i.name, qty: i.qty, desc: i.desc, carried: i.carried, location: i.location })))}`,
+    `Danh sách vật phẩm:\n${fmtItems(reachable.map(i => ({ name: i.name, qty: i.qty, desc: i.desc, carried: i.carried, location: i.location })))}`,
   ];
   if (elsewhere.length) {
     const brief = elsewhere
-      .map(i => `  - ${i.name}${typeof i.qty === 'number' ? ` ×${i.qty}` : ''}(存:${oneLine(i.location) || '某处'})`)
+      .map(i => `  - ${i.name}${typeof i.qty === 'number' ? ` ×${i.qty}` : ''}(cất tại:${oneLine(i.location) || 'nơi nào đó'})`)
       .join('\n');
-    blocks.push(`他处寄存物品(回到对应地点才有完整信息):\n${brief}`);
+    blocks.push(`Vật phẩm cất gửi nơi khác (quay lại địa điểm tương ứng mới có thông tin đầy đủ):\n${brief}`);
   }
   return blocks;
 }
 
 /**
- * 为场景页的「前往」操作生成可编辑的用户草稿。
- * 只临时把目标节点当作当前地点来计算场景、物品和 NPC 上下文，不修改 memory.state。
+ * Tạo bản nháp người dùng có thể chỉnh sửa cho thao tác "Đi tới" ở trang bối cảnh.
+ * Chỉ tạm thời coi nút mục tiêu là địa điểm hiện tại để tính toán ngữ cảnh bối cảnh, vật phẩm và NPC, không sửa đổi memory.state.
  */
 export function buildTravelDraft(target: MemScene): string {
   const here = target.name;
@@ -533,26 +533,26 @@ export function buildTravelDraft(target: MemScene): string {
   const blocks: string[] = [];
 
   const sceneBlock = fmtSceneContext(memory.scenes, here, locationPath);
-  if (sceneBlock) blocks.push(`地点记忆:\n${sceneBlock}`);
+  if (sceneBlock) blocks.push(`Ký ức địa điểm:\n${sceneBlock}`);
   blocks.push(...fmtItemContext(memory.items, memory.scenes, here, locationPath));
 
   const npcBlock = fmtNpcContext(memory.npcs, memory.scenes, here, locationPath, memory.state.time);
-  if (npcBlock) blocks.push(`NPC名册:\n${npcBlock}`);
+  if (npcBlock) blocks.push(`Danh sách NPC:\n${npcBlock}`);
 
   return [
-    `前往「${destination}」，请从抵达后继续剧情。`,
-    `以下是抵达该地点后的相关记忆，请保持设定一致:\n${blocks.join('\n')}`,
+    `Đi tới "${destination}", xin hãy tiếp tục cốt truyện từ sau khi đến nơi.`,
+    `Dưới đây là các ký ức liên quan sau khi đến địa điểm này, xin hãy giữ thiết lập nhất quán:\n${blocks.join('\n')}`,
   ].join('\n\n');
 }
 
-/** 组合当前结构化状态注入文本;无有意义状态时返回空串。 */
+/** Tổ hợp văn bản tiêm trạng thái có cấu trúc hiện tại; khi không có trạng thái có ý nghĩa thì trả về chuỗi rỗng. */
 export function buildStateInjectionText(): string {
-  // 仅摘要模式保留内部状态供副 API、页面和公开查询使用,主模型只接收剧情摘要。
+  // Chế độ chỉ tóm tắt giữ lại trạng thái nội bộ cho API phụ, trang giao diện và truy vấn công khai sử dụng, mô hình chính chỉ nhận tóm tắt cốt truyện.
   if (apiSettings.summaryOnlyMode) return '';
 
-  // 注入设置(设置页「注入设置」区):只影响这里发给主模型的内容;
-  // 副 API 摘要走 prompts.ts 自己的状态渲染,始终见全量、照常记录,不受这些开关影响。
-  // 依赖:NPC 在场分档 / 物品可达判定都走场景树 → 场景不注入时 NPC/物品随之不注入。
+  // Cài đặt tiêm (khu vực "Cài đặt tiêm" ở trang cài đặt): chỉ ảnh hưởng nội dung gửi cho mô hình chính tại đây;
+  // Tóm tắt API phụ đi qua phần kết xuất trạng thái riêng của prompts.ts, luôn thấy toàn bộ và ghi chép bình thường, không bị các công tắc này ảnh hưởng.
+  // Phụ thuộc: Phân mức có mặt của NPC / phán đoán khả năng tiếp cận vật phẩm đều đi qua cây bối cảnh → khi bối cảnh không tiêm thì NPC/vật phẩm cũng theo đó không tiêm.
   const inj = apiSettings.injection;
   const scenesOn = inj.scenes;
   const npcsOn = inj.npcs && scenesOn;
@@ -560,123 +560,123 @@ export function buildStateInjectionText(): string {
 
   const st: string[] = [];
   if (memory.state.time) {
-    // 周几只在标准公历带年份时有(weekdayLabel 自带门槛),古风/架空时间不标
+    // Thứ trong tuần chỉ có khi là dương lịch chuẩn có kèm năm (weekdayLabel tự mang ngưỡng lọc), thời gian cổ phong / hư cấu không gắn nhãn
     const wd = weekdayLabel(memory.state.time);
-    st.push(`当前时间:${memory.state.time}${wd ? ` (${wd})` : ''}`);
+    st.push(`Thời gian hiện tại:${memory.state.time}${wd ? ` (${wd})` : ''}`);
   }
-  if (memory.state.location) st.push(`当前地点:${oneLine(memory.state.location)}`);
+  if (memory.state.location) st.push(`Địa điểm hiện tại:${oneLine(memory.state.location)}`);
 
-  // 互动局势卡:衔接当下场面。tension/将发生仅作隐性氛围约束,明确告知勿点破——防过度提及。
+  // Thẻ cục diện tương tác: nối tiếp cảnh tượng trước mắt. tension / sắp xảy ra chỉ làm ràng buộc bầu không khí ngầm, báo rõ đừng nói toạc ra —— chống việc nhắc đi nhắc lại quá mức.
   const focus = memory.state.sceneFocus;
   if (inj.sceneFocus && focus) {
-    const bits: string[] = [`局面:${oneLine(focus.situation)}`];
+    const bits: string[] = [`Cục diện:${oneLine(focus.situation)}`];
     const who = focus.participants.map(oneLine).filter(Boolean).join('、');
-    if (who) bits.push(`在场:${who}`);
-    if (focus.currentFocus) bits.push(`当前焦点:${oneLine(focus.currentFocus)}`);
-    if (focus.tension) bits.push(`互动张力:${oneLine(focus.tension)}(隐性氛围约束:自然体现即可,不要点破或反复提及)`);
-    if (focus.pendingBeat) bits.push(`即将发生:${oneLine(focus.pendingBeat)}(自然过渡即可,勿生硬推进)`);
-    st.push(`[当前互动局势]\n${bits.join('\n')}`);
+    if (who) bits.push(`Có mặt:${who}`);
+    if (focus.currentFocus) bits.push(`Tiêu điểm hiện tại:${oneLine(focus.currentFocus)}`);
+    if (focus.tension) bits.push(`Sức căng tương tác:${oneLine(focus.tension)}(ràng buộc bầu không khí ngầm: thể hiện tự nhiên là được, đừng nói toạc ra hay nhắc đi nhắc lại)`);
+    if (focus.pendingBeat) bits.push(`Sắp xảy ra:${oneLine(focus.pendingBeat)}(chuyển tiếp tự nhiên là được, đừng thúc đẩy gượng gạo)`);
+    st.push(`[Cục diện tương tác hiện tại]\n${bits.join('\n')}`);
   }
 
-  // 生活小档案:置顶常驻 + 关键词触发的时效/沉降层。「记住 ≠ 每回合必提」——没命中就不出现。
-  // 记录始终开启(无开关);这里 injection.lifeDetails 只管「注入」。
+  // Hồ sơ nhỏ đời sống: ghim đầu thường trú + tầng thời hiệu / lắng đọng kích hoạt bằng từ khóa. "Ghi nhớ ≠ lượt nào cũng phải nhắc" —— không trúng thì không xuất hiện.
+  // Việc ghi chép luôn bật (không có công tắc); ở đây injection.lifeDetails chỉ quản lý việc "tiêm".
   if (inj.lifeDetails && memory.lifeDetails.length) {
     const picked = selectLifeDetailsForInjection(memory.lifeDetails, recentContextText(), memory.state.time, calculateRelativeDays);
     if (picked.length) {
-      const lines = picked.map(d => `- ${oneLine(fmtLifeDetail(d, getContext()?.name1?.trim() || '主角'))}`);
-      st.push(`[生活小档案·按人物]\n${lines.join('\n')}\n(每条仅属于姓名标明的人,不可混用给主角或其他角色;仅在与当前对话自然相关时参考,不要逐条复述或刻意提及,用不上就忽略。档案存在不代表其他角色已知这些细节,仍遵守剧情视角)`);
+      const lines = picked.map(d => `- ${oneLine(fmtLifeDetail(d, getContext()?.name1?.trim() || 'Nhân vật chính'))}`);
+      st.push(`[Hồ sơ nhỏ đời sống · Theo nhân vật]\n${lines.join('\n')}\n(Mỗi mục chỉ thuộc về người được ghi rõ tên, không được trộn lẫn sang nhân vật chính hay nhân vật khác; chỉ tham khảo khi liên quan tự nhiên tới cuộc đối thoại hiện tại, đừng thuật lại từng mục hay cố ý nhắc tới, không dùng đến thì bỏ qua. Hồ sơ tồn tại không có nghĩa các nhân vật khác đã biết những chi tiết này, vẫn phải tuân thủ góc nhìn cốt truyện)`);
     }
   }
 
-  // 主角状态自包含,不依赖场景树,独立开关。
+  // Trạng thái nhân vật chính tự khép kín, không phụ thuộc cây bối cảnh, công tắc độc lập.
   if (inj.protagonist) {
     const protagonistBlock = fmtProtagonistContext(memory.protagonist, getContext()?.name1 ?? '', memory.state.time);
-    if (protagonistBlock) st.push(`[主角当前状态]\n${protagonistBlock}`);
+    if (protagonistBlock) st.push(`[Trạng thái hiện tại của nhân vật chính]\n${protagonistBlock}`);
   }
 
   const here = memory.state.location || '';
   const locPath = memory.state.locationPath;
-  // 场景树:当前地点 + 祖先链(详细) + 其他地点(仅名称)。祖先链同时用于物品/NPC 可达判定。
+  // Cây bối cảnh: địa điểm hiện tại + chuỗi tổ tiên (chi tiết) + các địa điểm khác (chỉ tên). Chuỗi tổ tiên đồng thời dùng để phán đoán khả năng tiếp cận vật phẩm / NPC.
   if (scenesOn) {
     const sceneBlock = fmtSceneContext(memory.scenes, here, locPath);
-    if (sceneBlock) st.push(`地点记忆:\n${sceneBlock}`);
+    if (sceneBlock) st.push(`Ký ức địa điểm:\n${sceneBlock}`);
   }
 
-  // 物品分两组省 token:可达(随身 / 存放地落在当前地点或其祖先链)发全量(名+量+描述);
-  // 他处寄存的只发名+数量(砍掉描述这个大头),既省 token 又不至于让主模型以为东西没了。
+  // Vật phẩm chia làm hai nhóm để tiết kiệm token: tiếp cận được (mang theo người / nơi cất nằm ở địa điểm hiện tại hoặc chuỗi tổ tiên của nó) gửi toàn bộ (tên+lượng+mô tả);
+  // cất gửi nơi khác chỉ gửi tên+số lượng (cắt bỏ phần mô tả vốn rất tốn), vừa tiết kiệm token vừa không khiến mô hình chính tưởng là đồ mất rồi.
   if (itemsOn) st.push(...fmtItemContext(memory.items, memory.scenes, here, locPath));
-  // 注:近期物品变动不在此注入。改为摘要后写进对应楼层正文 </bbs_end> 之后(见 engine.ts),
-  // 窗口内全文楼层天然可见、滚出窗口自然消失 —— 符合「物品变动只在那段时间有用」的取舍。
+  // Lưu ý: biến động vật phẩm gần đây không tiêm tại đây. Đổi sang sau khi tóm tắt thì ghi vào sau </bbs_end> trong chính văn tầng tương ứng (xem engine.ts),
+  // các tầng toàn văn trong cửa sổ tự nhiên nhìn thấy, cuộn ra khỏi cửa sổ tự nhiên biến mất —— phù hợp với sự đánh đổi "biến động vật phẩm chỉ có ích trong khoảng thời gian đó".
 
-  // NPC 名册四档:在场发全量;同区域发名+身份+性格+所在地;不在场只发名+身份。NPC 越多省得越多。
+  // Danh sách NPC bốn mức: có mặt gửi toàn bộ; cùng khu vực gửi tên+thân phận+tính cách+nơi ở; vắng mặt chỉ gửi tên+thân phận. NPC càng nhiều càng tiết kiệm được nhiều.
   if (npcsOn) {
     const npcBlock = fmtNpcContext(memory.npcs, memory.scenes, here, locPath, memory.state.time);
-    if (npcBlock) st.push(`NPC名册:\n${npcBlock}`);
+    if (npcBlock) st.push(`Danh sách NPC:\n${npcBlock}`);
   }
 
-  // 了解清单:主要角色 + 在场角色,不依赖场景开关;没记录的也列出,「没记=不知道」才对其生效。
-  // 例外:此开关同时管副 API 记录(关了就不记),不同于上面那些只管注入的开关。
+  // Danh sách hiểu biết: nhân vật chính yếu + nhân vật có mặt, không phụ thuộc công tắc bối cảnh; chưa có bản ghi cũng liệt kê ra, để "chưa ghi = không biết" có hiệu lực với họ.
+  // Ngoại lệ: công tắc này đồng thời quản lý cả việc ghi chép của API phụ (tắt đi là không ghi nữa), khác với các công tắc ở trên chỉ quản lý việc tiêm.
   let knowledgeBlock = '';
   if (inj.knowledge) {
     const names = [
       ...memory.npcs.filter(n => n.important),
       ...memory.npcs.filter(n => !n.important && classifyNpcPresence(n, memory.scenes, here, locPath) === 'present'),
     ].map(n => n.name);
-    knowledgeBlock = fmtKnowledgeInjection(memory.knowledge, names, getContext()?.name1?.trim() || '主角');
+    knowledgeBlock = fmtKnowledgeInjection(memory.knowledge, names, getContext()?.name1?.trim() || 'Nhân vật chính');
     if (knowledgeBlock) st.push(knowledgeBlock);
   }
 
   const openPlans = memory.plans
     .filter(p => p.status === 'open')
     .map(p => ({ kind: p.kind, content: p.content, createdTime: p.createdTime, targetTime: p.targetTime }));
-  st.push(`未了结的计划/悬念:\n${fmtPlans(openPlans)}`);
+  st.push(`Kế hoạch/nghi vấn chưa khép lại:\n${fmtPlans(openPlans)}`);
 
-  // 近期已完成的计划/悬念:防 AI 把刚了结的当未完成又去推进。与副API摘要同口径,只差截止点
-  // (这里用全量 memory.plans;副API用 deriveMemory(chat, beforeIndex).plans)。
+  // Kế hoạch/nghi vấn đã hoàn thành gần đây: chống việc AI coi mục vừa khép lại là chưa xong rồi lại đi thúc đẩy tiếp. Cùng tiêu chuẩn với tóm tắt API phụ, chỉ khác điểm cắt
+  // (ở đây dùng toàn bộ memory.plans; API phụ dùng deriveMemory(chat, beforeIndex).plans).
   const recentResolved = selectRecentResolvedPlans(memory.plans, apiSettings.recentResolvedPlansCount);
-  if (recentResolved.length) st.push(`近期已了结(已结案,含了结方式/原因;勿当未完成再推进/重复记录):\n${fmtResolvedPlans(recentResolved)}`);
+  if (recentResolved.length) st.push(`Đã khép lại gần đây (đã kết án, kèm cách thức/nguyên nhân khép lại; đừng coi là chưa hoàn thành để thúc đẩy tiếp hay ghi lặp lại):\n${fmtResolvedPlans(recentResolved)}`);
 
-  // 自定义变量:发当前状态 + 各字段「含义」给主模型(帮它理解并保持数值/设定连贯),明确框定为只读。
-  // ⚠️ 绝不注入「变化规则」(rule)——那是给副API摘要用的「如何增删改」指令(含 set/assign 命令语法);
-  //    主模型看到「何时怎么变」会误以为该在正文里输出/复述变量或命令。含义只描述「是什么」,给主模型安全。
+  // Biến tùy chỉnh: gửi trạng thái hiện tại + "ý nghĩa" các trường cho mô hình chính (giúp nó hiểu và giữ con số/thiết lập liền mạch), đóng khung rõ ràng là chỉ đọc.
+  // ⚠️ Tuyệt đối không tiêm "quy tắc biến đổi" (rule) —— đó là chỉ thị "thêm xóa sửa thế nào" dành cho tóm tắt API phụ (chứa cú pháp lệnh set/assign);
+  //    mô hình chính nhìn thấy "khi nào đổi thế nào" sẽ hiểu lầm là phải xuất / thuật lại biến số hoặc câu lệnh trong chính văn. Ý nghĩa chỉ mô tả "là cái gì", đưa cho mô hình chính rất an toàn.
   const varMeaning = (['global', 'char', 'chat'] as const)
     .map(t => memory.varTemplates[t].meaning.trim())
     .filter(Boolean)
     .join('\n\n');
   const hasVarState = Object.keys(memory.vars).length > 0;
   if (hasVarState) {
-    let block = `自定义变量(当前状态,只读参考——严禁在正文里复述、罗列或输出这些变量/命令):\n${renderVarsState(memory.vars)}`;
-    if (varMeaning) block += `\n变量含义(仅帮你理解上面的值,不要输出):\n${varMeaning}`;
+    let block = `Biến tùy chỉnh (trạng thái hiện tại, chỉ đọc tham khảo —— nghiêm cấm thuật lại, liệt kê hoặc xuất các biến/lệnh này trong chính văn):\n${renderVarsState(memory.vars)}`;
+    if (varMeaning) block += `\nÝ nghĩa biến số (chỉ giúp bạn hiểu các giá trị bên trên, đừng xuất ra):\n${varMeaning}`;
     st.push(block);
   }
 
-  // 状态块在有任何有意义内容时才注入(物品/计划即使空也会有「(无)」占位,
-  // 但只要存在摘要或时间/地点就值得带上整块)
+  // Khối trạng thái chỉ được tiêm khi có bất kỳ nội dung có ý nghĩa nào (vật phẩm/kế hoạch cho dù trống cũng sẽ có chữ giữ chỗ "(Không có)",
+  // nhưng chỉ cần tồn tại tóm tắt hoặc thời gian/địa điểm là đã đáng mang theo cả khối)
   const hasProtagonist = inj.protagonist && Object.values(memory.protagonist).some(value => !!oneLine(value));
   const hasState = memory.state.time || memory.state.location || (inj.sceneFocus && memory.state.sceneFocus) || hasProtagonist || (itemsOn && memory.items.length) || (scenesOn && memory.scenes.length) || (npcsOn && memory.npcs.length) || openPlans.length || hasVarState || (inj.lifeDetails && memory.lifeDetails.length) || !!knowledgeBlock;
   if (!hasState) return '';
-  // 首尾私密简报框定,避免主模型把状态快照当成要复述/输出的模板(正文后跟吐一份状态)
-  return `${MEMORY_BRIEFING_NOTE}\n[当前状态]\n${st.join('\n')}\n${MEMORY_BRIEFING_END}`;
+  // Đầu cuối đóng khung bằng bản tin mật, tránh mô hình chính coi ảnh chụp trạng thái là khuôn mẫu cần thuật lại / xuất ra (nhả thêm một bản trạng thái ở sau chính văn)
+  return `${MEMORY_BRIEFING_NOTE}\n[Trạng thái hiện tại]\n${st.join('\n')}\n${MEMORY_BRIEFING_END}`;
 }
 
 /**
- * 组合注入文本:已启用的历史摘要 + 当前结构化状态(时间/地点/物品/未了结计划)。
- * 保留给调试/兼容调用;实际注入由 refreshInjection 拆成两个 ST 槽位。
+ * Tổ hợp văn bản tiêm: tóm tắt lịch sử đã kích hoạt + trạng thái có cấu trúc hiện tại (thời gian/địa điểm/vật phẩm/kế hoạch chưa khép lại).
+ * Giữ lại cho việc gỡ lỗi / gọi tương thích; việc tiêm thực tế do refreshInjection tách thành hai khe ST.
  */
 export function buildInjectionText(): string {
   return [buildHistoryInjectionText(), buildStateInjectionText()].filter(Boolean).join('\n\n').trim();
 }
 
-/** 按 ST 自身 tokenizer 不可用时的兜底口径估算文本 token 数。 */
+/** Ước tính số token văn bản theo tiêu chuẩn dự phòng khi bản thân tokenizer của ST không khả dụng. */
 function estimateTextTokens(blocks: string[]): number {
   const bytes = blocks.filter(Boolean).reduce((sum, text) => sum + new TextEncoder().encode(text).length, 0);
   return Math.ceil(bytes / 3.35);
 }
 
 /**
- * 估算当前实际会注入主对话的 token 数,拆成摘要与其他两类。
- * “其他”包含当前结构化状态与时间标签提示词。
- * 这里只用于给用户一个直观量级,不请求后端,也不计聊天模板包装带来的少量额外 token。
+ * Ước tính số token thực tế hiện tại sẽ tiêm vào đối thoại chính, tách thành hai loại: tóm tắt và phần khác.
+ * "Phần khác" bao gồm trạng thái có cấu trúc hiện tại và prompt thẻ thời gian.
+ * Ở đây chỉ dùng để cho người dùng một độ lớn trực quan, không gọi backend, cũng không tính lượng nhỏ token phụ trội do việc bọc khuôn mẫu cuộc trò chuyện mang lại.
  */
 export function estimateInjectionTokenBreakdown(): { summary: number; other: number } {
   if (!engineActiveHere()) return { summary: 0, other: 0 };
@@ -690,10 +690,10 @@ export function estimateInjectionTokenBreakdown(): { summary: number; other: num
   };
 }
 
-/** 把当前记忆刷新到 ST 的扩展提示槽。ST 未就绪/旧版无此 API 时静默跳过。 */
+/** Làm mới trí nhớ hiện tại vào khe gợi ý mở rộng của ST. Khi ST chưa sẵn sàng / bản cũ không có API này thì âm thầm bỏ qua. */
 export function refreshInjection(): void {
-  // 引擎在此聊天不生效(总开关关 / 当前角色被排除):清掉已注入的槽。
-  // 用 clearInjection 而非直接 return —— 切到被排除角色时必须抹掉上个聊天残留的注入。
+  // Engine không có hiệu lực ở cuộc trò chuyện này (tắt công tắc tổng / nhân vật hiện tại bị loại trừ): xóa sạch các khe đã tiêm.
+  // Dùng clearInjection thay vì return trực tiếp —— khi chuyển sang nhân vật bị loại trừ bắt buộc phải xóa sạch phần tiêm còn sót lại từ cuộc trò chuyện trước.
   if (!engineActiveHere()) {
     clearInjection();
     return;
@@ -705,11 +705,11 @@ export function refreshInjection(): void {
   fn(LEGACY_INJECT_KEY, '', IN_CHAT, STATE_INJECT_DEPTH_BEFORE_LATEST_AI, false, ROLE_SYSTEM, null);
   fn(HISTORY_INJECT_KEY, buildHistoryInjectionText(), IN_CHAT, HISTORY_INJECT_DEPTH, false, ROLE_SYSTEM, null);
   fn(STATE_INJECT_KEY, buildStateInjectionText(), IN_CHAT, stateDepth, false, ROLE_SYSTEM, null);
-  // 时间标签固定提示词:跟随自动摘要开关注入主对话,关闭时注入空串(等于清除)
+  // Prompt cố định thẻ thời gian: tiêm vào đối thoại chính theo công tắc tự động tóm tắt, khi tắt thì tiêm chuỗi rỗng (đồng nghĩa xóa sạch)
   fn(TIMETAG_INJECT_KEY, apiSettings.autoSummaryEnabled ? timeTagPrompt() : '', IN_CHAT, TIMETAG_INJECT_DEPTH, false, ROLE_SYSTEM, null);
 }
 
-/** 清除注入(注入空串)。切到无记忆的聊天时由 refreshInjection 自动完成,此处供显式调用。 */
+/** Xóa sạch phần tiêm (tiêm chuỗi rỗng). Khi chuyển sang cuộc trò chuyện không có trí nhớ sẽ do refreshInjection tự động hoàn thành, ở đây cung cấp cho việc gọi tường minh. */
 export function clearInjection(): void {
   const ctx = getContext();
   const stateDepth = resolveStateInjectionDepth(ctx?.chat ?? null);

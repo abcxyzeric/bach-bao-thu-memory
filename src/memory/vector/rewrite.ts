@@ -1,16 +1,16 @@
 /**
- * 向量召回的查询重写(Query Rewrite)。
+ * Viết lại truy vấn (Query Rewrite) của truy xuất vector.
  *
- * 复刻 Horae 的「小模型把当前剧情重写成 INTENT + 多条检索 Q」思路与提示词(用户已优化版),
- * 但**上下文构造是柏宝书自己的**(见 .carryover-plan.md「查询重写上下文构造」):
- *  结构 = [历史剧情摘要] + 最近窗口全文 + [状态快照] + [用户输入]
- *  - 状态一律走 deriveMemory(不假设 getLatestState 干净);
- *  - 状态快照精确放置:从窗口起点扫到第一个「无有效叶子」的楼停下,
- *    快照 = deriveMemory(chat, 洞楼index),插在「连续叶子前缀末尾」之后、洞楼之前;
- *  - 快照只含**滚出窗口的主角档案/items/plans**(时间/地点/在场已在全文里,不重复)。
+ * Sao chép ý tưởng và prompt (bản người dùng đã tối ưu) "mô hình nhỏ viết lại cốt truyện hiện tại thành INTENT + nhiều Q tìm kiếm" của Horae,
+ * nhưng **việc xây dựng ngữ cảnh là của riêng Bách Bảo Thư**:
+ *  Cấu trúc = [Tóm tắt cốt truyện lịch sử] + toàn văn cửa sổ gần đây + [Ảnh chụp trạng thái] + [Đầu vào người dùng]
+ *  - Trạng thái nhất loạt đi qua deriveMemory (không giả định getLatestState sạch);
+ *  - Ảnh chụp trạng thái đặt chính xác: quét từ điểm đầu cửa sổ đến tầng đầu tiên "không có lá hợp lệ" thì dừng lại,
+ *    ảnh chụp = deriveMemory(chat, index tầng lỗ hổng), chèn vào sau "cuối tiền tố lá liên tục", trước tầng lỗ hổng;
+ *  - Ảnh chụp chỉ chứa **hồ sơ nhân vật chính / items / plans đã cuộn ra ngoài cửa sổ** (thời gian/địa điểm/có mặt đã nằm trong toàn văn, không lặp lại).
  *
- * 产出多条 query,各自 embed → 后端 vec/search 多路检索 + RRF 融合;INTENT 兼作 rerank 的 query。
- * 任何失败都抛错,由召回侧 catch 后降级为「最近上下文当单 query」。
+ * Sinh ra nhiều query, mỗi cái tự embed → backend vec/search tìm kiếm đa luồng + dung hợp; INTENT kiêm làm query cho rerank.
+ * Bất kỳ thất bại nào cũng ném lỗi, do phía truy xuất catch rồi xử lý.
  */
 
 import type { STMessage } from '@/st/context';
@@ -25,17 +25,17 @@ import { memory } from '../store';
 import { cleanBody } from '../timeTag';
 import { fetchWithTimeoutRetry } from './embed';
 
-/** rewrite 模型最多取几条 query(对齐 Horae) */
+/** Mô hình rewrite lấy tối đa bao nhiêu query (khớp với Horae) */
 const MAX_QUERIES = 6;
-/** INTENT 描述限长(原版提示词要求 2–4 句话,这里给个宽松上限兜底,防极端返回) */
+/** Giới hạn độ dài mô tả INTENT (prompt gốc yêu cầu 2–4 câu, ở đây đưa ra trần rộng rãi làm dự phòng, chống kết quả trả về cực đoan) */
 const MAX_INTENT_LEN = 360;
-/** 单条 query 限长 */
+/** Giới hạn độ dài một query đơn lẻ */
 const MAX_QUERY_LEN = 220;
 
 export interface RewriteResult {
-  /** 场景意图描述(兼作 rerank 的 query) */
+  /** Mô tả ý đồ bối cảnh (kiêm làm query của rerank) */
   intent: string;
-  /** 多条检索 query(已去重限长) */
+  /** Nhiều query tìm kiếm (đã khử trùng và giới hạn độ dài) */
   queries: string[];
 }
 
@@ -44,38 +44,38 @@ interface ChatMsg {
   content: string;
 }
 
-/** 把楼层正文清洗成可读文本,与喂摘要模型同口径(cleanBody:裁正文段 + 整块删噪声标签 + 时间转文本)。 */
+/** Làm sạch chính văn tầng lầu thành văn bản dễ đọc, cùng tiêu chuẩn với nạp cho mô hình tóm tắt (cleanBody: cắt gọn đoạn chính văn + xóa nguyên khối thẻ nhiễu + chuyển thời gian thành văn bản). */
 function cleanFloor(m: STMessage): string {
   return cleanBody(m.mes);
 }
 
 /**
- * 构造状态快照文本(只含滚出窗口、长期有效的 items/plans)。
- * upTo = 第一个无叶子楼的索引(快照截到它之前)。无有意义内容返回空串。
+ * Xây dựng văn bản ảnh chụp trạng thái (chỉ chứa items/plans đã cuộn ra ngoài cửa sổ và có hiệu lực dài hạn).
+ * upTo = chỉ mục của tầng không có lá đầu tiên (ảnh chụp cắt đến trước nó). Không có nội dung có ý nghĩa trả về chuỗi rỗng.
  */
 function buildStateSnapshot(chat: STMessage[], upTo: number): string {
   const st = deriveMemory(chat, upTo);
   const lines: string[] = [];
   if (Object.values(st.protagonist).some(Boolean)) {
-    lines.push(`主角当前档案:\n${fmtProtagonist(st.protagonist)}`);
+    lines.push(`Hồ sơ hiện tại của nhân vật chính:\n${fmtProtagonist(st.protagonist)}`);
   }
   if (st.items.length) {
-    lines.push(`物品清单:\n${fmtItems(st.items.map(i => ({ name: i.name, qty: i.qty, desc: i.desc, carried: i.carried, location: i.location })))}`);
+    lines.push(`Danh sách vật phẩm:\n${fmtItems(st.items.map(i => ({ name: i.name, qty: i.qty, desc: i.desc, carried: i.carried, location: i.location })))}`);
   }
   if (st.npcs.length) {
-    lines.push(`NPC名册:\n${fmtNpcs(st.npcs.map(n => ({ name: n.name, gender: n.gender, title: n.title, follow: n.follow, location: n.location })))}`);
+    lines.push(`Danh sách NPC:\n${fmtNpcs(st.npcs.map(n => ({ name: n.name, gender: n.gender, title: n.title, follow: n.follow, location: n.location })))}`);
   }
   const openPlans = st.plans.filter(p => p.status === 'open');
   if (openPlans.length) {
-    lines.push(`未了结的计划/悬念:\n${fmtPlans(openPlans.map(p => ({ kind: p.kind, content: p.content, createdTime: p.createdTime, targetTime: p.targetTime })))}`);
+    lines.push(`Kế hoạch/nghi vấn chưa khép lại:\n${fmtPlans(openPlans.map(p => ({ kind: p.kind, content: p.content, createdTime: p.createdTime, targetTime: p.targetTime })))}`);
   }
   if (!lines.length) return '';
-  return `[状态快照:以下为已滚出最近窗口、但仍有效的主角档案、物品、NPC 与未了结计划,供你解析模糊指代]\n${lines.join('\n')}`;
+  return `[Ảnh chụp trạng thái: Dưới đây là hồ sơ nhân vật chính, vật phẩm, NPC và kế hoạch chưa khép lại đã cuộn ra khỏi cửa sổ gần đây nhưng vẫn còn hiệu lực, cung cấp để bạn phân giải các đại từ chỉ định mơ hồ]\n${lines.join('\n')}`;
 }
 
 /**
- * 找状态快照的插入点:从窗口起点向后扫,返回第一个「无有效叶子」楼的索引。
- * 全部有叶子则返回 chat.length(快照截到全部窗口,放最末)。
+ * Tìm điểm chèn của ảnh chụp trạng thái: quét từ điểm đầu cửa sổ về sau, trả về chỉ mục của tầng đầu tiên "không có lá hợp lệ".
+ * Toàn bộ đều có lá thì trả về chat.length (ảnh chụp cắt đến toàn bộ cửa sổ, đặt ở cuối cùng).
  */
 function findSnapshotCut(chat: STMessage[], windowStart: number): number {
   for (let i = windowStart; i < chat.length; i++) {
@@ -86,56 +86,56 @@ function findSnapshotCut(chat: STMessage[], windowStart: number): number {
 }
 
 /**
- * 构造发给 rewrite 模型的消息序列。
+ * Xây dựng chuỗi tin nhắn gửi cho mô hình rewrite.
  *
- * ⚠️ 许多向量渠道要求 system 消息**仅允许出现在数组最开头**,中间不得再有 system。
- * 故对齐 Horae 的形态:**开头唯一一条 system + 中间纯 user/assistant 对话 + 结尾一条 user**。
- *  - 历史剧情摘要并入开头那条 system(属背景设定,合法地待在开头);
- *  - 状态快照不独立成 system,而是**拼进对话消息正文**(放在 cut 点前一条之后、洞楼之前),
- *    保持中间无 system,从而兼容「system 只能在开头」的渠道。
+ * ⚠️ Nhiều kênh vector yêu cầu tin nhắn system **chỉ được phép xuất hiện ở ngay đầu mảng**, ở giữa không được có thêm system.
+ * Do đó khớp với hình thái của Horae: **một tin nhắn system duy nhất ở đầu + đối thoại thuần user/assistant ở giữa + một tin nhắn user ở cuối**.
+ *  - Tóm tắt cốt truyện lịch sử gộp vào tin nhắn system ở đầu đó (thuộc thiết lập bối cảnh, nằm hợp lệ ở đầu);
+ *  - Ảnh chụp trạng thái không tách riêng thành system, mà **ghép vào chính văn tin nhắn đối thoại** (đặt ở sau tin nhắn ngay trước điểm cut, trước tầng lỗ hổng),
+ *    giữ cho ở giữa không có system, nhờ đó tương thích với các kênh "system chỉ được nằm ở đầu".
  */
 function buildMessages(chat: STMessage[]): ChatMsg[] {
   const windowStart = resolveKeepStart(chat);
   const cut = findSnapshotCut(chat, windowStart);
 
-  // 开头唯一 system:破限(NVWA 核心)+ 系统提示词 +(可选)历史剧情摘要,合并为一条,
-  // 既保证 system 只出现在开头,也让破限处于请求最前。核心不写进重写正文,统一由破限位提供
-  // (自定义优先,留空用内置 NVWA 核心)。
+  // Tin nhắn system duy nhất ở đầu: vượt giới hạn (lõi NVWA) + prompt hệ thống + (tùy chọn) tóm tắt cốt truyện lịch sử, gộp thành một mục,
+  // vừa đảm bảo system chỉ xuất hiện ở đầu, vừa để phần vượt giới hạn nằm ở ngay đầu yêu cầu. Lõi không viết vào chính văn viết lại, thống nhất do vị trí vượt giới hạn cung cấp
+  // (ưu tiên tùy chỉnh, để trống thì dùng lõi NVWA tích hợp sẵn).
   const history = renderHistoryNodes(selectHistoryNodesBefore(memory.summaries, chat, windowStart));
-  const body = history ? `${QUERY_REWRITE_SYSTEM}\n\n[历史剧情摘要]\n${history}` : QUERY_REWRITE_SYSTEM;
+  const body = history ? `${QUERY_REWRITE_SYSTEM}\n\n[Tóm tắt cốt truyện lịch sử]\n${history}` : QUERY_REWRITE_SYSTEM;
   const jb = apiSettings.prompts.jailbreak.trim() || JAILBREAK_PROMPT;
   const systemContent = `${jb}\n\n${body}`;
   const messages: ChatMsg[] = [{ role: 'system', content: systemContent }];
 
-  // 平铺窗口对话(纯 user/assistant),记录原 msgIndex 以定位快照插入点
+  // Trải phẳng đối thoại trong cửa sổ (thuần user/assistant), ghi lại msgIndex gốc để định vị điểm chèn ảnh chụp
   const convo: Array<{ role: 'user' | 'assistant'; content: string; index: number }> = [];
   for (let i = windowStart; i < chat.length; i++) {
     const m = chat[i];
     if (!m) continue;
     if (m.extra?.bbs_omit) continue;
-    if (m.is_system && m.extra?.type) continue; // 原生系统楼跳过
+    if (m.is_system && m.extra?.type) continue; // Bỏ qua tầng hệ thống gốc
     const text = cleanFloor(m);
     if (!text) continue;
     convo.push({ role: m.is_user ? 'user' : 'assistant', content: text, index: i });
   }
 
-  // 状态快照:拼进对话消息正文(不独立成 system)。语义 = 截止 cut(第一个无叶子楼)之前的确凿状态。
+  // Ảnh chụp trạng thái: ghép vào chính văn tin nhắn đối thoại (không tách riêng thành system). Ngữ nghĩa = trạng thái xác thực tính đến trước cut (tầng không lá đầu tiên).
   const snapshot = buildStateSnapshot(chat, cut);
   if (snapshot) {
     if (!convo.length) {
-      // 窗口无可用对话消息 → 兜底放一条 user 承载(仍非 system)
+      // Cửa sổ không có tin nhắn đối thoại khả dụng → dự phòng đặt một user để mang nó (vẫn không phải system)
       messages.push({ role: 'user', content: snapshot });
     } else {
       const cutPos = convo.findIndex(c => c.index >= cut);
       if (cutPos === -1) {
-        // cut 在所有对话之后(窗口全有叶子)→ 拼进最后一条末尾
+        // cut nằm sau toàn bộ đối thoại (cửa sổ đều có lá) → ghép vào cuối mục cuối cùng
         const last = convo[convo.length - 1];
         last.content = `${last.content}\n\n${snapshot}`;
       } else if (cutPos === 0) {
-        // cut 点即首条对话(之前无对话可承载)→ 拼进它的前缀
+        // Điểm cut chính là đối thoại đầu tiên (phía trước không có đối thoại để mang) → ghép vào tiền tố của nó
         convo[0].content = `${snapshot}\n\n${convo[0].content}`;
       } else {
-        // 拼进 cut 点前一条对话的末尾(连续叶子前缀末尾之后、洞楼之前)
+        // Ghép vào cuối đối thoại ngay trước điểm cut (sau cuối tiền tố lá liên tục, trước tầng lỗ hổng)
         const prev = convo[cutPos - 1];
         prev.content = `${prev.content}\n\n${snapshot}`;
       }
@@ -144,12 +144,12 @@ function buildMessages(chat: STMessage[]): ChatMsg[] {
 
   for (const c of convo) messages.push({ role: c.role, content: c.content });
 
-  // 收尾提示词
+  // Prompt kết thúc ở cuối
   messages.push({ role: 'user', content: QUERY_REWRITE_TAIL });
   return messages;
 }
 
-/** base url 规整:去掉 /embeddings、/chat/completions 尾巴(ST 代理会自己补 /chat/completions) */
+/** Chuẩn hóa base url: bỏ đuôi /embeddings, /chat/completions (proxy ST sẽ tự bù /chat/completions) */
 function chatBaseUrl(rawUrl: string): string {
   return String(rawUrl || '')
     .trim()
@@ -158,13 +158,13 @@ function chatBaseUrl(rawUrl: string): string {
     .replace(/\/chat\/completions$/i, '');
 }
 
-/** 解析 INTENT + 多行 Q(对齐 Horae:去前缀符号、去重、限长) */
+/** Phân tích INTENT + nhiều dòng Q (khớp với Horae: bỏ ký hiệu tiền tố, khử trùng, giới hạn độ dài) */
 function parseResponse(text: string): RewriteResult {
   const lines = String(text || '')
     .replace(/\r\n?/g, '\n')
     .replace(/\\n/g, '\n')
-    // 双保险:即便请求关了 enable_thinking,个别模型仍会吐 <think> 块,先整段剥掉再逐行解析,
-    // 否则思维链里出现的 INTENT/Q 字样会污染解析结果。
+    // Bảo hiểm kép: cho dù yêu cầu đã tắt enable_thinking, một số mô hình cá biệt vẫn nhả khối <think>, bóc nguyên đoạn trước rồi mới phân tích từng dòng,
+    // nếu không chữ INTENT/Q xuất hiện trong chuỗi suy nghĩ sẽ làm bẩn kết quả phân tích.
     .replace(/<think(?:ing)?\b[\s\S]*?<\/think(?:ing)?>/gi, '')
     .split('\n')
     .map(l => l.trim())
@@ -175,7 +175,7 @@ function parseResponse(text: string): RewriteResult {
   const seen = new Set<string>();
 
   for (const raw of lines) {
-    // 去掉行首的 -/*/•、数字编号
+    // Bỏ -/*/•, số thứ tự ở đầu dòng
     const line = raw.replace(/^\s*(?:[-*•]\s*)?(?:\d+[.)、]\s*)?/, '').trim();
     const im = line.match(/^INTENT\s*[:：]\s*(.+)$/i);
     if (im) {
@@ -206,18 +206,18 @@ function sanitize(text: string, maxLen = MAX_QUERY_LEN): string {
 }
 
 /**
- * 执行查询重写。queryRewrite 端点未配 model 时抛错(调用方降级)。
- * 与副 API 一样走 ST 服务端转发(无跨域问题);渠道地址/密钥可留空复用 embedding。
+ * Thực thi viết lại truy vấn. Khi điểm cuối queryRewrite chưa cấu hình model sẽ ném lỗi (bên gọi hạ cấp).
+ * Giống như API phụ, đi qua chuyển tiếp máy chủ ST (không có vấn đề CORS); địa chỉ / khóa kênh có thể để trống để tái sử dụng embedding.
  */
 export async function rewriteQuery(signal?: AbortSignal): Promise<RewriteResult> {
   const ep = resolveVectorModel('queryRewrite');
-  if (!ep.model) throw new Error('Query 重写模型未配置');
+  if (!ep.model) throw new Error('Chưa cấu hình mô hình viết lại Query');
   const baseUrl = chatBaseUrl(ep.url);
-  if (!baseUrl) throw new Error('Query 重写地址未配置');
+  if (!baseUrl) throw new Error('Chưa cấu hình địa chỉ viết lại Query');
 
   const ctx = getContext();
   const chat = ctx?.chat ?? [];
-  if (!ctx || !chat.length) throw new Error('无对话上下文可重写');
+  if (!ctx || !chat.length) throw new Error('Không có ngữ cảnh đối thoại để viết lại');
 
   const messages = buildMessages(chat);
 
@@ -227,14 +227,14 @@ export async function rewriteQuery(signal?: AbortSignal): Promise<RewriteResult>
       method: 'POST',
       headers: ctx.getRequestHeaders(),
       body: JSON.stringify({
-        // 走 custom 源:openai 源只转发白名单字段,enable_thinking 会被 ST 丢掉;custom_include_body 原样并进上游请求体。
-        // custom 源不读 proxy_password,密钥靠 custom_include_headers 注入(覆盖 ST 自存的 Custom 密钥),
-        // 且一律 JSON.stringify 生成防 YAML 静默解析失败——两点详见 api/client.ts 的 buildRequestBody。
+        // Đi qua nguồn custom: nguồn openai chỉ chuyển tiếp các trường trong danh sách trắng, enable_thinking sẽ bị ST vứt bỏ; custom_include_body gộp nguyên bản vào thân yêu cầu gửi lên nguồn cấp trên.
+        // Nguồn custom không đọc proxy_password, khóa được tiêm qua custom_include_headers (ghi đè khóa Custom do ST tự lưu),
+        // và nhất loạt sinh bằng JSON.stringify để chống lỗi phân tích YAML âm thầm thất bại —— hai điểm này xem chi tiết tại buildRequestBody của api/client.ts.
         chat_completion_source: 'custom',
         custom_url: baseUrl,
         custom_include_headers: JSON.stringify({ Authorization: `Bearer ${ep.key || ''}` }),
-        // 对齐 Horae:低温更服从格式;enable_thinking:false 关思维链——
-        // 国产模型(Qwen3/GLM 等)默认开思维链会先吐 <think> 推理,冲乱 INTENT/Q 行格式导致解析失败。
+        // Khớp với Horae: nhiệt độ thấp tuân thủ định dạng tốt hơn; enable_thinking:false tắt chuỗi suy nghĩ ——
+        // các mô hình như Qwen3/GLM mặc định bật chuỗi suy nghĩ sẽ nhả suy luận <think> trước, làm loạn định dạng dòng INTENT/Q dẫn đến phân tích thất bại.
         custom_include_body: JSON.stringify({ enable_thinking: false }),
         model: ep.model,
         messages,
@@ -242,24 +242,24 @@ export async function rewriteQuery(signal?: AbortSignal): Promise<RewriteResult>
         top_p: 0.8,
         max_tokens: apiSettings.vector.queryRewriteMaxTokens,
         stream: false,
-        // 防第三方 fetch 拦截器劫持 /generate 请求,同 buildRequestBody;ST 只在带 tools 时才转发它,到不了上游
+        // Chống bộ chặn fetch của bên thứ ba chiếm quyền yêu cầu /generate, giống buildRequestBody; ST chỉ chuyển tiếp nó khi có mang tools, không tới được nguồn cấp trên
         tool_choice: 'none',
       }),
     },
-    { timeoutSec: ep.timeoutSec, retries: ep.retries, label: 'Query 重写', externalSignal: signal },
+    { timeoutSec: ep.timeoutSec, retries: ep.retries, label: 'Viết lại Query', externalSignal: signal },
   );
   if (!resp.ok) {
     const t = await resp.text().catch(() => '');
-    throw new Error(`Query 重写 API ${resp.status}: ${t.slice(0, 200)}`);
+    throw new Error(`API viết lại Query ${resp.status}: ${t.slice(0, 200)}`);
   }
   const json = await resp.json();
-  // ST 把上游报错包成 200 + { error }:上游 5xx/429 因此不再触发自动重试(超时/网络异常照旧重试)
-  if (json?.error) throw new Error(`Query 重写 API 错误:${json.error.message || '未知错误'}`);
+  // ST bọc lỗi nguồn cấp trên thành 200 + { error }: 5xx/429 của nguồn cấp trên vì thế không còn kích hoạt tự động thử lại nữa (quá thời gian / lỗi mạng bất thường vẫn thử lại như cũ)
+  if (json?.error) throw new Error(`Lỗi API viết lại Query: ${json.error.message || 'Lỗi không xác định'}`);
   const content = json?.choices?.[0]?.message?.content;
   const raw = typeof content === 'string' ? content : '';
-  if (!raw.trim()) throw new Error('Query 重写返回空内容');
+  if (!raw.trim()) throw new Error('Viết lại Query trả về nội dung rỗng');
 
   const parsed = parseResponse(raw);
-  if (!parsed.queries.length) throw new Error('Query 重写未解析出任何检索 query');
+  if (!parsed.queries.length) throw new Error('Viết lại Query không phân tích ra được bất kỳ query tìm kiếm nào');
   return parsed;
 }

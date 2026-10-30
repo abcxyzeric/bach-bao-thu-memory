@@ -1,10 +1,10 @@
 <script setup lang="ts">
 /**
- * 自定义变量页(MVU 式:一个 JSON 状态树 + 路径命令)。三块:
- *  ① 当前状态:AI 在剧情里用命令建/改出来的 JSON(派生,只读展示;可手动编辑整份 → 写回最新叶子)。
- *  ② 初始模板与说明:三层(全局/角色/聊天)各一份初始结构 + 给 AI 的说明,合并作为重放起点。
- *  ③ 导入/导出:分享变量结构(模板+说明,不含值)。
- * 值永远每聊天独立(从各聊天叶子的 varOps 重放);改模板不需摘要,改「当前值」需要有摘要(写最新叶子)。
+ * Trang biến số tùy chỉnh (kiểu MVU: một cây trạng thái JSON + lệnh đường dẫn). Ba khối:
+ *  ① Trạng thái hiện tại: JSON do AI tạo/sửa bằng lệnh trong cốt truyện (dẫn xuất, hiển thị chỉ đọc; có thể chỉnh sửa thủ công toàn bộ → ghi lại vào lá mới nhất).
+ *  ② Mẫu ban đầu và giải thích: ba tầng (Toàn cục / Nhân vật / Trò chuyện) mỗi tầng một cấu trúc ban đầu + giải thích cho AI, gộp lại làm điểm xuất phát phát lại.
+ *  ③ Nhập / Xuất: chia sẻ cấu trúc biến số (mẫu + giải thích, không chứa giá trị).
+ * Giá trị luôn độc lập theo từng cuộc trò chuyện (phát lại từ varOps trong lá của từng cuộc trò chuyện); sửa mẫu không cần tóm tắt, sửa "Giá trị hiện tại" cần có tóm tắt (ghi vào lá mới nhất).
  */
 import Icon from '@/components/Icon.vue';
 import ModalMask from '@/components/ModalMask.vue';
@@ -18,17 +18,17 @@ import { toast } from '@/st/toast';
 import { computed, ref, watch } from 'vue';
 
 const hasLeaf = computed(() => derivedMeta.hasLeaf);
-// rev 每次重算派生(含切聊天/切角色)自增,借它让「是否有角色」「当前状态」随之刷新
+// rev tự tăng mỗi lần tính lại dẫn xuất (bao gồm chuyển trò chuyện / chuyển nhân vật), mượn nó để "có nhân vật hay không" và "trạng thái hiện tại" làm mới theo
 const charAvailable = computed(() => { void derivedMeta.rev; return currentCharKey() !== null; });
 
 const TIER_META: Record<VarTier, { label: string; hint: string }> = {
-  global: { label: '全局', hint: '所有角色所有聊天共享初始模板' },
-  char: { label: '角色', hint: '当前角色的所有聊天共享初始模板' },
-  chat: { label: '聊天', hint: '仅当前聊天' },
+  global: { label: 'Toàn cục', hint: 'Mọi nhân vật mọi cuộc trò chuyện dùng chung mẫu ban đầu' },
+  char: { label: 'Nhân vật', hint: 'Mọi cuộc trò chuyện của nhân vật hiện tại dùng chung mẫu ban đầu' },
+  chat: { label: 'Trò chuyện', hint: 'Chỉ cuộc trò chuyện hiện tại' },
 };
 const TIER_ORDER: VarTier[] = ['global', 'char', 'chat'];
 
-/** 解析成 JSON 对象(根须是对象);失败返回 null。 */
+/** Phân tích thành đối tượng JSON (gốc phải là đối tượng); thất bại trả về null. */
 function parseObj(text: string): Record<string, JsonValue> | null {
   try {
     const o = JSON.parse(text || '{}');
@@ -38,7 +38,7 @@ function parseObj(text: string): Record<string, JsonValue> | null {
   }
 }
 
-/* ============ 当前状态 ============ */
+/* ============ Trạng thái hiện tại ============ */
 const stateJson = computed(() => {
   void derivedMeta.rev;
   try {
@@ -60,20 +60,20 @@ function openEditState() {
 }
 function saveState() {
   const json = parseObj(stateEdit.value);
-  if (!json) { stateEditErr.value = 'JSON 无效或根不是对象 {…}'; return; }
-  if (!setVarsRoot(json)) { stateEditErr.value = '保存失败:需要先有摘要才能写入'; return; }
+  if (!json) { stateEditErr.value = 'JSON không hợp lệ hoặc gốc không phải là đối tượng {…}'; return; }
+  if (!setVarsRoot(json)) { stateEditErr.value = 'Lưu thất bại: cần có tóm tắt trước mới có thể ghi vào'; return; }
   refreshInjection();
   editStateOpen.value = false;
 }
 
-/* ============ 初始模板与说明(三层) ============ */
+/* ============ Mẫu ban đầu và giải thích (ba tầng) ============ */
 const defaultEditorTier = (): VarTier => (charAvailable.value ? 'char' : 'chat');
 const editorTier = ref<VarTier>(defaultEditorTier());
-const editorMode = ref<'tree' | 'source'>('tree'); // 结构编辑器(默认)/ 源码
-const editorTree = ref<Record<string, JsonValue>>({}); // 树形模式的工作副本
-const editorJson = ref(''); // 源码模式文本
-const editorMeaning = ref(''); // 含义:各字段是什么(主/副API都拿)
-const editorRule = ref('');    // 变化规则:何时怎么改/可否新建(仅副API)
+const editorMode = ref<'tree' | 'source'>('tree'); // Trình chỉnh sửa cấu trúc (mặc định) / Mã nguồn
+const editorTree = ref<Record<string, JsonValue>>({}); // Bản sao làm việc của chế độ hình cây
+const editorJson = ref(''); // Văn bản chế độ mã nguồn
+const editorMeaning = ref(''); // Ý nghĩa: các trường là gì (cả API chính/phụ đều nhận)
+const editorRule = ref('');    // Quy tắc biến đổi: khi nào sửa thế nào / có được tạo mới không (chỉ API phụ)
 const jsonError = ref('');
 
 function loadTier(t: VarTier) {
@@ -89,17 +89,17 @@ function switchTier(t: VarTier) {
   editorTier.value = t;
   loadTier(t);
 }
-loadTier(editorTier.value); // 初始优先载入角色层;群聊/未进入时回退聊天层
+loadTier(editorTier.value); // Ban đầu ưu tiên tải tầng Nhân vật; khi trò chuyện nhóm / chưa vào thì lùi về tầng Trò chuyện
 
-// 树形编辑改动 → 同步一份到源码文本(切到源码时不落后)
+// Thay đổi chỉnh sửa hình cây → đồng bộ một bản sang văn bản mã nguồn (khi chuyển sang mã nguồn không bị tụt hậu)
 watch(editorTree, v => { editorJson.value = JSON.stringify(v, null, 2); }, { deep: true });
 
-// 切模式:进树形时用源码文本重解析(接住用户在源码里的编辑);进源码时用树重渲染
+// Chuyển chế độ: khi vào hình cây thì dùng văn bản mã nguồn phân tích lại (đón nhận chỉnh sửa của người dùng trong mã nguồn); khi vào mã nguồn thì dùng cây kết xuất lại
 function switchMode(m: 'tree' | 'source') {
   if (m === editorMode.value) return;
   if (m === 'tree') {
     const obj = parseObj(editorJson.value);
-    if (!obj) { jsonError.value = '源码 JSON 无效,修正后才能切到结构视图'; return; }
+    if (!obj) { jsonError.value = 'JSON mã nguồn không hợp lệ, phải sửa đúng mới chuyển sang chế độ xem cấu trúc được'; return; }
     editorTree.value = obj;
     jsonError.value = '';
   } else {
@@ -108,7 +108,7 @@ function switchMode(m: 'tree' | 'source') {
   editorMode.value = m;
 }
 
-/** 取当前编辑中的 json(按模式来源);无效返回 null。 */
+/** Lấy json đang chỉnh sửa hiện tại (theo nguồn của chế độ); không hợp lệ trả về null. */
 function currentEditorJson(): Record<string, JsonValue> | null {
   return editorMode.value === 'tree' ? editorTree.value : parseObj(editorJson.value);
 }
@@ -117,14 +117,14 @@ function saveTemplate() {
   const t = editorTier.value;
   if (t === 'char' && !charAvailable.value) return;
   const json = currentEditorJson();
-  if (!json) { jsonError.value = 'JSON 无效或根不是对象 {…}'; return; }
+  if (!json) { jsonError.value = 'JSON không hợp lệ hoặc gốc không phải là đối tượng {…}'; return; }
   jsonError.value = '';
   replaceVarsTemplate(t, { json, meaning: editorMeaning.value, rule: editorRule.value });
   refreshInjection();
-  toast(`已保存${TIER_META[t].label}模板`, 'success');
+  toast(`Đã lưu mẫu ${TIER_META[t].label}`, 'success');
 }
 
-/* ============ 导入 / 导出(模板+说明,不含值) ============ */
+/* ============ Nhập / Xuất (mẫu + giải thích, không chứa giá trị) ============ */
 const exportOpen = ref(false);
 const importOpen = ref(false);
 const importText = ref('');
@@ -153,9 +153,9 @@ function openImport() {
 async function copyExport() {
   try {
     await navigator.clipboard.writeText(exportText.value);
-    toast('已复制到剪贴板', 'success');
+    toast('Đã sao chép vào bộ nhớ tạm', 'success');
   } catch {
-    toast('复制失败,请在框里手动选择复制', 'error');
+    toast('Sao chép thất bại, vui lòng chọn và sao chép thủ công trong khung', 'error');
   }
 }
 function downloadExport() {
@@ -176,8 +176,8 @@ function onImportFile(e: Event) {
 }
 function applyImport() {
   let parsed: unknown;
-  try { parsed = JSON.parse(importText.value); } catch { toast('JSON 解析失败,请检查', 'error'); return; }
-  // 接受 {json,meaning,rule} 包裹(兼容旧 guide → 并入 rule),或裸对象(当作 json)
+  try { parsed = JSON.parse(importText.value); } catch { toast('Phân tích JSON thất bại, vui lòng kiểm tra lại', 'error'); return; }
+  // Chấp nhận gói {json,meaning,rule} (tương thích guide cũ → gộp vào rule), hoặc đối tượng trần (coi là json)
   let json: Record<string, JsonValue> = {};
   let meaning = '';
   let rule = '';
@@ -187,35 +187,35 @@ function applyImport() {
       json = o.json as Record<string, JsonValue>;
       meaning = typeof o.meaning === 'string' ? o.meaning : '';
       rule = typeof o.rule === 'string' ? o.rule : '';
-      if (!meaning && !rule && typeof o.guide === 'string') rule = o.guide; // 兼容旧单一说明
+      if (!meaning && !rule && typeof o.guide === 'string') rule = o.guide; // Tương thích giải thích đơn lẻ cũ
     } else if (!o.kind) {
-      json = o as Record<string, JsonValue>; // 裸对象
+      json = o as Record<string, JsonValue>; // Đối tượng trần
     }
   }
-  if (!Object.keys(json).length && !meaning.trim() && !rule.trim()) { toast('没解析到可导入的结构', 'error'); return; }
+  if (!Object.keys(json).length && !meaning.trim() && !rule.trim()) { toast('Không phân tích được cấu trúc nào có thể nhập', 'error'); return; }
   let tier = importTier.value;
   if (tier === 'char' && !charAvailable.value) tier = 'chat';
   const cur = memory.varTemplates[tier];
-  const mergedJson = { ...cur.json, ...json }; // 顶层浅合并(同名整体覆盖)
+  const mergedJson = { ...cur.json, ...json }; // Gộp nông tầng đỉnh (trùng tên ghi đè toàn bộ)
   const mergedMeaning = [cur.meaning.trim(), meaning.trim()].filter(Boolean).join('\n\n');
   const mergedRule = [cur.rule.trim(), rule.trim()].filter(Boolean).join('\n\n');
   replaceVarsTemplate(tier, { json: mergedJson, meaning: mergedMeaning, rule: mergedRule });
   refreshInjection();
-  if (editorTier.value === tier) loadTier(tier); // 正在编辑该层则刷新编辑器
+  if (editorTier.value === tier) loadTier(tier); // Nếu đang chỉnh sửa tầng đó thì làm mới trình chỉnh sửa
   importOpen.value = false;
-  toast(`已导入到${TIER_META[tier].label}模板`, 'success');
+  toast(`Đã nhập vào mẫu ${TIER_META[tier].label}`, 'success');
 }
 </script>
 
 <template>
   <section class="bbs-page">
     <div class="bbs-section-head">
-      <h2 class="bbs-title bbs-title-sub">变量</h2>
+      <h2 class="bbs-title bbs-title-sub">Biến số</h2>
       <div class="bbs-var-tools">
-        <button class="bbs-add-mini" type="button" :disabled="!hasAnyTemplate" title="导出模板(分享)" @click="openExport">
+        <button class="bbs-add-mini" type="button" :disabled="!hasAnyTemplate" title="Xuất mẫu (chia sẻ)" @click="openExport">
           <Icon name="upload" />
         </button>
-        <button class="bbs-add-mini" type="button" title="导入模板" @click="openImport">
+        <button class="bbs-add-mini" type="button" title="Nhập mẫu" @click="openImport">
           <Icon name="download" />
         </button>
       </div>
@@ -223,23 +223,23 @@ function applyImport() {
 
     <hr class="bbs-rule" />
 
-    <!-- 当前状态 -->
+    <!-- Trạng thái hiện tại -->
     <div class="bbs-var-blockhead">
-      <span class="bbs-var-sub">当前状态</span>
-      <button class="bbs-mini-btn" type="button" :disabled="!hasLeaf" title="手动编辑整份 JSON" @click="openEditState">
-        <Icon name="edit" />编辑
+      <span class="bbs-var-sub">Trạng thái hiện tại</span>
+      <button class="bbs-mini-btn" type="button" :disabled="!hasLeaf" title="Chỉnh sửa thủ công toàn bộ JSON" @click="openEditState">
+        <Icon name="edit" />Chỉnh sửa
       </button>
     </div>
     <pre v-if="hasState" class="bbs-json-view">{{ stateJson }}</pre>
-    <p v-else class="bbs-var-emptyline">还没有变量状态。到下面定义初始模板,或让 AI 在剧情里自行创建(如新势力、新条目)。</p>
-    <p v-if="hasState && !hasLeaf" class="bbs-modal-hint">改「当前值」需先有摘要;现在显示的是初始状态。</p>
+    <p v-else class="bbs-var-emptyline">Chưa có trạng thái biến số. Hãy định nghĩa mẫu ban đầu ở bên dưới, hoặc để AI tự tạo trong cốt truyện (như thế lực mới, mục mới).</p>
+    <p v-if="hasState && !hasLeaf" class="bbs-modal-hint">Sửa "Giá trị hiện tại" cần có tóm tắt trước; hiện đang hiển thị là trạng thái ban đầu.</p>
 
-    <!-- 初始模板与说明 -->
+    <!-- Mẫu ban đầu và giải thích -->
     <div class="bbs-var-blockhead bbs-var-tmplhead">
-      <span class="bbs-var-sub">初始模板与说明</span>
+      <span class="bbs-var-sub">Mẫu ban đầu và giải thích</span>
     </div>
     <p class="bbs-modal-hint bbs-var-tmpltip">
-      初始结构 + 给 AI 的说明。三层合并(聊天 &gt; 角色 &gt; 全局)作为重放起点,AI 在剧情里用命令增删改。改初始值会影响整条聊天的当前值。
+      Cấu trúc ban đầu + giải thích cho AI. Ba tầng gộp lại (Trò chuyện &gt; Nhân vật &gt; Toàn cục) làm điểm xuất phát phát lại, AI dùng lệnh thêm/xóa/sửa trong cốt truyện. Sửa giá trị ban đầu sẽ ảnh hưởng tới giá trị hiện tại của toàn bộ cuộc trò chuyện.
     </p>
 
     <div class="bbs-typegrid bbs-var-tierpick">
@@ -256,40 +256,40 @@ function applyImport() {
       </button>
     </div>
     <span class="bbs-modal-hint">
-      {{ editorTier === 'char' && !charAvailable ? '当前无单一角色(群聊/未进入),暂不能编辑角色层' : TIER_META[editorTier].hint }}
+      {{ editorTier === 'char' && !charAvailable ? 'Hiện không có nhân vật đơn lẻ (trò chuyện nhóm / chưa vào), tạm thời không thể chỉnh sửa tầng Nhân vật' : TIER_META[editorTier].hint }}
     </span>
 
     <div class="bbs-modal-field">
       <div class="bbs-jte-fieldhead">
-        <span class="bbs-modal-label">初始结构(可留空让 AI 从零建)</span>
+        <span class="bbs-modal-label">Cấu trúc ban đầu (có thể để trống cho AI xây dựng từ đầu)</span>
         <div class="bbs-mode-toggle">
-          <button class="bbs-mode-btn" :class="{ on: editorMode === 'tree' }" type="button" @click="switchMode('tree')">结构</button>
-          <button class="bbs-mode-btn" :class="{ on: editorMode === 'source' }" type="button" @click="switchMode('source')">源码</button>
+          <button class="bbs-mode-btn" :class="{ on: editorMode === 'tree' }" type="button" @click="switchMode('tree')">Cấu trúc</button>
+          <button class="bbs-mode-btn" :class="{ on: editorMode === 'source' }" type="button" @click="switchMode('source')">Mã nguồn</button>
         </div>
       </div>
       <div v-if="editorMode === 'tree'" class="bbs-jte-wrap">
         <JsonTreeEditor v-model="editorTree" />
-        <p v-if="!Object.keys(editorTree).length" class="bbs-jte-empty">空结构。点「加字段」搭出想追踪的结构,或留空让 AI 在剧情里自建。</p>
+        <p v-if="!Object.keys(editorTree).length" class="bbs-jte-empty">Cấu trúc trống. Nhấn "Thêm trường" để dựng cấu trúc muốn theo dõi, hoặc để trống cho AI tự tạo trong cốt truyện.</p>
       </div>
       <textarea v-else v-model="editorJson" class="bbs-input bbs-json-edit" spellcheck="false" rows="7"></textarea>
       <span v-if="jsonError" class="bbs-json-err">{{ jsonError }}</span>
     </div>
     <label class="bbs-modal-field">
-      <span class="bbs-modal-label">含义(各字段是什么;正文 AI 与摘要 AI 都会看到,用于理解当前值)</span>
+      <span class="bbs-modal-label">Ý nghĩa (các trường là gì; cả AI chính văn và AI tóm tắt đều sẽ nhìn thấy để hiểu giá trị hiện tại)</span>
       <textarea
         v-model="editorMeaning"
         class="bbs-input bbs-modal-textarea"
         rows="5"
-        placeholder="如:xxx好感度指的是该角色对{{user}}的好感度,角色好感度的不同,行为表现也会不同。"
+        placeholder="VD: Độ hảo cảm xxx chỉ độ hảo cảm của nhân vật đó đối với {{user}}, độ hảo cảm của nhân vật khác nhau thì biểu hiện hành vi cũng sẽ khác nhau."
       ></textarea>
     </label>
     <label class="bbs-modal-field">
-      <span class="bbs-modal-label">变化规则(何时怎么改、可否新建;只发摘要 AI,不进正文,避免正文复述变量)</span>
+      <span class="bbs-modal-label">Quy tắc biến đổi (khi nào sửa thế nào, có được tạo mới không; chỉ gửi cho AI tóm tắt, không đưa vào chính văn để tránh chính văn thuật lại biến số)</span>
       <textarea
         v-model="editorRule"
         class="bbs-input bbs-modal-textarea"
         rows="5"
-        placeholder="如: 角色每次和{{user}}触发事件时,好感度都会变化,但每次浮动不得超过5"
+        placeholder="VD: Mỗi lần nhân vật kích hoạt sự kiện với {{user}}, độ hảo cảm đều sẽ thay đổi, nhưng mỗi lần dao động không được vượt quá 5"
       ></textarea>
     </label>
     <div class="bbs-modal-foot bbs-var-savefoot">
@@ -299,60 +299,60 @@ function applyImport() {
         :disabled="editorTier === 'char' && !charAvailable"
         @click="saveTemplate"
       >
-        <Icon name="check" />保存{{ TIER_META[editorTier].label }}模板
+        <Icon name="check" />Lưu mẫu {{ TIER_META[editorTier].label }}
       </button>
     </div>
 
-    <!-- 编辑当前值 -->
+    <!-- Chỉnh sửa giá trị hiện tại -->
     <ModalMask :open="editStateOpen" @close="editStateOpen = false">
-      <div class="bbs-modal" role="dialog" aria-modal="true" aria-label="编辑当前变量值">
+      <div class="bbs-modal" role="dialog" aria-modal="true" aria-label="Chỉnh sửa giá trị biến số hiện tại">
         <header class="bbs-modal-head">
-          <span class="bbs-modal-title">编辑当前值</span>
-          <button class="bbs-item-act" type="button" title="关闭" @click="editStateOpen = false"><Icon name="close" /></button>
+          <span class="bbs-modal-title">Chỉnh sửa giá trị hiện tại</span>
+          <button class="bbs-item-act" type="button" title="Đóng" @click="editStateOpen = false"><Icon name="close" /></button>
         </header>
-        <p class="bbs-modal-hint">直接改整份 JSON,保存即写进最新摘要楼层(删该楼可回退)。</p>
+        <p class="bbs-modal-hint">Sửa trực tiếp toàn bộ JSON, lưu lại sẽ ghi vào tầng tóm tắt mới nhất (xóa tầng đó có thể hoàn tác).</p>
         <textarea v-model="stateEdit" class="bbs-input bbs-json-edit bbs-io-area" spellcheck="false"></textarea>
         <span v-if="stateEditErr" class="bbs-json-err">{{ stateEditErr }}</span>
         <footer class="bbs-modal-foot">
-          <button class="bbs-btn" type="button" @click="editStateOpen = false">取消</button>
-          <button class="bbs-btn bbs-btn-primary" type="button" @click="saveState">保存</button>
+          <button class="bbs-btn" type="button" @click="editStateOpen = false">Hủy</button>
+          <button class="bbs-btn bbs-btn-primary" type="button" @click="saveState">Lưu</button>
         </footer>
       </div>
     </ModalMask>
 
-    <!-- 导出 -->
+    <!-- Xuất -->
     <ModalMask :open="exportOpen" @close="exportOpen = false">
-      <div class="bbs-modal" role="dialog" aria-modal="true" aria-label="导出变量模板">
+      <div class="bbs-modal" role="dialog" aria-modal="true" aria-label="Xuất mẫu biến số">
         <header class="bbs-modal-head">
-          <span class="bbs-modal-title">导出变量模板</span>
-          <button class="bbs-item-act" type="button" title="关闭" @click="exportOpen = false"><Icon name="close" /></button>
+          <span class="bbs-modal-title">Xuất mẫu biến số</span>
+          <button class="bbs-item-act" type="button" title="Đóng" @click="exportOpen = false"><Icon name="close" /></button>
         </header>
-        <p class="bbs-modal-hint">三层合并后的初始结构 + 说明(不含具体值)。复制发给别人即可分享。</p>
+        <p class="bbs-modal-hint">Cấu trúc ban đầu + giải thích sau khi gộp ba tầng (không chứa giá trị cụ thể). Sao chép gửi cho người khác là có thể chia sẻ.</p>
         <textarea class="bbs-input bbs-json-edit bbs-io-area" readonly :value="exportText"></textarea>
         <footer class="bbs-modal-foot">
-          <button class="bbs-btn" type="button" @click="downloadExport"><Icon name="download" />下载文件</button>
-          <button class="bbs-btn bbs-btn-primary" type="button" @click="copyExport"><Icon name="check" />复制</button>
+          <button class="bbs-btn" type="button" @click="downloadExport"><Icon name="download" />Tải tệp xuống</button>
+          <button class="bbs-btn bbs-btn-primary" type="button" @click="copyExport"><Icon name="check" />Sao chép</button>
         </footer>
       </div>
     </ModalMask>
 
-    <!-- 导入 -->
+    <!-- Nhập -->
     <ModalMask :open="importOpen" @close="importOpen = false">
-      <div class="bbs-modal" role="dialog" aria-modal="true" aria-label="导入变量模板">
+      <div class="bbs-modal" role="dialog" aria-modal="true" aria-label="Nhập mẫu biến số">
         <header class="bbs-modal-head">
-          <span class="bbs-modal-title">导入变量模板</span>
-          <button class="bbs-item-act" type="button" title="关闭" @click="importOpen = false"><Icon name="close" /></button>
+          <span class="bbs-modal-title">Nhập mẫu biến số</span>
+          <button class="bbs-item-act" type="button" title="Đóng" @click="importOpen = false"><Icon name="close" /></button>
         </header>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">粘贴模板 JSON</span>
-          <textarea v-model="importText" class="bbs-input bbs-json-edit bbs-io-area" spellcheck="false" placeholder="把分享来的变量模板 JSON 粘到这里,或用下面的文件选择"></textarea>
+          <span class="bbs-modal-label">Dán JSON mẫu</span>
+          <textarea v-model="importText" class="bbs-input bbs-json-edit bbs-io-area" spellcheck="false" placeholder="Dán JSON mẫu biến số được chia sẻ vào đây, hoặc dùng phần chọn tệp bên dưới"></textarea>
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">或从文件导入</span>
+          <span class="bbs-modal-label">Hoặc nhập từ tệp</span>
           <input class="bbs-input" type="file" accept="application/json,.json" @change="onImportFile" />
         </label>
         <div class="bbs-modal-field">
-          <span class="bbs-modal-label">导入到哪层</span>
+          <span class="bbs-modal-label">Nhập vào tầng nào</span>
           <div class="bbs-typegrid">
             <button
               v-for="t in TIER_ORDER"
@@ -366,11 +366,11 @@ function applyImport() {
               {{ TIER_META[t].label }}
             </button>
           </div>
-          <span class="bbs-modal-hint">合并进该层模板(顶层同名字段会被覆盖);说明会追加。</span>
+          <span class="bbs-modal-hint">Gộp vào mẫu của tầng đó (các trường trùng tên ở tầng đỉnh sẽ bị ghi đè); phần giải thích sẽ được nối thêm.</span>
         </div>
         <footer class="bbs-modal-foot">
-          <button class="bbs-btn" type="button" @click="importOpen = false">取消</button>
-          <button class="bbs-btn bbs-btn-primary" type="button" :disabled="!importText.trim()" @click="applyImport">导入</button>
+          <button class="bbs-btn" type="button" @click="importOpen = false">Hủy</button>
+          <button class="bbs-btn bbs-btn-primary" type="button" :disabled="!importText.trim()" @click="applyImport">Nhập</button>
         </footer>
       </div>
     </ModalMask>
@@ -378,8 +378,8 @@ function applyImport() {
 </template>
 
 <style scoped>
-/* 不设 height:100% —— 本页是自然文档流,靠 .bbs-body 滚动。
-   钉死高度会让 flex 列把「当前状态」pre(自带 overflow)挤到几乎没高度,什么都看不到。 */
+/* Không đặt height:100% —— trang này là luồng tài liệu tự nhiên, cuộn nhờ .bbs-body.
+   Ghim cứng chiều cao sẽ làm cột flex ép thẻ pre "Trạng thái hiện tại" (tự kèm overflow) xuống gần như không còn chiều cao, không nhìn thấy gì cả. */
 .bbs-page {
   display: flex;
   flex-direction: column;
@@ -390,7 +390,7 @@ function applyImport() {
   gap: 2px;
 }
 
-/* 小节标题行 */
+/* Dòng tiêu đề tiểu mục */
 .bbs-var-blockhead {
   display: flex;
   align-items: center;
@@ -428,7 +428,7 @@ function applyImport() {
   cursor: default;
 }
 
-/* 当前状态 JSON 视图 */
+/* Khung nhìn JSON trạng thái hiện tại */
 .bbs-json-view {
   margin: 0;
   padding: 12px 14px;
@@ -501,7 +501,7 @@ function applyImport() {
   line-height: 1.55;
   white-space: pre;
 }
-/* 结构 / 源码 模式切换 */
+/* Chuyển đổi chế độ Cấu trúc / Mã nguồn */
 .bbs-jte-fieldhead {
   display: flex;
   align-items: center;

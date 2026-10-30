@@ -8,8 +8,8 @@ import { computed, ref } from 'vue';
 
 const newName = ref('');
 
-// 物品/计划是从叶子摘要重放出来的派生数据,手动操作写入「最新一条有效叶子」。
-// 没有任何有效叶子时无处挂载,禁止手动添加。
+// Vật phẩm / kế hoạch là dữ liệu dẫn xuất được phát lại từ tóm tắt lá, thao tác thủ công ghi vào "lá hợp lệ mới nhất".
+// Khi chưa có bất kỳ lá hợp lệ nào thì không có chỗ gắn kết, cấm thêm thủ công.
 const hasLeaf = computed(() => derivedMeta.hasLeaf);
 
 function addItem() {
@@ -25,14 +25,14 @@ function removeItem(id: string) {
   appendOpToLatestLeaf({ items: { remove: [it.name] } });
 }
 
-/* —— 编辑弹窗:改名/数量/描述。数量留空=维持(update 无法清空,清空数量请删后重建) —— */
+/* —— Hộp thoại chỉnh sửa: đổi tên / số lượng / mô tả. Số lượng để trống = giữ nguyên (update không thể xóa trống, muốn xóa trống số lượng vui lòng xóa đi rồi tạo lại) —— */
 interface ItemEditing {
   oldName: string;
   name: string;
-  qty: string; // 文本承载,空=不改数量
+  qty: string; // Lưu dạng văn bản, trống = không đổi số lượng
   desc: string;
-  carried: boolean; // 是否随身
-  location: string; // 非随身时的存放地
+  carried: boolean; // Có mang theo người hay không
+  location: string; // Nơi cất giữ khi không mang theo người
 }
 const editing = ref<ItemEditing | null>(null);
 
@@ -44,7 +44,7 @@ function openEdit(id: string) {
     name: it.name,
     qty: typeof it.qty === 'number' ? String(it.qty) : '',
     desc: it.desc ?? '',
-    carried: it.carried !== false, // 省略/true 视作随身
+    carried: it.carried !== false, // Lược bỏ / true được coi là mang theo người
     location: it.location ?? '',
   };
 }
@@ -54,11 +54,11 @@ function cancelEdit() {
 function saveEdit() {
   const e = editing.value;
   if (!e || !e.name.trim()) return;
-  // qty 用 String() 兜底:type="number" 的 v-model 会把值转成 number(Vue 对 number input 的默认行为),
-  // 直接 .trim() 会因「number 无 trim」抛错 → saveEdit 中断、弹窗不关(表现为点保存没反应)。
+  // qty dùng String() dự phòng: v-model của type="number" sẽ chuyển giá trị thành number (hành vi mặc định của Vue đối với number input),
+  // gọi .trim() trực tiếp sẽ ném lỗi vì "number không có trim" → saveEdit bị ngắt, hộp thoại không đóng (biểu hiện là nhấn Lưu không có phản hồi).
   const qtyStr = String(e.qty).trim();
   const qty = qtyStr === '' ? undefined : Number(qtyStr);
-  // 随身 → 清空存放地;非随身 → 用填写的地点
+  // Mang theo người → xóa trống nơi cất giữ; không mang theo người → dùng địa điểm đã điền
   editItem(e.oldName, {
     name: e.name,
     qty: qty !== undefined && Number.isFinite(qty) ? qty : undefined,
@@ -72,19 +72,19 @@ function saveEdit() {
 
 <template>
   <section class="bbs-page">
-    <h2 class="bbs-title bbs-title-sub">物品</h2>
-    <SummaryOnlyNotice subject="物品清单与变动" />
+    <h2 class="bbs-title bbs-title-sub">Vật phẩm</h2>
+    <SummaryOnlyNotice subject="danh sách và biến động vật phẩm" />
 
     <div class="bbs-additem">
       <input
         v-model="newName"
         class="bbs-input"
         type="text"
-        :placeholder="hasLeaf ? '手动添加物品…' : '需先有摘要才能手动添加'"
+        :placeholder="hasLeaf ? 'Thêm vật phẩm thủ công…' : 'Cần có tóm tắt trước mới có thể thêm thủ công'"
         :disabled="!hasLeaf"
         @keydown.enter="addItem"
       />
-      <button class="bbs-btn bbs-btn-primary" type="button" :disabled="!hasLeaf" @click="addItem">添加</button>
+      <button class="bbs-btn bbs-btn-primary" type="button" :disabled="!hasLeaf" @click="addItem">Thêm</button>
     </div>
 
     <hr class="bbs-rule" />
@@ -100,10 +100,10 @@ function saveEdit() {
             </span>
           </div>
           <span class="bbs-item-acts">
-            <button class="bbs-item-act" type="button" title="编辑" @click="openEdit(it.id)">
+            <button class="bbs-item-act" type="button" title="Chỉnh sửa" @click="openEdit(it.id)">
               <Icon name="edit" />
             </button>
-            <button class="bbs-item-act bbs-item-del" type="button" title="删除" @click="removeItem(it.id)">
+            <button class="bbs-item-act bbs-item-del" type="button" title="Xóa" @click="removeItem(it.id)">
               <Icon name="close" />
             </button>
           </span>
@@ -114,39 +114,39 @@ function saveEdit() {
 
     <div v-else class="bbs-empty">
       <span class="bbs-empty-icon"><Icon name="items" /></span>
-      <p>暂时空空如也。摘要时得到的物品会自动登记,也可手动添加。</p>
+      <p>Tạm thời trống rỗng. Vật phẩm nhận được khi tóm tắt sẽ tự động đăng ký, cũng có thể thêm thủ công.</p>
     </div>
 
-    <!-- 编辑弹窗:Teleport 出滚动容器,见 ModalMask -->
+    <!-- Hộp thoại chỉnh sửa: Teleport ra khỏi vùng chứa cuộn, xem ModalMask -->
     <ModalMask :open="!!editing" @close="cancelEdit">
-      <div v-if="editing" class="bbs-modal" role="dialog" aria-modal="true" aria-label="编辑物品">
+      <div v-if="editing" class="bbs-modal" role="dialog" aria-modal="true" aria-label="Chỉnh sửa vật phẩm">
         <header class="bbs-modal-head">
-          <span class="bbs-modal-title">编辑物品</span>
-          <button class="bbs-item-act" type="button" title="关闭" @click="cancelEdit"><Icon name="close" /></button>
+          <span class="bbs-modal-title">Chỉnh sửa vật phẩm</span>
+          <button class="bbs-item-act" type="button" title="Đóng" @click="cancelEdit"><Icon name="close" /></button>
         </header>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">名称</span>
-          <input v-model="editing.name" class="bbs-input" type="text" placeholder="物品名" />
+          <span class="bbs-modal-label">Tên</span>
+          <input v-model="editing.name" class="bbs-input" type="text" placeholder="Tên vật phẩm" />
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">数量(留空=不计数)</span>
-          <input v-model="editing.qty" class="bbs-input" type="number" min="0" placeholder="不填则不显示数量" />
+          <span class="bbs-modal-label">Số lượng (để trống = không đếm)</span>
+          <input v-model="editing.qty" class="bbs-input" type="number" min="0" placeholder="Không điền thì không hiển thị số lượng" />
         </label>
         <label class="bbs-modal-field bbs-modal-check">
           <input v-model="editing.carried" type="checkbox" />
-          <span class="bbs-modal-label">随身携带(取消勾选可指定存放地)</span>
+          <span class="bbs-modal-label">Mang theo bên mình (bỏ tích để chỉ định nơi cất giữ)</span>
         </label>
         <label v-if="!editing.carried" class="bbs-modal-field">
-          <span class="bbs-modal-label">存放地点</span>
-          <input v-model="editing.location" class="bbs-input" type="text" placeholder="如:武器库、家中" />
+          <span class="bbs-modal-label">Địa điểm cất giữ</span>
+          <input v-model="editing.location" class="bbs-input" type="text" placeholder="VD: Kho vũ khí, Ở nhà" />
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">描述</span>
-          <textarea v-model="editing.desc" class="bbs-input bbs-modal-textarea" rows="3" placeholder="可选"></textarea>
+          <span class="bbs-modal-label">Mô tả</span>
+          <textarea v-model="editing.desc" class="bbs-input bbs-modal-textarea" rows="3" placeholder="Tùy chọn"></textarea>
         </label>
         <footer class="bbs-modal-foot">
-          <button class="bbs-btn" type="button" @click="cancelEdit">取消</button>
-          <button class="bbs-btn bbs-btn-primary" type="button" :disabled="!editing.name.trim()" @click="saveEdit">保存</button>
+          <button class="bbs-btn" type="button" @click="cancelEdit">Hủy</button>
+          <button class="bbs-btn bbs-btn-primary" type="button" :disabled="!editing.name.trim()" @click="saveEdit">Lưu</button>
         </footer>
       </div>
     </ModalMask>
@@ -188,15 +188,15 @@ function saveEdit() {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  min-width: 0; /* 允许长名字在 flex 内收缩换行,不挤压操作按钮 */
+  min-width: 0; /* Cho phép tên dài thu hẹp trong flex, không chèn ép các nút thao tác */
   flex: 1;
 }
 .bbs-item-name {
   font-size: 14px;
   font-weight: 500;
   color: var(--bbs-ink);
-  /* 允许收缩 + 单行省略:长名字截断显示(title 悬浮见全名),
-     不溢出容器压到右侧操作钮;数量/存放地仍紧贴其后 */
+  /* Cho phép thu hẹp + lược bớt một dòng: tên dài cắt ngắn hiển thị (di chuột qua title thấy toàn bộ tên),
+     không tràn khỏi vùng chứa đè lên nút thao tác bên phải; số lượng / nơi cất giữ vẫn bám sát phía sau */
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
@@ -214,8 +214,8 @@ function saveEdit() {
   gap: 3px;
   font-size: 12px;
   color: var(--bbs-ink-muted);
-  min-width: 0; /* 长地名时本标签收缩并截断,不把物品名挤换行 */
-  flex: 1 1 auto; /* 占据名字/数量之后的剩余宽度;过长则在自身范围内省略 */
+  min-width: 0; /* Khi tên địa điểm dài thì nhãn này thu hẹp và cắt ngắn, không đẩy tên vật phẩm xuống dòng */
+  flex: 1 1 auto; /* Chiếm chiều rộng còn lại sau tên/số lượng; quá dài thì lược bớt trong phạm vi bản thân */
 }
 .bbs-item-loc-text {
   overflow: hidden;
@@ -233,8 +233,8 @@ function saveEdit() {
   align-items: center;
   gap: 2px;
 }
-/* PC(支持 hover)上操作按钮默认隐藏,悬停整行才浮现,列表更干净;
-   触屏无 hover,保持常驻(否则手机点不出来)。 */
+/* Trên PC (hỗ trợ hover) các nút thao tác mặc định ẩn đi, di chuột qua cả dòng mới hiện lên, danh sách sạch sẽ hơn;
+   màn hình cảm ứng không có hover, giữ hiển thị thường trực (nếu không điện thoại không nhấn ra được). */
 @media (hover: hover) {
   .bbs-item-acts {
     opacity: 0;

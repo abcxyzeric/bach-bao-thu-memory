@@ -5,19 +5,19 @@ const BTN_ID = 'bbs-topbar-button';
 const STYLE_ID = 'bbs-topbar-style';
 
 function ensureStyle(): void {
-  // 美化主题可能清空顶栏图标字形,用高特异性选择器强制还原(见 iconFallback)
+  // Giao diện làm đẹp có thể xóa sạch glyph biểu tượng thanh đỉnh, dùng bộ chọn độ đặc hiệu cao ép khôi phục (xem iconFallback)
   ensureIconFallback(STYLE_ID, `#top-settings-holder #${BTN_ID} .drawer-icon.fa-solid`);
 }
 
 /**
- * 往 ST 顶栏(#top-settings-holder)注入一个快速打开柏宝书的 drawer 按钮,
- * 位置在「用户设定管理」(#persona-management-button)左边。
+ * Tiêm một nút drawer mở nhanh Bách Bảo Thư vào thanh đỉnh của ST (#top-settings-holder),
+ * vị trí nằm bên trái "Quản lý thiết lập người dùng" (#persona-management-button).
  *
- * 注入的按钮**不进 shadow DOM**——直接用 ST 的 .drawer / .drawer-icon 类名,
- * 跟随酒馆主题美化。点击只负责打开柏宝书窗口,不展开任何抽屉(故无 .drawer-toggle,
- * 避免 ST 的 doNavbarIconClick 把它当抽屉来开合)。
+ * Nút được tiêm **không vào shadow DOM** —— dùng trực tiếp tên lớp .drawer / .drawer-icon của ST,
+ * đi theo làm đẹp giao diện của quán rượu. Nhấn vào chỉ phụ trách mở cửa sổ Bách Bảo Thư, không mở rộng bất kỳ ngăn kéo nào (do đó không gắn hàm của .drawer-toggle,
+ * tránh việc doNavbarIconClick của ST coi nó là ngăn kéo để đóng mở).
  *
- * 受设置开关控制:开 → 确保已注入;关 → 移除。轮询等顶栏出现(顶栏懒加载)。
+ * Chịu sự điều khiển của công tắc cài đặt: Bật → đảm bảo đã tiêm; Tắt → gỡ bỏ. Dùng polling đợi thanh đỉnh xuất hiện (thanh đỉnh tải lười).
  */
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -27,10 +27,10 @@ function buildButton(): HTMLElement {
   btn.className = 'drawer';
   btn.innerHTML = `
     <div class="drawer-toggle">
-      <div class="drawer-icon fa-solid fa-book-bookmark fa-fw closedIcon" title="柏宝书"></div>
+      <div class="drawer-icon fa-solid fa-book-bookmark fa-fw closedIcon" title="Bách Bảo Thư"></div>
     </div>
   `;
-  // 仅打开窗口,不走 ST 的抽屉开合逻辑(故未挂 .drawer-toggle 的 doNavbarIconClick)
+  // Chỉ mở cửa sổ, không đi theo logic đóng mở ngăn kéo của ST (vì vậy không gắn doNavbarIconClick của .drawer-toggle)
   btn.querySelector('.drawer-toggle')?.addEventListener('click', e => {
     e.preventDefault();
     e.stopPropagation();
@@ -39,7 +39,7 @@ function buildButton(): HTMLElement {
   return btn;
 }
 
-/** 真正执行插入:成功或已存在返回 true,顶栏未就绪返回 false(由轮询重试)。 */
+/** Thực sự thực thi chèn: thành công hoặc đã tồn tại trả về true, thanh đỉnh chưa sẵn sàng trả về false (do polling thử lại). */
 function tryInject(): boolean {
   const holder = document.getElementById('top-settings-holder');
   if (!holder) return false;
@@ -47,7 +47,7 @@ function tryInject(): boolean {
 
   ensureStyle();
   const btn = buildButton();
-  // 插到「用户设定管理」左边;它若还没渲染则退而挂到顶栏末尾。
+  // Chèn vào bên trái "Quản lý thiết lập người dùng"; nếu nó chưa kết xuất thì lùi về gắn ở cuối thanh đỉnh.
   const persona = document.getElementById('persona-management-button');
   if (persona) persona.before(btn);
   else holder.appendChild(btn);
@@ -58,7 +58,7 @@ function removeButton(): void {
   document.getElementById(BTN_ID)?.remove();
 }
 
-/** 按开关同步顶栏按钮的有无。开关变化时调用即可(幂等)。 */
+/** Đồng bộ sự tồn tại của nút thanh đỉnh theo công tắc. Gọi khi công tắc thay đổi là được (idempotent). */
 export function syncTopBarButton(enabled: boolean): void {
   if (pollTimer) {
     clearInterval(pollTimer);
@@ -69,8 +69,8 @@ export function syncTopBarButton(enabled: boolean): void {
     return;
   }
   if (tryInject()) return;
-  // 顶栏懒加载:轮询等它出现。顶栏是 index.html 静态结构,通常首次即命中、timer 不启动;
-  // 万一始终不出现,封顶 ~20s(40 次)后放弃,绝不常驻空转(同 index.ts 的 bindMemoryWhenReady 范式)。
+  // Thanh đỉnh tải lười: polling đợi nó xuất hiện. Thanh đỉnh là cấu trúc tĩnh trong index.html, thường trúng ngay lần đầu, timer không khởi động;
+  // vạn nhất mãi không xuất hiện, giới hạn ~20s (40 lần) rồi từ bỏ, tuyệt đối không chạy không tải thường trực (cùng mô hình với bindMemoryWhenReady trong index.ts).
   let attempts = 0;
   pollTimer = setInterval(() => {
     if (tryInject() || ++attempts > 40) {

@@ -4,32 +4,32 @@ import { openBook, ui } from '@/state/ui';
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
 
 /**
- * 悬浮球 —— 柏宝书伸进宿主页面的「书签坠」。
+ * Quả cầu nổi —— "thẻ đánh dấu sách" của Bách Bảo Thư vươn vào trang chủ.
  *
- * 形态:竖向缎带 + 底部燕尾缺口(clip-path),呼应品牌的 bookmark 图标;自定义图片也被
- * 切成同一书签轮廓,任意图都收进统一形状(这是与「又一个圆 fab」拉开差距的签名手法)。
+ * Hình thái: dải ruy băng dọc + khuyết đuôi én ở đáy (clip-path), hưởng ứng biểu tượng bookmark của thương hiệu; ảnh tùy chỉnh cũng được
+ * cắt thành cùng đường viền thẻ đánh dấu sách, ảnh bất kỳ đều gom vào hình dáng thống nhất (đây là thủ pháp đặc trưng tạo khoảng cách với "lại một nút fab tròn nữa").
  *
- * 行为(按用户要求):自由拖动 —— 拖到屏幕中间就停在中间;拖到接近左/右边缘才吸附贴边。
- * 贴边时半隐于边缘(只露一窄条),hover/聚焦/触摸才整条滑出;停在中间则常显。
+ * Hành vi (theo yêu cầu người dùng): kéo tự do —— kéo ra giữa màn hình thì dừng ở giữa; kéo tới gần mép trái/phải mới hít bám cạnh.
+ * Khi bám cạnh sẽ ẩn một nửa ở mép (chỉ lộ một dải hẹp), hover/focus/chạm mới trượt nguyên dải ra; dừng ở giữa thì hiển thị thường trực.
  *
- * 位置存本机 localStorage(纯视觉态、各设备屏幕尺寸不同,同步反而会跑到屏幕外)。
- * 开关与自定义图标(ui.orbImage,服务器路径)跨设备同步,由设置承载。
+ * Vị trí lưu ở localStorage trên máy (trạng thái thuần thị giác, kích thước màn hình mỗi thiết bị khác nhau, đồng bộ ngược lại sẽ chạy ra ngoài màn hình).
+ * Công tắc và biểu tượng tùy chỉnh (ui.orbImage, đường dẫn máy chủ) đồng bộ đa thiết bị, do phần cài đặt đảm nhận.
  */
 
-// 尺寸随形状 + 用户基准尺寸(ui.orbSize):书签按 0.78 宽高比(竖长方),圆/方等边正方。
-// 拖动/吸附计算与内联尺寸都读它。
+// Kích thước đi theo hình dáng + kích thước cơ sở của người dùng (ui.orbSize): thẻ sách theo tỷ lệ rộng/cao 0.78 (chữ nhật đứng), tròn/vuông là hình vuông cạnh bằng nhau.
+// Tính toán kéo/hít bám và kích thước nội tuyến đều đọc từ nó.
 const orbW = computed(() => (ui.orbShape === 'bookmark' ? Math.round(ui.orbSize * 0.78) : ui.orbSize));
 const orbH = computed(() => ui.orbSize);
-const SNAP_ZONE = 56; // 松手时距左/右边缘 ≤ 此值即吸附贴边
-const CLICK_SLOP = 6; // 位移 < 此值视为点击而非拖动
+const SNAP_ZONE = 56; // Khi thả tay cách mép trái/phải ≤ giá trị này sẽ hít bám cạnh
+const CLICK_SLOP = 6; // Độ dịch chuyển < giá trị này được coi là nhấn chứ không phải kéo
 const POS_KEY = 'bbs.orb.pos.v1';
 
 type Dock = 'left' | 'right' | 'none';
 interface OrbPos {
   dock: Dock;
-  /** 贴边时无意义;free 时为左上角 x(px) */
+  /** Khi bám cạnh thì vô nghĩa; khi free là tọa độ x góc trên bên trái (px) */
   x: number;
-  /** 左上角 y(px),三种状态都用 */
+  /** Tọa độ y góc trên bên trái (px), cả ba trạng thái đều dùng */
   y: number;
 }
 
@@ -45,19 +45,19 @@ function loadPos(): OrbPos {
   } catch {
     /* ignore */
   }
-  // 默认:右侧贴边、纵向居中偏下
+  // Mặc định: bám cạnh phải, căn giữa theo chiều dọc hơi lệch xuống dưới
   return { dock: 'right', x: 0, y: Math.round(window.innerHeight * 0.6) };
 }
 
 const pos = reactive<OrbPos>(loadPos());
 const dragging = ref(false);
-const awake = ref(false); // hover/聚焦/拖动 → 贴边态整条滑出
+const awake = ref(false); // hover/focus/kéo → trạng thái bám cạnh trượt nguyên dải ra
 let activePointer: number | null = null;
 let startX = 0;
 let startY = 0;
-let moved = 0; // 累计位移,用于点击/拖动判定
+let moved = 0; // Độ dịch chuyển tích lũy, dùng để phán đoán nhấn/kéo
 
-// 进入视口后把坐标夹进可视范围(换了更小的屏幕/旋转后不至于跑出去)
+// Sau khi vào khung nhìn thì kẹp tọa độ vào phạm vi nhìn thấy được (đổi màn hình nhỏ hơn / xoay màn hình không bị chạy ra ngoài)
 function clampToViewport(): void {
   const maxY = Math.max(0, window.innerHeight - orbH.value);
   pos.y = Math.min(Math.max(0, pos.y), maxY);
@@ -75,20 +75,20 @@ function savePos(): void {
   }
 }
 
-// —— 定位样式:贴边用 left/right 锚定 + translateX 控制隐/现;free 用绝对 x/y ——
+// —— Kiểu dáng định vị: bám cạnh dùng neo left/right + translateX điều khiển ẩn/hiện; free dùng x/y tuyệt đối ——
 const orbStyle = computed(() => {
   const base: Record<string, string> = {
     top: `${pos.y}px`,
     width: `${orbW.value}px`,
     height: `${orbH.value}px`,
-    // 静止不透明度走 CSS 变量,唤起/拖动态由类覆盖回全显
+    // Độ mờ tĩnh đi theo biến CSS, trạng thái đánh thức / đang kéo do class ghi đè về hiển thị toàn phần
     '--orb-rest-opacity': String(Math.min(100, Math.max(20, ui.orbOpacity)) / 100),
-    // 图标字号随基准尺寸缩放(原 48 球 ≈ 22px),保持图标与球体比例协调
+    // Cỡ chữ biểu tượng co giãn theo kích thước cơ sở (quả cầu gốc 48 ≈ 22px), giữ tỷ lệ biểu tượng và thân cầu hài hòa
     '--orb-icon-size': `${Math.round(ui.orbSize * 0.46)}px`,
   };
   if (pos.dock === 'left') {
     base.left = '0px';
-    // 静止半隐(露 ~40%);拖动/唤起时整条滑出
+    // Tĩnh ẩn một nửa (lộ ~40%); khi kéo/đánh thức thì trượt nguyên dải ra
     base.transform = dragging.value || awake.value ? 'translateX(0)' : 'translateX(-58%)';
   } else if (pos.dock === 'right') {
     base.right = '0px';
@@ -102,14 +102,14 @@ const orbStyle = computed(() => {
 
 const orbImage = computed(() => ui.orbImage.trim());
 
-// —— 拖动 ——
+// —— Kéo ——
 function onDown(e: PointerEvent) {
   activePointer = e.pointerId;
   dragging.value = true;
   moved = 0;
   startX = e.clientX;
   startY = e.clientY;
-  // 记录手指相对左上角的抓取点,拖动时保持
+  // Ghi lại điểm nắm của ngón tay tương đối với góc trên bên trái, giữ nguyên khi kéo
   grabDX = e.clientX - currentLeft();
   grabDY = e.clientY - pos.y;
   (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -118,7 +118,7 @@ function onDown(e: PointerEvent) {
 let grabDX = 0;
 let grabDY = 0;
 
-/** 当前左上角的实际 x(贴边态由 right/translate 折算成绝对像素,供拖动起步用) */
+/** Tọa độ x thực tế của góc trên bên trái hiện tại (trạng thái bám cạnh quy đổi từ right/translate thành pixel tuyệt đối, dùng khi bắt đầu kéo) */
 function currentLeft(): number {
   if (pos.dock === 'right') return window.innerWidth - orbW.value;
   if (pos.dock === 'left') return 0;
@@ -128,7 +128,7 @@ function currentLeft(): number {
 function onMove(e: PointerEvent) {
   if (!dragging.value || e.pointerId !== activePointer) return;
   moved = Math.max(moved, Math.abs(e.clientX - startX) + Math.abs(e.clientY - startY));
-  // 拖动中一律切 free 跟手(整条可见)
+  // Đang kéo nhất loạt chuyển sang free bám theo tay (hiển thị nguyên dải)
   pos.dock = 'none';
   pos.x = e.clientX - grabDX;
   pos.y = e.clientY - grabDY;
@@ -141,12 +141,12 @@ function onUp(e: PointerEvent) {
   activePointer = null;
 
   if (moved < CLICK_SLOP) {
-    // 视为点击 → 打开柏宝书(贴边态保持)
+    // Coi là nhấn → mở Bách Bảo Thư (giữ nguyên trạng thái bám cạnh)
     openBook();
     return;
   }
 
-  // 松手吸附判定:靠近左/右边缘才贴边,否则停在原地(中间)
+  // Phán đoán hít bám khi thả tay: gần mép trái/phải mới bám cạnh, nếu không thì dừng tại chỗ (ở giữa)
   const left = pos.x;
   const right = window.innerWidth - (pos.x + orbW.value);
   if (left <= SNAP_ZONE) pos.dock = 'left';
@@ -156,7 +156,7 @@ function onUp(e: PointerEvent) {
   savePos();
 }
 
-// —— 键盘可达 ——
+// —— Truy cập bằng bàn phím ——
 function onKey(e: KeyboardEvent) {
   if (e.key === 'Enter' || e.key === ' ') {
     e.preventDefault();
@@ -182,7 +182,7 @@ onUnmounted(() => window.removeEventListener('resize', onResize));
     :style="orbStyle"
     role="button"
     tabindex="0"
-    aria-label="打开柏宝书"
+    aria-label="Mở Bách Bảo Thư"
     @pointerdown="onDown"
     @pointermove="onMove"
     @pointerup="onUp"
@@ -210,7 +210,7 @@ onUnmounted(() => window.removeEventListener('resize', onResize));
   cursor: grab;
   touch-action: none;
   user-select: none;
-  /* drop-shadow 对 clip-path(书签)与 border-radius(圆/方)都跟随轮廓,统一用它 */
+  /* drop-shadow đều đi theo đường viền đối với cả clip-path (thẻ sách) và border-radius (tròn/vuông), thống nhất dùng nó */
   filter: drop-shadow(0 6px 14px oklch(0 0 0 / 0.28));
   opacity: var(--orb-rest-opacity, 0.62);
   transition:
@@ -218,12 +218,12 @@ onUnmounted(() => window.removeEventListener('resize', onResize));
     opacity var(--bbs-dur) var(--bbs-ease);
 }
 
-/* —— 形状 —— */
-/* 书签:缎带轮廓 + 底部燕尾缺口。clip-path 天然裁切自定义图。 */
+/* —— Hình dáng —— */
+/* Thẻ sách: đường viền ruy băng + khuyết đuôi én ở đáy. clip-path tự nhiên cắt ảnh tùy chỉnh. */
 .bbs-orb.shape-bookmark {
   clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 78%, 0 100%);
 }
-/* 圆 / 方:border-radius + overflow 裁切自定义图 */
+/* Tròn / Vuông: border-radius + overflow cắt ảnh tùy chỉnh */
 .bbs-orb.shape-circle {
   border-radius: 999px;
   overflow: hidden;
@@ -233,7 +233,7 @@ onUnmounted(() => window.removeEventListener('resize', onResize));
   overflow: hidden;
 }
 
-/* 唤起(hover/聚焦/拖动)或停在中间(free) → 全显 */
+/* Đánh thức (hover/focus/kéo) hoặc dừng ở giữa (free) → hiển thị toàn phần */
 .bbs-orb:hover,
 .bbs-orb:focus-visible,
 .bbs-orb.is-dragging {
@@ -251,7 +251,7 @@ onUnmounted(() => window.removeEventListener('resize', onResize));
   font-size: var(--orb-icon-size, 22px);
   pointer-events: none;
 }
-/* 书签:图标上移,避开底部燕尾缺口(圆/方无缺口,居中即可) */
+/* Thẻ sách: biểu tượng dịch lên trên, tránh khuyết đuôi én ở đáy (tròn/vuông không có khuyết, căn giữa là được) */
 .bbs-orb.shape-bookmark .bbs-orb-icon {
   margin-bottom: 6px;
 }

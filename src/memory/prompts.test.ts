@@ -71,40 +71,40 @@ function combined(parts: ReturnType<typeof buildSummaryPrompt>): string {
 }
 
 describe('new built-in prompts', () => {
-  it('ships the fact-preservation rules (核心集中在破限,正文不再重复携带)', () => {
+  it('ships the fact-preservation rules (Lõi tập trung ở vượt giới hạn, chính văn không mang lặp lại nữa)', () => {
     const parts = buildSummaryPrompt(args);
     const system = parts.system;
-    // NVWA 核心应集中在 JAILBREAK_PROMPT(占独立 system 位),不再出现在正文里
+    // Lõi NVWA phải tập trung trong JAILBREAK_PROMPT (chiếm vị trí system độc lập), không còn xuất hiện trong chính văn
     expect(JAILBREAK_PROMPT).toContain('<nvwa_standalone_core>');
     expect(JAILBREAK_PROMPT).toContain('<nvwa_adult_content>');
     expect(JAILBREAK_PROMPT).toContain('<nvwa_safety_guardrails>');
     expect(system).not.toContain('<nvwa_standalone_core>');
-    expect(system).toContain('【物品规则】(items 字段,严格筛选)');
-    expect(system).toContain('【NPC 规则】(npcs 字段,极严筛选)');
-    expect(system).toContain('【计划/悬念规则】(plans 字段)');
-    expect(system).toContain('【场景/地点规则】(scenes 字段,只记到过的有名地点)');
-    expect(system).toContain('【摘要成文顺序】');
-    expect(system).toContain('【空间事实边界】');
-    expect(system).toContain('【摘要时间语言铁律】');
-    expect(system).toContain('【摘要撰写规则】(summary 字段,必填)');
-    // 伤情编号协议已停用:状态改回与着装相同的全文覆盖
-    expect(system).not.toContain('【伤情局部更新协议】');
+    expect(system).toContain('【Quy tắc vật phẩm】(trường items, sàng lọc nghiêm ngặt)');
+    expect(system).toContain('【Quy tắc NPC】(trường npcs, sàng lọc cực kỳ nghiêm ngặt)');
+    expect(system).toContain('【Quy tắc kế hoạch/nghi vấn】(trường plans)');
+    expect(system).toContain('【Quy tắc bối cảnh/địa điểm】(trường scenes, chỉ ghi những địa điểm có tên đã từng đến)');
+    expect(system).toContain('【Trình tự viết tóm tắt】');
+    expect(system).toContain('【Ranh giới sự thật không gian】');
+    expect(system).toContain('【Quy tắc thép về ngôn ngữ thời gian trong tóm tắt】');
+    expect(system).toContain('【Quy tắc viết tóm tắt】(trường summary, bắt buộc điền)');
+    // Giao thức mã số thương tích đã ngừng sử dụng: trạng thái đổi lại thành ghi đè toàn văn giống như trang phục
+    expect(system).not.toContain('【Giao thức cập nhật cục bộ tình trạng thương tích】');
     expect(system).not.toContain('conditionPatch');
-    // NPC 定位证据硬关卡已撤:引文对不上原文时会静默丢掉合法定位
+    // Cửa ải cứng về bằng chứng định vị NPC đã gỡ bỏ: khi câu trích dẫn không khớp nguyên văn sẽ âm thầm làm mất định vị hợp lệ
     expect(system).not.toContain('locationEvidence');
-    // 拆伤情补丁时漏删的残留:模型会去找已不存在的「局部协议」
-    expect(system).not.toContain('局部协议');
-    // qty 必填 + 数量不明不猜曾成死结,数不清的东西只能不记
-    expect(system).toContain('按包装记一份');
-    // 局势卡的氛围示范被删过,卡片退化成干巴巴的动作记录
-    expect(system).toContain('陪伴/日常剧情写互动氛围');
-    // 文风只有禁令、示范全是公文腔时,日常戏容易写成笔录或把互动删光
-    expect(system).toContain('(互动删光)');
-    // 氛围禁令写死过,原文明写的气氛也会被一并删掉
-    expect(system).toContain('原文明写的气氛可照原意保留');
-    // 填表样例曾要求「称谓+一句态度」,与规则打架,第一印象的态度会冻进只在质变时才改的 relation
-    expect(system).not.toContain('称谓在前+一句态度');
-    expect(system).toContain('不为凑格式补态度');
+    // Phần sót lại quên xóa khi gỡ bản vá thương tích: mô hình sẽ đi tìm「giao thức cục bộ」vốn không còn tồn tại
+    expect(system).not.toContain('giao thức cục bộ');
+    // qty bắt buộc điền + số lượng không rõ không đoán từng tạo thành thế bí, những thứ không đếm xuể chỉ đành không ghi
+    expect(system).toContain('ghi một phần theo bao bì');
+    // Ví dụ minh họa bầu không khí của thẻ cục diện từng bị xóa, khiến tấm thẻ thoái hóa thành bản ghi động tác khô khan
+    expect(system).toContain('Cốt truyện bầu bạn/đời thường thì viết bầu không khí tương tác');
+    // Khi văn phong chỉ có lệnh cấm và ví dụ toàn giọng văn hành chính, cảnh đời thường dễ bị viết thành biên bản hoặc xóa sạch tương tác
+    expect(system).toContain('(tương tác bị xóa sạch)');
+    // Lệnh cấm bầu không khí từng viết cứng nhắc, khiến bầu không khí được viết rõ trong nguyên văn cũng bị xóa theo
+    expect(system).toContain('bầu không khí được viết rõ trong nguyên văn thì có thể giữ lại theo đúng nguyên ý');
+    // Ví dụ điền bảng từng yêu cầu「xưng hô + một câu thái độ」, mâu thuẫn với quy tắc, khiến thái độ ấn tượng đầu tiên bị đóng băng vào relation vốn chỉ sửa khi biến đổi về chất
+    expect(system).not.toContain('xưng hô ở trước + một câu thái độ');
+    expect(system).toContain('không tự bù thái độ chỉ để cho đủ định dạng');
     expect(LEDGER_PROTOCOL).toContain('bbs_items');
   });
 
@@ -123,7 +123,7 @@ describe('new built-in prompts', () => {
       expect(parts.user).toContain(sentinel);
       expect(parts.system + thinking).not.toContain(sentinel);
     }
-    expect(parts.user).toContain('【本轮对话】');
+    expect(parts.user).toContain('【Đối thoại lượt này】');
     for (const text of [parts.system, parts.user, thinking]) {
       expect(text).not.toMatch(/\{\{\w+\}\}/);
     }
@@ -137,8 +137,8 @@ describe('new built-in prompts', () => {
       expect(prompt).toContain(verbosity === 'detailed' ? '360' : '180');
     }
     expect(SUMMARY_MACROS.map(m => m.token)).toContain('{{summary_max_chars}}');
-    // 字数区间容易被当成任务去凑;「宁可明显短于上限」故意不恢复,免得底层摘要越写越薄
-    expect(buildSummaryPrompt(args).system).toContain('没有最低篇幅任务');
+    // Khoảng số chữ dễ bị coi là nhiệm vụ phải viết cho đủ; cố ý không khôi phục câu「thà ngắn hơn rõ rệt so với mức trần」, tránh để bản tóm tắt tầng đáy ngày càng mỏng
+    expect(buildSummaryPrompt(args).system).toContain('Không có nhiệm vụ dung lượng tối thiểu');
   });
 
   it('keeps custom templates in user with the compatibility supplements in system', () => {
@@ -148,59 +148,59 @@ describe('new built-in prompts', () => {
     expect(parts.user).toContain('CUSTOM_PROFILE');
     expect(parts.system).not.toContain('CUSTOM_PROFILE');
     expect(parts.system).not.toContain(args.content);
-    expect(parts.system).toContain('【柏宝书主角档案兼容协议】');
-    // 补充段截自 summary.txt,标题一改就会静默截成空串
-    expect(parts.system).toContain('【摘要时间语言铁律】');
-    // 主角/局势卡补充原是手抄,落后内置缺了伤势证据与局势卡口径;截取后与内置同一份
-    expect(parts.system).toContain('【临时伤势与恢复证据】');
-    expect(parts.system).toContain('本楼结束时的局面');
-    // 伤情更正只给教 conditionPatch 的 v0.17 模板,别的模板不必多这一段
-    expect(parts.system).not.toContain('【柏宝书伤情写法更正】');
+    expect(parts.system).toContain('【Giao thức tương thích hồ sơ nhân vật chính của Bách Bảo Thư】');
+    // Đoạn bổ sung cắt từ summary.txt, hễ đổi tiêu đề sẽ âm thầm bị cắt thành chuỗi rỗng
+    expect(parts.system).toContain('【Quy tắc thép về ngôn ngữ thời gian trong tóm tắt】');
+    // Phần bổ sung nhân vật chính/thẻ cục diện vốn là chép tay, tụt hậu so với bản tích hợp sẵn và thiếu bằng chứng thương tích cùng quy chuẩn thẻ cục diện; sau khi cắt trực tiếp thì dùng chung một bản với tích hợp sẵn
+    expect(parts.system).toContain('【Thương tích tạm thời và bằng chứng hồi phục】');
+    expect(parts.system).toContain('Cục diện khi kết thúc tầng này');
+    // Đính chính tình trạng thương tích chỉ dành cho mẫu v0.17 hướng dẫn conditionPatch, các mẫu khác không cần thêm đoạn này
+    expect(parts.system).not.toContain('【Đính chính cách viết tình trạng thương tích của Bách Bảo Thư】');
     expect(parts.system).not.toMatch(/\{\{\w+\}\}/);
   });
 
   it('does not re-append the time rule a custom template already carries', () => {
-    // 旧模板多自带旧版铁律,再补新版会两版口径并存
-    apiSettings.prompts.summary = 'CUSTOM 【摘要时间语言铁律】 {{content}}';
-    expect(buildSummaryPrompt(args).system).not.toContain('【摘要时间语言铁律】');
+    // Mẫu cũ thường có sẵn quy tắc thép bản cũ, nếu bổ sung thêm bản mới sẽ khiến hai quy chuẩn cùng tồn tại
+    apiSettings.prompts.summary = 'CUSTOM 【Quy tắc thép về ngôn ngữ thời gian trong tóm tắt】 {{content}}';
+    expect(buildSummaryPrompt(args).system).not.toContain('【Quy tắc thép về ngôn ngữ thời gian trong tóm tắt】');
   });
 
   it('still appends the time rule when only the expanded {{time_rule}} mentions it', () => {
-    // 无时间标签时 {{time_rule}} 展开的时间规则里提到了铁律名,不能当成模板自带而漏补
+    // Khi không có thẻ thời gian, quy tắc thời gian do {{time_rule}} triển khai có nhắc tới tên quy tắc thép, không được coi là mẫu có sẵn mà bỏ sót việc bổ sung
     apiSettings.prompts.summary = 'CUSTOM {{time_rule}} {{content}}';
     const parts = buildSummaryPrompt({ ...args, hasTimeTags: false });
-    expect(parts.user).toContain('不受【摘要时间语言铁律】');
-    expect(parts.system).toContain('═══ 【摘要时间语言铁律】');
+    expect(parts.user).toContain('không chịu sự hạn chế "lời trần thuật không tự bù năm, phút" của【Quy tắc thép về ngôn ngữ thời gian trong tóm tắt】');
+    expect(parts.system).toContain('═══ 【Quy tắc thép về ngôn ngữ thời gian trong tóm tắt】');
   });
 
   it('does not repeat sections a template copied from the default already carries', () => {
-    // 照内置改的模板自带全部规则节,再补就是同一规则发两遍;system 为空时 engine 会略过
-    apiSettings.prompts.summary = `${SUMMARY_PROMPT}\n(自定义)`;
-    const parts = buildSummaryPrompt({ ...args, knowledge: [{ id: 'know:t#0', subject: 'Character', text: '认定主角是行商', createdAt: 1 }] });
+    // Mẫu sửa từ bản tích hợp sẵn đã có sẵn toàn bộ các mục quy tắc, bổ sung thêm sẽ thành gửi cùng một quy tắc hai lần; khi system rỗng thì engine sẽ bỏ qua
+    apiSettings.prompts.summary = `${SUMMARY_PROMPT}\n(Tùy chỉnh)`;
+    const parts = buildSummaryPrompt({ ...args, knowledge: [{ id: 'know:t#0', subject: 'Character', text: 'Khẳng định nhân vật chính là thương buôn', createdAt: 1 }] });
     expect(parts.system).toBe('');
-    for (const title of ['主角当前档案规则', '互动局势卡规则', '生活小档案规则', '了解清单规则', '内心好感与外在态度规则', '关系线保留', '摘要时间语言铁律']) {
+    for (const title of ['Quy tắc hồ sơ hiện tại của nhân vật chính', 'Quy tắc thẻ cục diện tương tác', 'Quy tắc hồ sơ đời sống', 'Quy tắc danh sách hiểu biết', 'Quy tắc hảo cảm nội tâm và thái độ bên ngoài', 'Giữ lại mạch quan hệ', 'Quy tắc thép về ngôn ngữ thời gian trong tóm tắt']) {
       expect(combined(parts).split(`═══ 【${title}】`)).toHaveLength(2);
     }
   });
 
   it('corrects the retired conditionPatch for templates copied from v0.17', () => {
-    // v0.17 默认模板教的是已停用的伤情补丁:照写会被清洗丢掉,主角和 NPC 的伤情都更新不了。
-    // 它自带主角节且只差伤情写法,补一句更正即可;再整段重发主角规则就是新旧两种写法并存
-    apiSettings.prompts.summary = 'CUSTOM ═══ 【主角当前档案规则】 conditionPatch {{content}}';
+    // Mẫu mặc định v0.17 hướng dẫn bản vá thương tích đã ngừng sử dụng: viết theo nó sẽ bị tầng làm sạch loại bỏ, khiến thương tích của nhân vật chính và NPC đều không cập nhật được.
+    // Nó đã có sẵn mục nhân vật chính và chỉ khác ở cách viết thương tích, bổ sung một câu đính chính là đủ; gửi lại cả đoạn quy tắc nhân vật chính sẽ khiến cả hai cách viết cũ mới cùng tồn tại
+    apiSettings.prompts.summary = 'CUSTOM ═══ 【Quy tắc hồ sơ hiện tại của nhân vật chính】 conditionPatch {{content}}';
     const system = buildSummaryPrompt(args).system;
-    expect(system).toContain('【柏宝书伤情写法更正】');
-    expect(system).toContain('主角与 NPC 的 condition 一律整段覆盖');
-    expect(system).not.toContain('【柏宝书主角档案兼容协议】');
+    expect(system).toContain('【Đính chính cách viết tình trạng thương tích của Bách Bảo Thư】');
+    expect(system).toContain('`condition` của nhân vật chính và NPC nhất loạt ghi đè toàn đoạn');
+    expect(system).not.toContain('【Giao thức tương thích hồ sơ nhân vật chính của Bách Bảo Thư】');
   });
 
   it('slices exactly one section for each shared rule', () => {
-    // 按标题截取:标题改名会截成空串,两标题之间插进新节会被静默一起带走
+    // Cắt theo tiêu đề: đổi tên tiêu đề sẽ cắt thành chuỗi rỗng, chèn mục mới vào giữa hai tiêu đề sẽ âm thầm bị mang đi cùng
     for (const [rule, title] of [
-      [RULE_PROTAGONIST, '【主角当前档案规则】'],
-      [RULE_SCENE_FOCUS, '【互动局势卡规则】'],
-      [RULE_RELATION_MOMENTUM, '【关系线保留】'],
-      [RULE_ABSOLUTE_TIME_LANGUAGE, '【摘要时间语言铁律】'],
-      [RULE_NPC_AFFINITY, '【内心好感与外在态度规则】'],
+      [RULE_PROTAGONIST, '【Quy tắc hồ sơ hiện tại của nhân vật chính】'],
+      [RULE_SCENE_FOCUS, '【Quy tắc thẻ cục diện tương tác】'],
+      [RULE_RELATION_MOMENTUM, '【Giữ lại mạch quan hệ】'],
+      [RULE_ABSOLUTE_TIME_LANGUAGE, '【Quy tắc thép về ngôn ngữ thời gian trong tóm tắt】'],
+      [RULE_NPC_AFFINITY, '【Quy tắc hảo cảm nội tâm và thái độ bên ngoài】'],
     ]) {
       expect(rule.startsWith(`═══ ${title}`)).toBe(true);
       expect(rule.match(/═══/g)).toHaveLength(2);
@@ -208,11 +208,11 @@ describe('new built-in prompts', () => {
     }
   });
 
-  it('isBuiltinSummaryPrompt 区分内置/自定义', () => {
+  it('isBuiltinSummaryPrompt phân biệt tích hợp sẵn/tùy chỉnh', () => {
     expect(isBuiltinSummaryPrompt()).toBe(true);
     Object.assign(apiSettings.prompts, { summary: SUMMARY_PROMPT });
     expect(isBuiltinSummaryPrompt()).toBe(true);
-    apiSettings.prompts.summary = '自定义 {{content}}';
+    apiSettings.prompts.summary = 'Tùy chỉnh {{content}}';
     expect(isBuiltinSummaryPrompt()).toBe(false);
   });
 
@@ -220,23 +220,23 @@ describe('new built-in prompts', () => {
     const parts = buildSummaryPrompt(args);
     expect(combined(parts)).not.toContain(SUMMARY_OUTPUT_PROTOCOL);
     expect(THINKING_CHECKLIST).toContain(SUMMARY_OUTPUT_PROTOCOL);
-    expect(THINKING_CHECKLIST).toContain('【输出前核查】');
+    expect(THINKING_CHECKLIST).toContain('【Kiểm tra trước khi xuất】');
     expect(THINKING_CHECKLIST).not.toContain('conditionPatch');
-    // v0.17 清单漏了地点项,模型常整楼不记位置
-    expect(THINKING_CHECKLIST).toContain('本楼定位');
-    // 各字段盘点同样被砍过,NPC/物品常漏建漏更新、局势卡一直挂着旧场面
-    for (const item of ['主角盘点', 'NPC 盘点', '局势盘点', '物品盘点', '生活小档案盘点', '计划/悬念盘点']) expect(THINKING_CHECKLIST).toContain(item);
-    // 只剩「核对旧计划」时,悬念揭晓了也没人结案
-    expect(THINKING_CHECKLIST).toContain('旧悬念逐条过');
-    // 了解清单比清单晚加,一直没有盘点项,角色得知主角私事时容易漏记;功能关闭时整项不出现
-    expect(buildSummaryThinking(args.user, true)).toContain(`本楼有谁亲耳听到、亲眼看到或听人转告了${args.user}的名字`);
-    expect(buildSummaryThinking(args.user)).not.toContain('了解清单');
-    // 曾要求新角色一律带 location 或 follow,远程联络、尚未现身的角色被逼着编位置
-    expect(THINKING_CHECKLIST).not.toContain('location 或 follow');
-    expect(THINKING_CHECKLIST).toContain('只被提起或远程联络的没交代所在就省略 location');
+    // Danh sách v0.17 bị sót mục địa điểm, mô hình thường không ghi vị trí cả tầng
+    expect(THINKING_CHECKLIST).toContain('Định vị tầng này');
+    // Kiểm điểm các trường cũng từng bị cắt bớt, NPC/vật phẩm thường sót tạo mới hoặc sót cập nhật, thẻ cục diện cứ treo mãi cảnh cũ
+    for (const item of ['Kiểm điểm nhân vật chính', 'Kiểm điểm NPC', 'Kiểm điểm cục diện', 'Kiểm điểm vật phẩm', 'Kiểm điểm hồ sơ đời sống', 'Kiểm điểm kế hoạch/nghi vấn']) expect(THINKING_CHECKLIST).toContain(item);
+    // Khi chỉ còn「đối chiếu kế hoạch cũ」, nghi vấn đã sáng tỏ cũng không ai kết án
+    expect(THINKING_CHECKLIST).toContain('Rà soát từng nghi vấn cũ');
+    // Danh sách hiểu biết được thêm muộn hơn danh sách kiểm tra, trước giờ không có mục kiểm điểm nên khi nhân vật biết chuyện riêng của nhân vật chính dễ bị bỏ sót; khi tắt tính năng thì cả mục không xuất hiện
+    expect(buildSummaryThinking(args.user, true)).toContain(`ở tầng này có ai tận tai nghe thấy, tận mắt nhìn thấy hoặc nghe người khác kể lại về tên`);
+    expect(buildSummaryThinking(args.user)).not.toContain('Danh sách hiểu biết');
+    // Từng yêu cầu nhân vật mới nhất loạt phải kèm location hoặc follow, khiến nhân vật liên lạc từ xa hoặc chưa lộ diện bị ép phải bịa vị trí
+    expect(THINKING_CHECKLIST).not.toContain('location hoặc follow');
+    expect(THINKING_CHECKLIST).toContain('nhân vật chỉ được nhắc tới hoặc liên lạc từ xa mà không nói rõ nơi ở thì lược bỏ `location`');
     expect(buildSummaryThinking(args.user)).toContain(args.user);
     expect(RESUMMARY_THINKING_CHECKLIST).toContain(SUMMARY_OUTPUT_PROTOCOL);
-    expect(RESUMMARY_THINKING_CHECKLIST).toContain('根键只有 summary');
+    expect(RESUMMARY_THINKING_CHECKLIST).toContain('khóa gốc chỉ gồm `summary`');
   });
 
   it('treats a saved exact default as built-in while keeping the editor copy complete', () => {
@@ -264,15 +264,15 @@ describe('batch and compression prompts', () => {
     const prompt = combined(parts);
     const thinking = buildBatchThinking(3);
     expect(thinking).toContain(SUMMARY_OUTPUT_PROTOCOL);
-    expect(thinking).toContain('这批共 3 楼');
-    expect(thinking).toContain('每个元素只含 n / summary / timeStart / timeEnd');
-    expect(thinking).toContain('现代/数字日期的两端都必须包含完整年份');
-    expect(parts.system).toContain('长度必须等于 3');
-    // 撰写规则截自单楼模板,两边不再各写一套;截取段不得带进单楼专属字段
-    expect(parts.system).toContain('【摘要撰写规则】(summary 字段,必填)');
-    expect(parts.system).toContain('【摘要时间语言铁律】');
-    // 日常戏示范写在撰写规则里,批量随截取同步,不另抄一份
-    expect(parts.system).toContain('(互动删光)');
+    expect(thinking).toContain('Đợt này có tổng cộng 3 tầng');
+    expect(thinking).toContain('Mỗi phần tử chỉ chứa `n` / `summary` / `timeStart` / `timeEnd`');
+    expect(thinking).toContain('Cả hai đầu mút của ngày tháng hiện đại/dạng số đều bắt buộc phải bao gồm đầy đủ năm');
+    expect(parts.system).toContain('độ dài bắt buộc phải bằng 3');
+    // Quy tắc viết được cắt từ mẫu đơn tầng, hai bên không còn viết riêng hai bộ; đoạn cắt ra không được mang theo trường dành riêng cho đơn tầng
+    expect(parts.system).toContain('【Quy tắc viết tóm tắt】(trường summary, bắt buộc điền)');
+    expect(parts.system).toContain('【Quy tắc thép về ngôn ngữ thời gian trong tóm tắt】');
+    // Ví dụ cảnh đời thường được viết trong quy tắc viết, tóm tắt hàng loạt đồng bộ theo đoạn cắt, không chép riêng một bản
+    expect(parts.system).toContain('(tương tác bị xóa sạch)');
     expect(parts.system).not.toContain('sceneFocus');
     expect(parts.user).toContain(args.content);
     expect(parts.system).not.toContain(args.content);
@@ -288,8 +288,8 @@ describe('batch and compression prompts', () => {
       expect(parts.system).not.toMatch(/\{\{\w+\}\}/);
       expect(combined(parts)).not.toContain(SUMMARY_OUTPUT_PROTOCOL);
     }
-    expect(combined(buildResummaryPrompt({ ...args, level: 1 }))).toContain('【关系线保留】');
-    expect(combined(buildResummaryPrompt({ ...args, level: 2 }))).toContain('【事实证据边界(最高优先级)】');
+    expect(combined(buildResummaryPrompt({ ...args, level: 1 }))).toContain('【Giữ lại mạch quan hệ】');
+    expect(combined(buildResummaryPrompt({ ...args, level: 2 }))).toContain('【Ranh giới bằng chứng sự thật (Ưu tiên cao nhất)】');
   });
 
   it('keeps custom compression text in user and supplements in system', () => {
@@ -299,15 +299,15 @@ describe('batch and compression prompts', () => {
       const parts = buildResummaryPrompt({ ...args, content: 'x'.repeat(1000), level });
       expect(parts.user).toContain(level === 1 ? 'CUSTOM L1' : 'CUSTOM L2');
       expect(parts.system).not.toContain(level === 1 ? 'CUSTOM L1' : 'CUSTOM L2');
-      expect(parts.system).toContain('【关系线保留】');
-      expect(parts.system).toContain('【摘要时间语言铁律】');
+      expect(parts.system).toContain('【Giữ lại mạch quan hệ】');
+      expect(parts.system).toContain('【Quy tắc thép về ngôn ngữ thời gian trong tóm tắt】');
       expect(parts.system).not.toMatch(/\{\{\w+\}\}/);
     }
   });
 
   it('leaves system empty when a custom compression template carries both supplements', () => {
-    // 照内置模板改的自定义模板两段都自带;engine 会略过空 system
-    apiSettings.prompts.resummary = '【摘要时间语言铁律】【关系线保留】 {{content}}';
+    // Mẫu tùy chỉnh được sửa từ mẫu tích hợp sẵn vốn đã có sẵn cả hai đoạn; engine sẽ bỏ qua system rỗng
+    apiSettings.prompts.resummary = '【Quy tắc thép về ngôn ngữ thời gian trong tóm tắt】【Giữ lại mạch quan hệ】 {{content}}';
     expect(buildResummaryPrompt({ ...args, level: 1 }).system).toBe('');
   });
 });
@@ -317,45 +317,45 @@ describe('jailbreak, briefing and query rewrite', () => {
     expect(JAILBREAK_PROMPT).toContain('<nvwa_standalone_core>');
     expect(JAILBREAK_PROMPT).toContain('<nvwa_adult_content>');
     expect(JAILBREAK_PROMPT).toContain('<nvwa_safety_guardrails>');
-    expect(JAILBREAK_PROMPT).not.toContain('【记忆整理任务说明】');
+    expect(JAILBREAK_PROMPT).not.toContain('【Hướng dẫn nhiệm vụ biên tập ký ức】');
     expect(JAILBREAK_PROMPT).not.toContain('sanctuary_override_directive');
   });
 
   it('frames the briefing as past-only context that does not cap relationships or set prose style', () => {
-    expect(MEMORY_BRIEFING_NOTE).toContain('不要输出简报的标签');
-    expect(MEMORY_BRIEFING_END).toContain('不是上限');
-    expect(MEMORY_BRIEFING_END).toContain('最后确认的位置与着装不保证仍然有效');
-    expect(MEMORY_BRIEFING_END).toContain('不要模仿压缩记录的句式');
+    expect(MEMORY_BRIEFING_NOTE).toContain('đừng xuất các nhãn, trường, số thứ tự hoặc cả đoạn văn bản tổng hợp của bản tin này');
+    expect(MEMORY_BRIEFING_END).toContain('không phải là giới hạn trần');
+    expect(MEMORY_BRIEFING_END).toContain('vị trí và trang phục được xác nhận lần cuối không đảm bảo vẫn còn hiệu lực');
+    expect(MEMORY_BRIEFING_END).toContain('đừng bắt chước kiểu câu của bản ghi nén');
   });
 
-  it('资料包装与 09 原文逐字一致(仅把占位换成实际资料)', () => {
+  it('Đóng gói tư liệu khớp từng chữ với nguyên văn 09 (chỉ thay chỗ trống bằng tư liệu thực tế)', () => {
     const section = (placeholder: string, sentinel: string) =>
       dataWrappersRaw
         .replace(placeholder, sentinel)
         .split(/\n\s*\n(?=【)/)
         .find(b => b.includes(sentinel))!
         .trim();
-    expect(buildPersonaSystem('SENT')).toBe(section('〔主角设定占位〕', 'SENT'));
-    expect(buildWorldInfoSystem('SENT')).toBe(section('〔世界书内容占位〕', 'SENT'));
-    expect(buildCharCardSystem('SENT')).toBe(section('〔角色卡内容占位〕', 'SENT'));
+    expect(buildPersonaSystem('SENT')).toBe(section('〔Chỗ trống thiết lập nhân vật chính〕', 'SENT'));
+    expect(buildWorldInfoSystem('SENT')).toBe(section('〔Chỗ trống nội dung sổ thế giới〕', 'SENT'));
+    expect(buildCharCardSystem('SENT')).toBe(section('〔Chỗ trống nội dung thẻ nhân vật〕', 'SENT'));
   });
 
-  it('keeps the original 5-query rewrite prompt (复刻 Horae 的用户优化版)', () => {
-    expect(QUERY_REWRITE_SYSTEM).toContain('你是角色扮演续写场景中的上下文规划器');
-    // 原版要求“固定生成5条查询”——多路召回 + RRF 融合靠的就是这 5 条覆盖面
-    expect(QUERY_REWRITE_SYSTEM).toContain('固定生成5条查询');
+  it('keeps the original 5-query rewrite prompt (Tái hiện bản tối ưu của người dùng từ Horae)', () => {
+    expect(QUERY_REWRITE_SYSTEM).toContain('Bạn là bộ lập kế hoạch ngữ cảnh trong kịch bản viết tiếp nhập vai');
+    // Bản gốc yêu cầu “Tạo cố định 5 câu truy vấn” —— truy xuất đa luồng + hợp nhất RRF dựa vào đúng độ bao phủ của 5 câu này
+    expect(QUERY_REWRITE_SYSTEM).toContain('Tạo cố định 5 câu truy vấn');
     expect(QUERY_REWRITE_SYSTEM).toContain('INTENT');
-    expect(QUERY_REWRITE_SYSTEM).toContain('示例1:');
-    expect(QUERY_REWRITE_TAIL).toContain('恰好5行Q');
+    expect(QUERY_REWRITE_SYSTEM).toContain('Ví dụ 1:');
+    expect(QUERY_REWRITE_TAIL).toContain('đúng 5 dòng Q');
     expect(QUERY_REWRITE_TAIL).toContain('INTENT');
   });
 
   it('keeps the time-tag prompt on the anchor-initialising behaviour without the NVWA core', () => {
     expect(TIME_TAG_PROMPT).not.toContain('<nvwa_standalone_core>');
-    expect(TIME_TAG_PROMPT).toContain('【时间锚点要求(系统强制)】');
+    expect(TIME_TAG_PROMPT).toContain('【Yêu cầu mốc thời gian (Hệ thống bắt buộc)】');
     expect(TIME_TAG_PROMPT).toContain(`<${START_TAG}>`);
-    expect(TIME_TAG_PROMPT).toContain('请你自行设定一个符合本世界观的具体起始时刻');
-    expect(TIME_TAG_PROMPT).toContain('这是为记忆系统建立时间锚点所必需的合理设定,不算编造');
+    expect(TIME_TAG_PROMPT).toContain('xin bạn tự thiết lập một thời khắc bắt đầu cụ thể phù hợp với thế giới quan này');
+    expect(TIME_TAG_PROMPT).toContain('đây là thiết lập hợp lý cần thiết để xây dựng mốc thời gian cho hệ thống trí nhớ, không tính là bịa đặt');
     expect(TIME_TAG_PROMPT).toContain('bbs_items');
   });
 });

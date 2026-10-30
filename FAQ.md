@@ -1,708 +1,708 @@
-# 柏宝书(ST-BaiBai-Book)FAQ / 答疑文档
+# Bách Bảo Thư (ST-BaiBai-Book) FAQ / Tài liệu Giải đáp Thắc mắc
 
-面向 SillyTavern 用户。本文按「用户最常问的问题」组织,重点解答**自定义变量**,因为很多用户想要的功能(血条、好感度、金钱、任务、剧情标记…)其实都可以用自定义变量实现,而不需要求新功能。
-
----
-
-## 目录
-
-1. [认识柏宝书](#1-认识柏宝书)
-2. [快速开始](#2-快速开始)
-3. [摘要系统答疑](#3-摘要系统答疑)
-4. [状态跟踪答疑(物品/计划/场景/NPC/主角)](#4-状态跟踪答疑)
-5. [自定义变量专题(重点)](#5-自定义变量专题重点)
-6. [向量记忆答疑](#6-向量记忆答疑)
-7. [副 API 答疑](#7-副-api-答疑)
-8. [公共 API / 宏 / 斜杠命令](#8-公共-api--宏--斜杠命令)
-9. [数据、迁移、新对话](#9-数据迁移新对话)
-10. [疑难排错速查](#10-疑难排错速查)
-11. [设置项速查(附默认值)](#11-设置项速查附默认值)
+Dành cho người dùng SillyTavern. Tài liệu này được tổ chức theo "những câu hỏi người dùng thường gặp nhất", trọng tâm giải đáp về **Biến số tùy chỉnh**, bởi vì rất nhiều tính năng mà người dùng mong muốn (thanh máu, độ hảo cảm, tiền bạc, nhiệm vụ, cờ đánh dấu cốt truyện…) thực chất đều có thể thực hiện được bằng biến số tùy chỉnh mà không cần phải yêu cầu thêm tính năng mới.
 
 ---
 
-## 1. 认识柏宝书
+## Mục lục
 
-### Q:柏宝书是什么?它解决什么问题?
+1. [Làm quen với Bách Bảo Thư](#1-làm-quen-với-bách-bảo-thư)
+2. [Bắt đầu nhanh](#2-bắt-đầu-nhanh)
+3. [Giải đáp về hệ thống tóm tắt](#3-giải-đáp-về-hệ-thống-tóm-tắt)
+4. [Giải đáp về theo dõi trạng thái (Vật phẩm/Kế hoạch/Khung cảnh/NPC/Nhân vật chính)](#4-giải-đáp-về-theo-dõi-trạng-thái)
+5. [Chuyên đề Biến số tùy chỉnh (Trọng tâm)](#5-chuyên-đề-biến-số-tùy-chỉnh-trọng-tâm)
+6. [Giải đáp về Trí nhớ vector](#6-giải-đáp-về-trí-nhớ-vector)
+7. [Giải đáp về API phụ](#7-giải-đáp-về-api-phụ)
+8. [API công khai / Macro / Lệnh gạch chéo](#8-api-công-khai--macro--lệnh-gạch-chéo)
+9. [Dữ liệu, di chuyển, cuộc trò chuyện mới](#9-dữ-liệu-di-chuyển-cuộc-trò-chuyện-mới)
+10. [Tra cứu nhanh xử lý sự cố](#10-tra-cứu-nhanh-xử-lý-sự-cố)
+11. [Tra cứu nhanh các mục cài đặt (Kèm giá trị mặc định)](#11-tra-cứu-nhanh-các-mục-cài-đặt-kèm-giá-trị-mặc-định)
 
-柏宝书是 SillyTavern 的长程记忆 / 剧情状态管理扩展。它解决两个 ST 原生的痛点:
+---
 
-1. **对话窗口有限,老剧情被挤出去后 AI 就忘了。** 柏宝书给每条 AI 回复生成「摘要叶子」,把正文折叠起来,再把叶子进一步合并成多层的「摘要森林」,并把历史摘要重新注入回上下文,让 AI 永远"记得"已滚出窗口的剧情。
-2. **AI 记不住"现在状态":物品、钱、伤势、好感度、未完成的任务。** 柏宝书从每轮正文里结构化地提取这些状态(物品/计划/悬念/场景/NPC/主角档案/自定义变量),以增量方式逐楼重放、实时注入,AI 永远知道"此时此刻"的客观状态,不会凭空变出东西或忘记带着的剑。
+## 1. Làm quen với Bách Bảo Thư
 
-### Q:它和 ST 自带的「摘要」、世界书有什么区别?
+### Hỏi: Bách Bảo Thư là gì? Nó giải quyết vấn đề gì?
 
-| | ST 自带摘要 | 柏宝书 |
+Bách Bảo Thư là tiện ích mở rộng quản lý trí nhớ dài hạn / trạng thái cốt truyện cho SillyTavern. Nó giải quyết hai điểm yếu cố hữu của ST gốc:
+
+1. **Cửa sổ đối thoại có hạn, sau khi cốt truyện cũ bị đẩy ra ngoài thì AI sẽ quên mất.** Bách Bảo Thư tạo "lá tóm tắt" cho mỗi phản hồi của AI, thu gọn chính văn lại, sau đó gộp các lá thành "rừng tóm tắt" nhiều tầng, rồi tiêm lại các bản tóm tắt lịch sử vào ngữ cảnh, giúp AI luôn "nhớ" được cốt truyện đã cuộn ra khỏi cửa sổ.
+2. **AI không nhớ nổi "trạng thái hiện tại": vật phẩm, tiền bạc, thương tích, độ hảo cảm, nhiệm vụ chưa hoàn thành.** Bách Bảo Thư trích xuất có cấu trúc những trạng thái này (vật phẩm / kế hoạch / nghi vấn / khung cảnh / NPC / hồ sơ nhân vật chính / biến số tùy chỉnh) từ chính văn mỗi lượt, phát lại từng tầng theo phương thức gia tăng (delta) và tiêm theo thời gian thực, giúp AI luôn biết rõ trạng thái khách quan "ngay lúc này tại nơi đây", không tự dưng biến ra đồ vật hay quên mất thanh kiếm đang mang theo.
+
+### Hỏi: Nó có gì khác với "Tóm tắt" có sẵn của ST và Sách Thế Giới (World Info)?
+
+| | Tóm tắt có sẵn của ST | Bách Bảo Thư |
 |---|---|---|
-| 存哪里 | 消息本身被替换为摘要(原文没了) | 原文保留,摘要存消息的 `extra.bbs_leaf`,用隐藏正则把已摘要楼层藏出窗口 |
-| 结构 | 一段文本 | 多层森林:叶子(L0)→ 总结(L1)→ 二次总结(L2+) |
-| 状态 | 无 | 物品/计划/悬念/场景/NPC/主角/自定义变量,逐楼增量重放 |
-| 时间 | 无 | 时间标签 + 时间线 + 相对时间("三天前") |
+| Lưu ở đâu | Bản thân tin nhắn có thể bị thay thế bằng tóm tắt (mất nguyên văn) | Giữ nguyên nguyên văn, tóm tắt lưu ở `extra.bbs_leaf` của tin nhắn, dùng regex ẩn để giấu các tầng đã tóm tắt ra khỏi cửa sổ |
+| Cấu trúc | Một đoạn văn bản | Rừng nhiều tầng: Lá (L0) → Đại tóm tắt (L1) → Đại tóm tắt cấp hai (L2+) |
+| Trạng thái | Không có | Vật phẩm / Kế hoạch / Nghi vấn / Khung cảnh / NPC / Nhân vật chính / Biến số tùy chỉnh, phát lại gia tăng từng tầng |
+| Thời gian | Không có | Thẻ thời gian + Dòng thời gian + Thời gian tương đối ("3 ngày trước") |
 
-世界书是**静态设定**,柏宝书是**动态剧情状态**——两者互补,不冲突(柏宝书甚至会读取激活的世界书作为摘要背景)。
+Sách Thế Giới là **thiết lập tĩnh**, còn Bách Bảo Thư là **trạng thái cốt truyện động** —— hai bên bổ trợ cho nhau, không xung đột (Bách Bảo Thư thậm chí còn đọc Sách Thế Giới được kích hoạt làm bối cảnh tóm tắt).
 
-### Q:数据都存在哪?
+### Hỏi: Dữ liệu đều được lưu ở đâu?
 
-- **设置**:SillyTavern 的 `extension_settings['baibai_book']`(存服务器 `settings.json`,**跨设备/局域网同步**,不用 localStorage)。
-- **摘要森林**(总结节点):`chatMetadata`(随聊天走)。
-- **叶子**(单楼摘要 + 结构化增量):各消息的 `extra.bbs_leaf`(在 chat 文件里)。
-- **状态**(物品/计划/变量等):**不存盘**,是"派生数据"——每次从叶子增量重放计算出来。所以删掉一条叶子,状态自动回退,不会出现"状态和剧情对不上"。
-
----
-
-## 2. 快速开始
-
-### Q:装好后要做什么?
-
-1. 在设置页打开顶部总开关「柏宝书 · 记忆引擎」。
-2. **配置副 API**(设置 → 副 API):摘要/总结由独立渠道完成,不占用主对话的生成。至少配一个渠道。
-3. 开一个新对话(或进入已有对话),发一条消息触发首次摘要。
-4. 摘要页会看到每条 AI 楼逐渐长出"叶子";攒够阈值后自动合并成"总结"。
-
-### Q:怎么知道我是否配置成功?
-
-- 摘要页出现叶子 = 副 API 通了。
-- 如果副 API 报错,设置 → 副 API 里会显示最近错误(`engineState.lastError`);摘要页右上角也能看到错误信息。
-
-### Q:哪些角色会生效?
-
-设置 → 排除角色里列出的角色不生效;没排除的都生效。群聊中"排除角色"按当前角色判断。
-
-### Q:已有老对话,柏宝书会自动补摘吗?
-
-**不会全量自动补摘。** 摘要触发规则是"只确保上一条已定稿的 AI 消息有摘要"(单楼增量)。老对话想补历史,用摘要页的「批量补摘」按钮,或者手动单楼补摘。
+- **Cài đặt**: `extension_settings['baibai_book']` của SillyTavern (lưu trong `settings.json` trên máy chủ, **đồng bộ đa thiết bị / mạng LAN**, không dùng localStorage).
+- **Rừng tóm tắt** (các nút đại tóm tắt): `chatMetadata` (đi theo cuộc trò chuyện).
+- **Lá** (tóm tắt tầng đơn + phần tăng thêm có cấu trúc): `extra.bbs_leaf` của từng tin nhắn (nằm trong tệp chat).
+- **Trạng thái** (vật phẩm / kế hoạch / biến số...): **không lưu ổ đĩa**, mà là "dữ liệu dẫn xuất" —— mỗi lần đều được tính toán ra từ việc phát lại phần tăng thêm của các lá. Vì vậy khi xóa một lá, trạng thái sẽ tự động lùi về, không bao giờ xảy ra tình trạng "trạng thái và cốt truyện lệch nhau".
 
 ---
 
-## 3. 摘要系统答疑
+## 2. Bắt đầu nhanh
 
-### Q:叶子、总结、森林到底是什么?
+### Hỏi: Sau khi cài đặt xong cần làm gì?
 
-- **叶子(L0)**:一条 AI 回复的摘要,存在该消息的 `extra.bbs_leaf`。包含:正文摘要、起止时间、以及本楼的结构化增量(物品变动、计划变更、场景、NPC、变量命令…)。
-- **总结(L1)**:若干条叶子被 AI 融合成一段 300–500 字(可调)的散文,`childIds` 指向被它收纳的叶子。**底层叶子不删除**,只是不再作为根显示/注入。
-- **二次总结(L2+)**:若干条 L1 再融合成更高层,字数按输入规模动态给。
-- **森林**:所有节点的集合,叶子挂消息、压缩节点在 `chatMetadata`。
+1. Mở công tắc tổng ở trên cùng trong trang Cài đặt: "Bách Bảo Thư · Bộ máy trí nhớ".
+2. **Cấu hình API phụ** (Cài đặt → API phụ): tóm tắt / đại tóm tắt được hoàn thành bởi kênh độc lập, không chiếm dụng việc tạo phản hồi của cuộc đối thoại chính. Hoặc có thể để mặc định "Theo API chính".
+3. Mở một cuộc đối thoại mới (hoặc vào cuộc đối thoại đã có), gửi một tin nhắn để kích hoạt lần tóm tắt đầu tiên.
+4. Ở trang Tóm tắt sẽ thấy mỗi tầng AI dần mọc ra "lá"; sau khi tích đủ ngưỡng sẽ tự động gộp thành "Đại tóm tắt".
 
-### Q:什么时候自动生成摘要?
+### Hỏi: Làm sao để biết tôi đã cấu hình thành công hay chưa?
 
-- 你发新消息 → 摘「上一条 AI 回复」。
-- 重新生成 / 翻页(swipe)→ 末尾那条 AI 正在被改写,跳过它,摘「之前那条」。
-- 编辑 / 删除消息 → 只让数据跟随、刷新,不主动生成。
-- 摘要按楼层缺口顺序追赶到最新,不会漏。
+- Trang Tóm tắt xuất hiện lá = API phụ đã thông suốt.
+- Nếu API phụ báo lỗi, trong phần Cài đặt / trang Tóm tắt sẽ hiển thị lỗi gần nhất (`engineState.lastError`).
 
-另外「启用自动摘要」同时开启:**正文时间标签**(剧情时间锚点)和**积压拦截**——存在漏摘的旧楼时,拦截你发新消息并提示先补摘(避免跳摘造成计划/物品错序)。翻到没摘要的页、进入聊天都不会自动立刻全量补摘。
+### Hỏi: Những nhân vật nào sẽ có hiệu lực?
 
-### Q:为什么摘要页有楼层是"待摘要"?
+Các nhân vật được liệt kê trong Cài đặt → Loại trừ nhân vật sẽ không có hiệu lực; những nhân vật không bị loại trừ đều có hiệu lực. Trong trò chuyện nhóm, "Loại trừ nhân vật" được phán đoán theo nhân vật hiện tại.
 
-那些 AI 楼还没有有效叶子(比如刚生成、副 API 失败、或翻页后原摘要失效)。点该楼可单独补摘,或用「批量补摘」。
+### Hỏi: Đối với cuộc đối thoại cũ đã có sẵn, Bách Bảo Thư có tự động tóm tắt bù không?
 
-### Q:批量补摘是什么?省 token 吗?
-
-把多条待摘楼按内容量切块(设置里 `batchMaxChars` / `batchMaxFloors`),**一次请求处理多楼**,固定上下文(破限/设定/前情)按块分摊,省 token。注意:批量只产出 summary + 起止时间,**不产物品/计划**等结构化数据(跨多楼顺序难保证),结构化数据留给后续逐楼自动摘要补。某块失败自动回退为逐楼补摘。
-
-### Q:总结什么时候触发?阈值能调吗?
-
-`checkResummary` 按层检查"未被收纳的根节点"数量,攒够阈值就压一层,并向上连锁:
-
-- L0→L1:阈值 `leafBatchThreshold`
-- L1→L2:阈值 `resummaryThreshold`
-- L2+:阈值 `higherResummaryThreshold`
-
-都在设置 → 摘要设置里。另有 `leafKeepRecent`:叶子层保留最近 N 条不压,避免"一次全压塌成 L1"导致注入断崖。
-
-### Q:可以手动强制总结吗?
-
-可以。摘要页多选(勾选若干根节点,需连续)→ 强制合并成一条上层总结,无视阈值。也可点「立即检测并总结」跑一次阈值检测。
-
-### Q:重新摘要(replaceLeaf)是干嘛的?
-
-对已有叶子的楼层重新生成摘要(正文被编辑过、或摘要质量差时)。会带着原摘要请求,解析失败会提示"原摘要已发生变化"。
-
-### Q:已摘要楼层为什么从对话里消失了?
-
-柏宝书用隐藏正则把**已隐藏 + 已离开窗口**的楼层从上下文藏出去(只藏显示/上下文,不删数据),原文仍在聊天文件里。这样腾出的窗口空间给"当前状态 + 历史摘要",AI 信息量反而更大。翻回去看时页面正常显示。
-
-### Q:时间标签 `<bbs_start>` / `<bbs_end>` 是什么?
-
-柏宝书给主对话注入一条 D0(最贴近下一条回复)提示词,要求每条正文**开头**输出 `<bbs_start>…</bbs_start>`、**末尾**输出 `<bbs_end>…</bbs_end>`,把"时间"从摘要的事后推断变成正文事实。摘要直接从标签读时间,主模型也始终知道"现在是几点"。时间标签功能跟随「自动摘要」开关。标签在显示时被隐藏正则藏掉。
-
-### Q:番外楼是什么?
-
-每条 AI 楼层下方有个界面,可以一键标记「番外」。标为番外的楼层(`extra.bbs_omit`)对记忆系统**彻底不存在**:不摘要、不总结、不隐藏、不重放派生、不注入、不进时间线——适合小剧场/番外篇。取消番外即刻恢复其摘要(非破坏性,只切标记,不删叶子);若该楼的叶子已被压进上层总结,那段总结文本仍含此楼直到重新总结。
-
-### Q:相对时间("昨天""三天前")哪来的?
-
-注入历史摘要时,按「当前故事内最新时间」(读正文时间标签,不受是否已摘影响)换算成相对时间前缀,帮模型感知剧情距离。时间换算逻辑见 `timeRel.ts`,还有独立测试脚本(`npm run test:time`)。
-
-### Q:为什么用了插件 token 还是那么多?
-
-插件只对**已滚出保留窗口**的楼层动手:窗口内的正文照常全文发送(避免摘要与全文重复),只有滚出窗口的旧楼才被摘要顶替。因此对话不长时,token 用量与未装插件时基本一致,属正常现象;长对话、大量旧楼被藏掉后节省才逐步体现。
-
-**先判断大头在哪。** 摘要页会显示注入估算(按 UTF-8 字节数折算,不请求后端):
-
-- 「摘要注入 ≈」:滚出窗口后注入的历史摘要
-- 「其他注入 ≈」:当前结构化状态 + 时间标签提示词
-
-总上下文 = 插件注入 + 窗口内正文 + 用户预设(prompt)+ 激活的世界书 + 聊天模板包装。若插件注入占比很小而总 token 仍高,大头在预设/世界书/正文,应调整这些而非插件;反之才调插件。
-
-**插件侧可调项**:字数档位改「精简」(摘要/总结变短);向量召回关闭或调低条数;变量/状态模板精简;调低总结阈值使更早合并高层总结(一条总结代替多条叶子)。
+**Sẽ không tự động tóm tắt bù toàn lượng.** Quy tắc kích hoạt tóm tắt là "chỉ đảm bảo tin nhắn AI đã chốt gần nhất trước đó có tóm tắt" (gia tăng từng tầng đơn). Nếu cuộc đối thoại cũ muốn bù lại lịch sử, hãy dùng nút "Tóm tắt bù hàng loạt" ở trang Tóm tắt, hoặc tóm tắt bù thủ công từng tầng đơn.
 
 ---
 
-## 4. 状态跟踪答疑
+## 3. Giải đáp về hệ thống tóm tắt
 
-柏宝书除了摘要,还从每楼正文提取结构化状态。全部是**派生数据**:从叶子 delta 按楼层顺序重放得到,不落盘、自动回退。
+### Hỏi: Lá, Đại tóm tắt, Rừng rốt cuộc là gì?
 
-### Q:「仅注入剧情摘要」模式是什么?
+- **Lá (L0)**: Bản tóm tắt của một phản hồi AI, lưu ở `extra.bbs_leaf` của tin nhắn đó. Bao gồm: tóm tắt chính văn, thời gian bắt đầu và kết thúc, cùng phần tăng thêm có cấu trúc của tầng này (biến động vật phẩm, thay đổi kế hoạch, khung cảnh, NPC, lệnh biến số…).
+- **Đại tóm tắt (L1)**: Một số lá được AI dung hợp thành một đoạn văn xuôi dài 300–500 chữ (có thể điều chỉnh), `childIds` trỏ tới các lá được nó thu nạp. **Các lá tầng đáy không bị xóa**, chỉ là không còn hiển thị / tiêm với tư cách là nút gốc nữa.
+- **Đại tóm tắt cấp hai (L2+)**: Một số bản L1 lại được dung hợp thành tầng cao hơn nữa, số chữ được cấp động theo quy mô đầu vào.
+- **Rừng**: Tập hợp của tất cả các nút, lá gắn vào tin nhắn, các nút nén nằm trong `chatMetadata`.
 
-设置 → 摘要设置里的 `summaryOnlyMode`,**兼容角色卡自带的变量系统**。开启后:仍然分析、保存并在柏宝书内展示物品/角色/场景/计划/变量,**但不再把当前状态注入主模型,也不再往正文写物品/变量变动旁注**(已有旁注不主动清理)。适合你的角色卡已自带一套变量提示词、不想让柏宝书的状态块和它打架的情况。
+### Hỏi: Khi nào thì tự động tạo tóm tắt?
 
-### Q:物品是怎么记的?
+- Bạn gửi tin nhắn mới → tóm tắt "phản hồi AI liền trước đó".
+- Tạo lại (Regenerate) / Lật trang (Swipe) → tin nhắn AI ở cuối đang được viết lại, bỏ qua nó, tóm tắt "tin nhắn trước đó nữa".
+- Chỉnh sửa / Xóa tin nhắn → chỉ để dữ liệu đi theo và làm mới, không chủ động tạo mới.
+- Tóm tắt đuổi theo thứ tự lỗ hổng tầng cho tới mới nhất, không bị sót.
 
-每楼摘要时 AI 对照「现有物品」盘点增量:
+Ngoài ra "Bật tóm tắt tự động" đồng thời bật: **Thẻ thời gian chính văn** (mốc thời gian cốt truyện) và **Chặn tồn đọng** —— khi tồn tại tầng cũ bị sót tóm tắt, sẽ chặn việc bạn gửi tin nhắn mới và nhắc tóm tắt bù trước (tránh việc nhảy cóc tóm tắt làm sai lệch thứ tự kế hoạch / vật phẩm). Lật tới trang chưa có tóm tắt hay vừa vào cuộc trò chuyện đều sẽ không tự động lập tức tóm tắt bù toàn lượng.
 
-- 获得 → `items.add`
-- 用完/损坏 → `items.remove`
-- 数量变化/变更描述/换地方 → `items.update`(可改数量、`carried` 随身/寄存、`location`)
-- 排除:临时日用品、服装(服装记到主角/NPC 的 outfit)、普通食物。
+### Hỏi: Tại sao ở trang Tóm tắt có những tầng là "Chờ tóm tắt" / "Tầng chưa tóm tắt"?
 
-物品变动还会以 `<bbs_items>` 旁注写进正文,让主模型"看到自己刚改过"。你手动编辑正文里的旁注(如"获得 匕首 1"),系统会反向解析回叶子 delta——**手改物品的正统方式就是改正文旁注**。
+Những tầng AI đó chưa có lá hợp lệ (ví dụ vừa mới tạo xong, API phụ thất bại, hoặc sau khi lật trang bản tóm tắt gốc mất hiệu lực). Nhấn vào tầng đó có thể tóm tắt bù riêng, hoặc dùng "Tóm tắt bù hàng loạt".
 
-### Q:计划(plan)和悬念(suspense)是什么?
+### Hỏi: Tóm tắt bù hàng loạt là gì? Có tiết kiệm token không?
 
-- **计划**:角色主动承诺/决定要做的事(跨场景才记,口嗨不算)。
-- **悬念**:待揭晓事实 / 已启动的外部事件(伏笔)。
-- 了结时用 `plans.resolve` 并标注 outcome(`done` 达成 / `cancelled` 取消 / `failed` 失败)+ 原因。
-- 关键设计:同一件事"被提出又当场化解"标 `cancelled` 而不是 `done`,主模型才不会误以为还要做而反复提。
-- 近期已了结项会注入(计划与悬念各取最近 N 条,`recentResolvedPlansCount` 控制),防止副模型重复记录、主模型重复推进。
+Cắt nhiều tầng chờ tóm tắt thành từng khối theo dung lượng nội dung (`batchMaxChars` / `batchMaxFloors` trong Cài đặt), **một yêu cầu xử lý nhiều tầng**, ngữ cảnh cố định (phá giới hạn / thiết lập / tiền đề) được phân bổ theo khối nên tiết kiệm token. Lưu ý: tóm tắt hàng loạt chỉ sinh ra summary + thời gian bắt đầu/kết thúc, **không sinh ra dữ liệu có cấu trúc như vật phẩm / kế hoạch** (vì qua nhiều tầng khó đảm bảo trình tự), dữ liệu có cấu trúc để dành cho tóm tắt tự động từng tầng sau đó bổ sung. Nếu khối nào thất bại sẽ tự động lùi về tóm tắt bù từng tầng.
 
-### Q:场景(scene)怎么记?为什么要"树"?
+### Hỏi: Đại tóm tắt kích hoạt khi nào? Ngưỡng có điều chỉnh được không?
 
-地点按层级组织(国家/城市/街道…),路径确定性 id 如 `scene:城市/旅馆`,同一路径每次重放得到同一 id。AI 记录新地点时给完整路径,发现从属关系时用 `reparent` 挂到正确上级。注入时按当前场景分三档展示(当前层详述、上级简略、无关省略)以省 token。
+`checkResummary` kiểm tra theo từng tầng số lượng "nút gốc chưa được thu nạp", tích đủ ngưỡng sẽ nén một tầng và liên쇄 lên trên:
 
-### Q:NPC 是怎么管理的?
+- L0→L1: ngưỡng `leafBatchThreshold`
+- L1→L2: ngưỡng `resummaryThreshold`
+- L2+: ngưỡng `higherResummaryThreshold`
 
-- 新登场:必须与主角有直接、具体、有剧情意义的互动且写得出身份才 `npcs.add`(店小二、路人被门槛挡掉);给名字/性别/年龄/身份/关系/着装/状态/是否随行。
-- 已在册:换装、受伤、离队 → `update outfit/condition/location/follow`;关系质变(断绝/定情/结拜/成婚,要有明确证据)才 `update relation`,吵架不算。
-- ★主要角色离场多日后可合理推演其着装/状态,避免"重逢还穿老样子"。
-- 永久退场才 `remove`。
+Tất cả đều nằm trong Cài đặt → Cài đặt tóm tắt. Ngoài ra còn có `leafKeepRecent`: tầng lá giữ lại N mục gần nhất không nén, tránh việc "nén sập toàn bộ một lần thành L1" gây ra đứt gãy thông tin tiêm.
 
-### Q:主角档案(protagonist)是干嘛的?
+### Hỏi: Có thể ép đại tóm tắt thủ công không?
 
-主角自己的客观档案:性别/身份/外貌/着装/状态,独立于 NPC 名册,全量注入不参与分档。年龄带"记录于 X"锚点,系统按时间流逝自动推算,AI 只在正文明确提到时才更新,避免乱长岁数。
+Được. Ở trang Tóm tắt nhấn Chọn nhiều (tích chọn một số nút gốc, cần liên tiếp nhau) → ép gộp thành một bản đại tóm tắt tầng trên, bỏ qua ngưỡng. Cũng có thể nhấn "Đại tóm tắt ngay" để chạy kiểm tra ngưỡng một lần.
 
-### Q:为什么状态是"重放"出来的,不能直接存一份吗?
+### Hỏi: Tóm tắt lại (replaceLeaf / regenerateFloor) dùng để làm gì?
 
-因为摘要森林是**可逆**的:你翻页/swipe 会改变叶子集合,删楼会删除叶子。如果状态单独存盘,就会出现"状态存了、剧情没了"的错位。按楼层重放保证:**状态永远等于"当前所有有效叶子的总和"**,删哪条,那条的贡献自动消失。
+Tạo lại bản tóm tắt cho tầng đã có lá (khi chính văn đã được chỉnh sửa, hoặc chất lượng bản tóm tắt kém). Sẽ gửi yêu cầu kèm theo bản tóm tắt gốc, nếu phân tích thất bại sẽ báo lỗi.
+
+### Hỏi: Tại sao các tầng đã tóm tắt lại biến mất khỏi cuộc đối thoại?
+
+Bách Bảo Thư đánh dấu ẩn các tầng **đã có tóm tắt + đã rời khỏi cửa sổ giữ lại** khỏi ngữ cảnh gửi đi (chỉ ẩn ngữ cảnh, không xóa dữ liệu), nguyên văn vẫn nằm trong tệp trò chuyện. Không gian cửa sổ nhường ra đó dành cho "Trạng thái hiện tại + Tóm tắt lịch sử", lượng thông tin của AI ngược lại còn lớn hơn.
+
+### Hỏi: Thẻ thời gian `<bbs_start>` / `<bbs_end>` là gì?
+
+Bách Bảo Thư tiêm vào cuộc đối thoại chính một lời nhắc ở D0 (sát với phản hồi tiếp theo nhất), yêu cầu **đầu** mỗi chính văn xuất `<bbs_start>…</bbs_start>`, **cuối** xuất `<bbs_end>…</bbs_end>`, biến "thời gian" từ suy đoán sau sự việc của bản tóm tắt thành sự thật ngay trong chính văn. Tóm tắt đọc trực tiếp thời gian từ thẻ, mô hình chính cũng luôn biết "bây giờ là mấy giờ". Tính năng thẻ thời gian đi theo công tắc "Bật tóm tắt tự động". Các thẻ này khi hiển thị sẽ được regex ẩn giấu đi.
+
+### Hỏi: Tầng ngoại truyện là gì?
+
+Bên dưới mỗi tầng AI có một giao diện nhỏ, có thể đánh dấu "Ngoại truyện" bằng một cú nhấn. Tầng được đánh dấu là ngoại truyện (`extra.bbs_omit`) **hoàn toàn không tồn tại** đối với hệ thống trí nhớ: không tóm tắt, không đại tóm tắt, không ẩn, không phát lại dẫn xuất, không tiêm, không vào dòng thời gian —— phù hợp cho tiểu kịch trường / phần ngoại truyện. Bỏ ngoại truyện sẽ lập tức khôi phục bản tóm tắt của nó (không mang tính phá hủy, chỉ chuyển đổi đánh dấu, không xóa lá); nếu lá của tầng đó đã được nén vào đại tóm tắt tầng trên, văn bản đại tóm tắt đó vẫn chứa tầng này cho tới khi đại tóm tắt lại.
+
+### Hỏi: Thời gian tương đối ("Hôm qua", "3 ngày trước") từ đâu mà có?
+
+Khi tiêm tóm tắt lịch sử, hệ thống quy đổi thành tiền tố thời gian tương đối theo "thời gian mới nhất trong truyện hiện tại" (đọc thẻ thời gian chính văn, không bị ảnh hưởng bởi việc đã tóm tắt hay chưa), giúp mô hình cảm nhận được khoảng cách cốt truyện. Logic quy đổi thời gian xem tại `timeRel.ts`, có kịch bản kiểm thử độc lập (`npm run test:time`).
+
+### Hỏi: Tại sao dùng plugin rồi mà vẫn tốn nhiều token như vậy?
+
+Plugin chỉ can thiệp vào các tầng **đã cuộn ra khỏi cửa sổ giữ lại**: chính văn trong cửa sổ vẫn được gửi toàn văn như thường (tránh lặp lại giữa tóm tắt và toàn văn), chỉ những tầng cũ đã cuộn ra khỏi cửa sổ mới được thay thế bằng bản tóm tắt. Do đó khi cuộc đối thoại chưa dài, lượng token sử dụng cơ bản tương đương với khi chưa cài plugin, đây là hiện tượng bình thường; khi đối thoại dài và nhiều tầng cũ được ẩn đi thì sự tiết kiệm mới dần thể hiện rõ.
+
+**Hãy phán đoán xem phần chiếm nhiều nhất nằm ở đâu trước.** Trang Tóm tắt có hiển thị ước tính lượng tiêm (quy đổi theo số byte UTF-8, không gửi yêu cầu tới backend):
+
+- "Tiêm tóm tắt ≈": Tóm tắt lịch sử được tiêm sau khi các tầng cuộn ra khỏi cửa sổ
+- "Tiêm khác ≈": Trạng thái có cấu trúc hiện tại + Lời nhắc thẻ thời gian
+
+Tổng ngữ cảnh = Nội dung tiêm của plugin + Chính văn trong cửa sổ + Preset người dùng (prompt) + Sách Thế Giới kích hoạt + Khung bọc mẫu trò chuyện. Nếu phần tiêm của plugin chiếm tỷ lệ rất nhỏ mà tổng token vẫn cao, thì phần nặng nhất nằm ở preset / Sách Thế Giới / chính văn, cần điều chỉnh những thứ đó thay vì plugin; ngược lại mới điều chỉnh plugin.
+
+**Các mục có thể điều chỉnh ở phía plugin**: Đổi Mức số chữ sang "Tinh gọn" (tóm tắt / đại tóm tắt ngắn hơn); tắt truy xuất vector hoặc giảm số lượng mục; tinh gọn mẫu biến số / trạng thái; giảm ngưỡng đại tóm tắt để gộp đại tóm tắt cấp cao sớm hơn (một bản đại tóm tắt thay thế cho nhiều lá).
 
 ---
 
-## 5. 自定义变量专题(重点)
+## 4. Giải đáp về theo dõi trạng thái
 
-> 很多用户提的功能(血条、好感度、金钱、任务清单、剧情进度标记、势力声望、装备栏、成就解锁……)其实柏宝书**已经支持**——就是自定义变量。下面详述。
+Ngoài tóm tắt, Bách Bảo Thư còn trích xuất trạng thái có cấu trúc từ chính văn mỗi tầng. Toàn bộ đều là **dữ liệu dẫn xuất**: thu được từ việc phát lại delta của lá theo thứ tự tầng, không lưu cứng vào ổ đĩa, tự động hoàn tác khi xóa tầng.
 
-### Q:自定义变量是什么?
+### Hỏi: Chế độ "Chỉ tiêm tóm tắt cốt truyện" là gì?
 
-一段**完全由你定义结构**的 JSON 状态树。柏宝书只负责三件事:
+`summaryOnlyMode` trong Cài đặt → Cài đặt tiêm, **tương thích với hệ thống biến số có sẵn của thẻ nhân vật**. Sau khi bật: vẫn phân tích, lưu trữ và hiển thị vật phẩm / nhân vật / khung cảnh / kế hoạch / biến số trong Bách Bảo Thư, **nhưng không còn tiêm trạng thái hiện tại vào mô hình chính, cũng không ghi chú thích biến động vật phẩm / biến số vào chính văn nữa** (chú thích đã có không tự động xóa). Phù hợp với trường hợp thẻ nhân vật của bạn đã có sẵn một bộ lời nhắc biến số và không muốn khối trạng thái của Bách Bảo Thư xung đột với nó.
 
-1. 把当前树注入给 AI(主模型 + 摘要模型都看得到)。
-2. 允许 AI(或你手动)用**路径命令**增删改这棵树,命令固化进叶子 delta,按楼层重放——所以它和其他状态一样:随剧情推进、可回退、不会凭空消失。
-3. 变量页展示当前树,支持手动编辑整份写回。
+### Hỏi: Vật phẩm được ghi nhận như thế nào?
 
-它和内置跟踪(物品/计划/NPC…)的区别:**内置的是"特定领域"的强约定**,变量是"任意领域"的自由结构。你想跟踪的、内置没覆盖的(好感度数值、任务阶段、势力声望、剧情 flag),都用变量。
+Khi tóm tắt mỗi tầng, AI đối chiếu với "Vật phẩm hiện có" để kiểm kê phần tăng thêm:
 
-### Q:三层模板(global / char / chat)是什么意思?
+- Nhận được → `items.add`
+- Dùng hết / Hư hỏng → `items.remove`
+- Thay đổi số lượng / Thay đổi mô tả / Đổi chỗ để → `items.update` (có thể sửa số lượng, `carried` mang theo / gửi cất giữ, `location`)
+- Loại trừ: đồ dùng hàng ngày tạm thời, trang phục (trang phục ghi vào outfit của nhân vật chính / NPC), thức ăn thông thường.
 
-变量定义 = **初始结构模板 + 给 AI 的两段说明**,分三层存放:
+Biến động vật phẩm còn được ghi vào chính văn dưới dạng chú thích `<bbs_items>`, để mô hình chính "nhìn thấy mình vừa mới sửa đổi". Khi bạn chỉnh sửa thủ công chú thích trong chính văn (như "Nhận Dao găm 1"), hệ thống sẽ phân tích ngược lại vào delta của lá —— **cách chính thống để sửa vật phẩm thủ công trong chính văn chính là sửa chú thích `<bbs_items>`**.
 
-| 层级 | 存哪 | 生效范围 | 典型用途 |
+### Hỏi: Kế hoạch (plan) và Nghi vấn (suspense) là gì?
+
+- **Kế hoạch**: Việc nhân vật chủ động hứa hẹn / quyết định sẽ làm (xuyên cảnh mới ghi, nói suông không tính).
+- **Nghi vấn**: Sự thật chờ được hé lộ / sự kiện bên ngoài đã khởi động (phục bút).
+- Khi kết thúc dùng `plans.resolve` và ghi rõ outcome (`done` hoàn thành / `cancelled` hủy bỏ / `failed` thất bại) + lý do.
+- Thiết kế mấu chốt: cùng một việc "được nêu ra rồi hóa giải ngay tại chỗ" sẽ được đánh dấu `cancelled` thay vì `done`, để mô hình chính không tưởng nhầm là vẫn phải làm mà nhắc đi nhắc lại.
+- Các mục vừa kết thúc gần đây sẽ được tiêm (kế hoạch và nghi vấn mỗi loại lấy N mục gần nhất, do `recentResolvedPlansCount` điều khiển), ngăn mô hình phụ ghi nhận trùng lặp và mô hình chính thúc đẩy trùng lặp.
+
+### Hỏi: Khung cảnh (scene) được ghi nhận thế nào? Tại sao phải dùng "cây"?
+
+Địa điểm được tổ chức theo phân cấp (Quốc gia / Thành phố / Đường phố…), id tất định theo đường dẫn như `scene:Thành phố/Quán trọ`, cùng một đường dẫn mỗi lần phát lại đều thu được cùng một id. Khi AI ghi nhận địa điểm mới sẽ đưa ra đường dẫn đầy đủ, khi phát hiện quan hệ trực thuộc sẽ dùng `reparent` gắn vào cấp trên chính xác. Khi tiêm sẽ hiển thị chia ba mức theo khung cảnh hiện tại (tầng hiện tại mô tả chi tiết, cấp trên tóm lược, không liên quan chỉ liệt kê tên) để tiết kiệm token.
+
+### Hỏi: NPC được quản lý như thế nào?
+
+- Mới xuất hiện: phải có tương tác trực tiếp, cụ thể, có ý nghĩa cốt truyện với nhân vật chính và viết ra được thân phận mới `npcs.add` (tiểu nhị, người qua đường bị ngưỡng chặn lại); cung cấp tên / giới tính / tuổi / thân phận / quan hệ / trang phục / trạng thái / có đi cùng hay không.
+- Đã có trong danh sách: thay đồ, bị thương, rời nhóm → `update outfit/condition/location/follow`; quan hệ thay đổi về chất (đoạn tuyệt / định tình / kết bái / thành hôn, phải có bằng chứng rõ ràng) mới `update relation`, cãi vã không tính.
+- ★ Nhân vật chính yếu sau khi rời cảnh nhiều ngày có thể suy diễn hợp lý trang phục / trạng thái của họ, tránh việc "tái ngộ vẫn mặc nguyên bộ đồ cũ".
+- Rời khỏi cốt truyện vĩnh viễn mới `remove`.
+
+### Hỏi: Hồ sơ nhân vật chính (protagonist) dùng để làm gì?
+
+Hồ sơ khách quan của riêng nhân vật chính: giới tính / thân phận / ngoại hình / trang phục / trạng thái, độc lập với danh sách NPC, tiêm toàn lượng không tham gia phân mức. Tuổi kèm theo mốc "lúc X", hệ thống tự động suy tính theo thời gian trôi qua, AI chỉ cập nhật khi chính văn nhắc tới rõ ràng, tránh việc tự dưng tăng tuổi lung tung.
+
+### Hỏi: Tại sao trạng thái lại được "phát lại" mà không lưu trực tiếp một bản?
+
+Bởi vì rừng tóm tắt có tính **khả nghịch**: việc bạn lật trang / swipe sẽ làm thay đổi tập hợp lá, xóa tầng sẽ xóa lá. Nếu trạng thái được lưu ổ đĩa riêng, sẽ xảy ra sự lệch pha "trạng thái đã lưu nhưng cốt truyện đã mất". Phát lại theo tầng đảm bảo: **trạng thái luôn bằng "tổng hợp của tất cả các lá hợp lệ hiện tại"**, xóa lá nào thì đóng góp của lá đó tự động biến mất.
+
+---
+
+## 5. Chuyên đề Biến số tùy chỉnh (Trọng tâm)
+
+> Rất nhiều tính năng người dùng đề xuất (thanh máu, độ hảo cảm, tiền bạc, danh sách nhiệm vụ, cờ đánh dấu tiến độ cốt truyện, danh vọng thế lực, ô trang bị, mở khóa thành tựu…) thực chất Bách Bảo Thư **đã hỗ trợ sẵn** —— đó chính là Biến số tùy chỉnh. Dưới đây sẽ trình bày chi tiết.
+
+### Hỏi: Biến số tùy chỉnh là gì?
+
+Một cây trạng thái JSON **có cấu trúc hoàn toàn do bạn định nghĩa**. Bách Bảo Thư chỉ phụ trách ba việc:
+
+1. Tiêm cây hiện tại cho AI (cả mô hình chính + mô hình tóm tắt đều nhìn thấy).
+2. Cho phép AI (hoặc bạn thao tác thủ công) dùng **lệnh đường dẫn** để thêm/xóa/sửa cây này, lệnh được cố định vào delta của lá, phát lại theo tầng —— vì vậy nó giống hệt các trạng thái khác: tiến triển theo cốt truyện, có thể hoàn tác, không tự dưng biến mất.
+3. Trang Biến số hiển thị cây hiện tại, hỗ trợ chỉnh sửa thủ công toàn bộ để ghi lại.
+
+Sự khác biệt giữa nó và theo dõi tích hợp sẵn (vật phẩm / kế hoạch / NPC…): **tích hợp sẵn là quy ước chặt chẽ cho "lĩnh vực cụ thể"**, còn biến số là cấu trúc tự do cho "bất kỳ lĩnh vực nào". Những gì bạn muốn theo dõi mà phần tích hợp sẵn chưa bao phủ (chỉ số hảo cảm, giai đoạn nhiệm vụ, danh vọng thế lực, cờ cốt truyện), hãy dùng biến số.
+
+### Hỏi: Mẫu ba tầng (global / char / chat) có nghĩa là gì?
+
+Định nghĩa biến số = **Mẫu cấu trúc ban đầu + Hai đoạn giải thích cho AI**, được lưu trữ chia làm ba tầng:
+
+| Cấp độ | Lưu ở đâu | Phạm vi có hiệu lực | Công dụng điển hình |
 |---|---|---|---|
-| `global` 全局 | `extension_settings` | 所有角色、所有聊天 | 通用骨架(如 `flag` 总开关、通用数值约定) |
-| `char` 角色 | `extension_settings`(按角色区分) | 当前角色的所有聊天 | 该角色的专属设定(如"魔力值上限、魔法体系") |
-| `chat` 聊天 | `chatMetadata` | 仅当前聊天 | 本局专属设定(如本局任务) |
+| `global` Toàn cục | `extension_settings` | Mọi nhân vật, mọi cuộc trò chuyện | Khung xương chung (như công tắc tổng `flag`, quy ước chỉ số chung) |
+| `char` Nhân vật | `extension_settings` (phân biệt theo nhân vật) | Mọi cuộc trò chuyện của nhân vật hiện tại | Thiết lập riêng của nhân vật đó (như "giới hạn ma lực, hệ thống phép thuật") |
+| `chat` Trò chuyện | `chatMetadata` | Chỉ cuộc trò chuyện hiện tại | Thiết lập riêng của ván này (như nhiệm vụ ván này) |
 
-**三层深合并**成初始状态,合并顺序 `chat > char > global`(聊天覆盖角色覆盖全局)。
+**Ba tầng gộp sâu (deep merge)** thành trạng thái ban đầu, thứ tự gộp `chat > char > global` (Trò chuyện ghi đè Nhân vật ghi đè Toàn cục).
 
-**重要:层级只影响"初始模板存哪",变量的值永远每聊天独立。** 因为值是从本聊天自己的叶子命令重放出来的,天然互不串档。你在角色 A 的聊天里把血量改成 5,不会影响角色 B 或 A 的另一个聊天。
+**Quan trọng: cấp độ chỉ ảnh hưởng tới việc "mẫu ban đầu lưu ở đâu", còn giá trị của biến số luôn độc lập theo từng cuộc trò chuyện.** Bởi vì giá trị được phát lại từ lệnh lá của riêng cuộc trò chuyện đó, tự nhiên không bao giờ bị lẫn dữ liệu giữa các bản lưu. Bạn đổi máu thành 5 trong cuộc trò chuyện của nhân vật A sẽ không ảnh hưởng tới nhân vật B hay một cuộc trò chuyện khác của A.
 
-### Q:模板里三个字段(JSON / 含义 / 规则)各是什么?
+### Hỏi: Ba trường trong mẫu (JSON / Ý nghĩa / Quy tắc) lần lượt là gì?
 
-- **JSON**:初始结构,你预先搭好想追踪的形状(也可以留空对象 `{}`,让 AI 从零建)。
-- **含义(meaning)**:各字段**是什么**(含义/取值范围)。**主模型和摘要模型都会看到**,用于"理解当前值",只读参考。
-- **规则(rule)**:**何时怎么改、可否新建**(相当于 MVU 的变化条件)。**只发给摘要模型**,不给主模型——因为主模型看到"如何增删改"的指令,会误以为要在正文里输出/复述变量。规则里还能写"AI 可自行新建条目(如新势力)"。
+- **JSON**: Cấu trúc ban đầu, bạn dựng sẵn hình dáng muốn theo dõi (cũng có thể để đối tượng rỗng `{}`, cho AI xây dựng từ con số không).
+- **Ý nghĩa (meaning)**: Các trường **là gì** (ý nghĩa / phạm vi giá trị). **Cả mô hình chính và mô hình tóm tắt đều sẽ nhìn thấy**, dùng để "hiểu giá trị hiện tại", tham khảo chỉ đọc.
+- **Quy tắc (rule)**: **Khi nào sửa thế nào, có được tạo mới không** (tương đương với điều kiện biến đổi của MVU). **Chỉ gửi cho mô hình tóm tắt**, không gửi cho mô hình chính —— bởi vì nếu mô hình chính nhìn thấy chỉ dẫn "làm thế nào để thêm/xóa/sửa", nó sẽ tưởng nhầm là phải xuất / thuật lại biến số trong chính văn. Trong quy tắc còn có thể viết "AI có thể tự tạo mục mới (như thế lực mới)".
 
-> 一句话:**含义帮 AI 看懂,规则教 AI 怎么改**。
+> Tóm lại một câu: **Ý nghĩa giúp AI đọc hiểu, Quy tắc dạy AI cách sửa**.
 
-### Q:命令语法有哪些?路径怎么写?
+### Hỏi: Có những cú pháp lệnh nào? Đường dẫn viết ra sao?
 
-仿 MVU 的四种命令,固化进叶子 `delta.varOps`:
+Mô phỏng bốn loại lệnh của MVU, cố định vào `delta.varOps` của lá:
 
-| 命令 | 作用 | 关键参数 |
+| Lệnh | Tác dụng | Tham số mấu chốt |
 |---|---|---|
-| `set` | 把 path 处的值**设为** value(自动创建中间层) | `path`、`value`;`path=""` 表示整棵根整体替换 |
-| `add` | 把 path 处的**数字**加上 delta(负数即减) | `path`、`delta`(数字) |
-| `assign` | 往 path 处的对象/数组**插入** | `path`、`key`(可选)、`value`;给 `key` 则 `obj[key]=value`(数组为该下标),不给 `key` 则数组 push |
-| `remove` | **删除** | `path`、`key`(可选);给 `key` 删对象键/数组下标/数组里等于 key 的元素;不给 `key` 删 path 本身 |
+| `set` | **Đặt** giá trị tại path thành value (tự động tạo tầng trung gian) | `path`, `value`; `path=""` biểu thị thay thế toàn bộ gốc |
+| `add` | Cộng thêm delta vào **con số** tại path (số âm tức là trừ) | `path`, `delta` (số) |
+| `assign` | **Chèn** vào đối tượng / mảng tại path | `path`, `key` (tùy chọn), `value`; có `key` thì `obj[key]=value` (mảng là chỉ số đó), không có `key` thì push vào mảng |
+| `remove` | **Xóa** | `path`, `key` (tùy chọn); có `key` thì xóa khóa đối tượng / chỉ số mảng / phần tử trong mảng bằng với key; không có `key` thì xóa bản thân path |
 
-**路径语法**:点号寻址对象,数字下标寻址数组,如:
+**Cú pháp đường dẫn**: Dấu chấm để định vị đối tượng, chỉ số chữ số để định vị mảng, ví dụ:
 
-- `势力.魔法议会.声望`
-- `队伍[0].hp`
-- `任务.主线.阶段`
+- `Thế_lực.Hội_đồng_phép_thuật.Danh_vọng`
+- `Đội_hình[0].hp`
+- `Nhiệm_vụ.Chính_tuyến.Giai_đoạn`
 
-坏命令会被跳过(不致命),所以 AI 偶尔写错不会让整楼失败。
+Lệnh lỗi sẽ bị bỏ qua (không gây sập), nên việc AI thỉnh thoảng viết sai sẽ không làm hỏng cả tầng.
 
-### Q:能给几个常用场景的模板示例吗?
+### Hỏi: Có thể cho vài ví dụ mẫu cho các kịch bản thường dùng không?
 
-**① 队伍血条 / 蓝条(数值型)**
+**① Thanh máu / Thanh năng lượng của đội hình (kiểu số)**
 
 ```json
 {
-  "队伍": [
-    { "名字": "", "hp": 100, "maxHp": 100, "mp": 50, "状态": "" }
+  "Đội hình": [
+    { "Tên": "", "hp": 100, "maxHp": 100, "mp": 50, "Trạng thái": "" }
   ]
 }
 ```
 
-含义:`队伍` 是数组,每个元素一个同伴;`hp/mp` 为当前值,`maxHp` 上限,`状态` 如"中毒/昏迷"。
-规则:战斗受伤用 `add` 扣 `队伍[i].hp`;`hp` 不能超过 `maxHp`;角色死亡时 `hp` 归 0 并写 `状态`;允许向 `队伍` push 新成员。
+Ý nghĩa: `Đội hình` là mảng, mỗi phần tử là một đồng đội; `hp/mp` là giá trị hiện tại, `maxHp` là giới hạn tối đa, `Trạng thái` như "Trúng độc/Hôn mê".
+Quy tắc: Bị thương trong chiến đấu dùng `add` trừ `Đội hình[i].hp`; `hp` không được vượt quá `maxHp`; khi nhân vật tử vong thì `hp` về 0 và ghi `Trạng thái`; cho phép push thành viên mới vào `Đội hình`.
 
-**② 好感度 / 关系数值**
+**② Độ hảo cảm / Chỉ số quan hệ**
 
 ```json
 {
-  "关系": {
-    "爱丽丝": { "好感度": 0, "信任": 0, "备注": "" }
+  "Quan hệ": {
+    "Alice": { "Hảo cảm": 0, "Tin tưởng": 0, "Ghi chú": "" }
   }
 }
 ```
 
-含义:`好感度` 0–100,越大越亲密;`信任` 同理。
-规则:每次对话结束后,按剧情走向用 `add` 调整相关角色的好感度(有明确依据才动,别凭心情乱加);`备注` 记录当前关系一句话。
+Ý nghĩa: `Hảo cảm` 0–100, càng lớn càng thân thiết; `Tin tưởng` tương tự.
+Quy tắc: Sau khi kết thúc mỗi cuộc đối thoại, dùng `add` điều chỉnh độ hảo cảm của nhân vật liên quan theo hướng đi của cốt truyện (phải có căn cứ rõ ràng mới thay đổi, đừng cộng bừa theo tâm trạng); `Ghi chú` ghi lại một câu về mối quan hệ hiện tại.
 
-**③ 金钱 / 物资统计**
+**③ Thống kê tiền bạc / vật tư**
 
 ```json
 {
-  "金钱": 0,
-  "仓库": {}
+  "Tiền bạc": 0,
+  "Kho hàng": {}
 }
 ```
 
-规则:交易/缴获/丢失时用 `add` 改 `金钱`;`仓库` 可 push 新物品条目。
+Quy tắc: Khi giao dịch / thu được chiến lợi phẩm / đánh mất thì dùng `add` sửa `Tiền bạc`; `Kho hàng` có thể chèn mục vật phẩm mới.
 
-**④ 任务追踪(对象式)**
+**④ Theo dõi nhiệm vụ (kiểu đối tượng)**
 
 ```json
 {
-  "任务": {
-    "主线": { "名称": "", "阶段": "接受", "目标": "", "进度": 0 },
-    "支线": []
+  "Nhiệm vụ": {
+    "Chính tuyến": { "Tên": "", "Giai đoạn": "Tiếp nhận", "Mục tiêu": "", "Tiến độ": 0 },
+    "Phụ tuyến": []
   }
 }
 ```
 
-规则:`阶段` 取值"接受/进行/完成/失败",变化时用 `set`;`进度` 0–100 用 `add`;完成的任务保留在列表但标 `完成`,不要删除——已了结任务也是记忆。
+Quy tắc: `Giai đoạn` nhận giá trị "Tiếp nhận/Đang làm/Hoàn thành/Thất bại", khi thay đổi dùng `set`; `Tiến độ` 0–100 dùng `add`; nhiệm vụ đã hoàn thành giữ lại trong danh sách nhưng đánh dấu `Hoàn thành`, đừng xóa đi —— nhiệm vụ đã kết thúc cũng là trí nhớ.
 
-**⑤ 剧情状态标记(flag)**
+**⑤ Cờ đánh dấu trạng thái cốt truyện (flag)**
 
 ```json
 {
   "flag": {
-    "已告知身世": false,
-    "已进入地下城": false,
-    "魔王被打败": false
+    "Đã tiết lộ thân thế": false,
+    "Đã vào hầm ngục": false,
+    "Ma vương đã bị đánh bại": false
   }
 }
 ```
 
-规则:剧情达到条件时用 `set` 置 true,一次性事件置 true 后不得反复改回。
+Quy tắc: Khi cốt truyện đạt điều kiện thì dùng `set` đặt thành true, sự kiện một lần sau khi đã đặt thành true không được sửa ngược lại nhiều lần.
 
-**⑥ 势力声望**
+**⑥ Danh vọng thế lực**
 
 ```json
 {
-  "势力": {
-    "魔法议会": { "声望": 0, "立场": "中立" }
+  "Thế lực": {
+    "Hội đồng phép thuật": { "Danh vọng": 0, "Lập trường": "Trung lập" }
   }
 }
 ```
 
-规则:允许 AI 在剧情中**新建**势力条目(assign 到 `势力` 下);声望 ± 要有事件依据。
+Quy tắc: Cho phép AI **tạo mới** mục thế lực trong cốt truyện (assign vào dưới `Thế lực`); danh vọng ± phải có căn cứ sự kiện.
 
-### Q:AI 会不会自己建变量?还是必须我搭模板?
+### Hỏi: AI có tự tạo biến số không? Hay bắt buộc tôi phải dựng mẫu?
 
-两者都行:
+Cả hai đều được:
 
-- 你搭好模板 → AI 严格按结构更新。
-- 模板留空 → AI 也能在剧情里自由创建(前提是规则里允许,或根本没配规则)。但**强烈建议搭模板 + 写含义/规则**,否则 AI 的字段命名会漂移(这次 `hp`,下次 `生命值`)。
+- Bạn dựng sẵn mẫu → AI cập nhật nghiêm ngặt theo cấu trúc.
+- Mẫu để trống → AI cũng có thể tự do tạo mới trong cốt truyện (với điều kiện trong quy tắc cho phép, hoặc hoàn toàn không cấu hình quy tắc). Nhưng **khuyên dùng dựng mẫu + viết Ý nghĩa / Quy tắc**, nếu không cách đặt tên trường của AI sẽ bị trôi lệch (lần này `hp`, lần sau `Sinh lực`).
 
-### Q:为什么我的变量没被更新?常见原因
+### Hỏi: Tại sao biến số của tôi không được cập nhật? Các nguyên nhân thường gặp
 
-1. **规则没写清楚**:AI 不知道什么时候该改。规则要具体到"什么事件触发什么命令"。
-2. **含义没写清楚**:AI 看不懂字段含义,不敢动。
-3. **模板没配**:变量整块没启用时,摘要提示词里**整块省略**(零 token),AI 完全不知道有变量这回事。只要配了模板,提示词里才会出现变量块。
-4. **值没变**:AI 判断本楼没有影响变量的剧情,正确地没输出命令——这不算 bug。
-5. **看的是旧状态**:当前状态是"截至某楼"的重放;若某楼还没摘要,它的变量命令自然还没进去。
+1. **Quy tắc viết chưa rõ ràng**: AI không biết khi nào cần sửa. Quy tắc phải cụ thể tới mức "sự kiện gì kích hoạt lệnh gì".
+2. **Ý nghĩa viết chưa rõ ràng**: AI đọc không hiểu ý nghĩa trường nên không dám động vào.
+3. **Chưa cấu hình mẫu**: Khi toàn bộ khối biến số chưa được kích hoạt, trong lời nhắc tóm tắt sẽ **lược bỏ nguyên khối** (0 token), AI hoàn toàn không biết có sự tồn tại của biến số. Chỉ cần cấu hình mẫu (dù chỉ là ý nghĩa/quy tắc hoặc JSON), khối biến số mới xuất hiện trong lời nhắc.
+4. **Giá trị không đổi**: AI phán đoán tầng này không có cốt truyện ảnh hưởng tới biến số nên đã làm đúng là không xuất lệnh —— đây không phải là bug.
+5. **Đang xem trạng thái cũ**: Trạng thái hiện tại là kết quả phát lại "tính đến một tầng nào đó"; nếu tầng nào đó chưa được tóm tắt thì lệnh biến số của nó tự nhiên chưa được đưa vào.
 
-### Q:改了模板(初始值)会影响已有聊天的当前值吗?
+### Hỏi: Sửa mẫu (giá trị ban đầu) có ảnh hưởng tới giá trị hiện tại của cuộc trò chuyện đã có không?
 
-会。初始模板是**重放起点**。改初始值 → 从新起点重放所有叶子命令 → 当前值整体变化(所以"改初始值会影响整条聊天的当前值"——变量页也这么提示)。想只修当前值不动历史,用「当前状态」的手动编辑(见下)。
+Có. Mẫu ban đầu là **điểm xuất phát phát lại**. Sửa giá trị ban đầu → phát lại toàn bộ lệnh lá từ điểm xuất phát mới → giá trị hiện tại thay đổi tổng thể (vì vậy "Sửa giá trị ban đầu sẽ ảnh hưởng tới giá trị hiện tại của toàn bộ cuộc trò chuyện" —— trang Biến số cũng nhắc như vậy). Nếu chỉ muốn sửa giá trị hiện tại mà không động tới lịch sử, hãy dùng chỉnh sửa thủ công ở phần "Trạng thái hiện tại" (xem bên dưới).
 
-### Q:手动编辑当前状态有什么用?和改模板有什么区别?
+### Hỏi: Chỉnh sửa thủ công Trạng thái hiện tại có tác dụng gì? Khác gì với sửa mẫu?
 
-- **改模板** = 改"重放起点",影响整条聊天(含历史推演)。
-- **手动编辑当前状态** = 直接把整份 JSON 写成一条 `set path=""` 命令,**追加到最新叶子上**,相当于"在最新时间点由你亲自更新状态"。适合:AI 记错了、你想微调数值、剧情跳变。
-- ⚠️ **手动编辑需要该楼已有摘要**(要写进最新叶子,叶子不存在就没法写)。编辑时会要求"当前有摘要"。
+- **Sửa mẫu** = sửa "điểm xuất phát phát lại", ảnh hưởng toàn bộ cuộc trò chuyện (bao gồm cả suy diễn lịch sử).
+- **Chỉnh sửa thủ công trạng thái hiện tại** = viết trực tiếp toàn bộ JSON thành một lệnh `set path=""`, **nối thêm vào lá mới nhất**, tương đương với "tại thời điểm mới nhất do chính tay bạn cập nhật trạng thái". Phù hợp khi: AI ghi nhầm, bạn muốn tinh chỉnh con số, cốt truyện có bước nhảy vọt.
+- ⚠️ **Chỉnh sửa thủ công đòi hỏi cuộc trò chuyện đã có tóm tắt** (vì phải ghi vào lá mới nhất, lá không tồn tại thì không thể ghi được).
 
-### Q:导入/导出是干嘛的?
+### Hỏi: Nhập / Xuất dùng để làm gì?
 
-分享"变量方案":导出的是**三层合并后的初始结构 + 含义 + 规则(不含具体值)**,别人导入到自己的 global/char/chat 层即可复用同一套变量体系(比如一套通用 RPG 数值模板)。导出格式兼容旧的只有单一 `guide` 的分享格式。
+Chia sẻ "phương án biến số": thứ được xuất ra là **cấu trúc ban đầu + ý nghĩa + quy tắc sau khi gộp ba tầng (không chứa giá trị cụ thể)**, người khác nhập vào tầng global/char/chat của họ là có thể tái sử dụng cùng một hệ thống biến số (ví dụ một bộ mẫu chỉ số RPG chung). Định dạng xuất tương thích với định dạng chia sẻ cũ chỉ có một trường `guide` đơn lẻ.
 
-### Q:变量在正文里怎么让主模型看到?会占很多 token 吗?
+### Hỏi: Làm sao để mô hình chính nhìn thấy biến số trong chính văn? Có tốn nhiều token không?
 
-- 主模型在**当前状态注入块**里看到变量树(缩进 JSON 渲染)。
-- 变量**变更**还会以 `<bbs_vars>` 旁注写进正文,主模型能"看到自己刚改过"。
-- token 控制:未配置变量时整块省略(零开销);配置后是"一棵 JSON 树",尽量保持结构精简。
+- Mô hình chính nhìn thấy cây biến số trong **khối tiêm trạng thái hiện tại** (kết xuất JSON thụt lề).
+- **Biến đổi** biến số còn được ghi vào chính văn dưới dạng chú thích `<bbs_vars>`, mô hình chính có thể "nhìn thấy mình vừa mới sửa đổi".
+- Kiểm soát token: khi chưa cấu hình biến số sẽ lược bỏ nguyên khối (chi phí bằng 0); sau khi cấu hình là "một cây JSON", hãy cố gắng giữ cấu trúc tinh gọn.
 
-### Q:变量能做"AI 新建条目"吗(比如剧情里出现新势力)?
+### Hỏi: Biến số có làm được việc "AI tự tạo mục mới" không (ví dụ trong cốt truyện xuất hiện thế lực mới)?
 
-能。在规则的"可否新建"部分写明,例如"允许向 `势力` 对象 assign 新条目"。AI 会用 `assign`(给 key)往对象插入新键。
+Được. Hãy viết rõ trong phần "có được tạo mới không" của Quy tắc, ví dụ "cho phép assign mục mới vào đối tượng `Thế lực`". AI sẽ dùng `assign` (kèm key) để chèn khóa mới vào đối tượng.
 
-### Q:变量的路径在公共 API / 宏里能用吗?
+### Hỏi: Đường dẫn của biến số có dùng được trong API công khai / Macro không?
 
-能,路径与内部一致:
+Được, đường dẫn đồng nhất với bên trong:
 
-- JS:`STBaiBaiBook.getVar('关系.爱丽丝.好感度')`
-- 宏:`{{bbsVar::关系.爱丽丝.好感度}}`
-- 斜杠命令:`/bbs-get vars` 拿整棵树。
+- JS: `STBaiBaiBook.getVar('Quan hệ.Alice.Hảo cảm')`
+- Macro: `{{bbsVar::Quan hệ.Alice.Hảo cảm}}`
+- Lệnh gạch chéo: `/bbs-get vars` lấy toàn bộ cây.
 
-详见 [第 8 节](#8-公共-api--宏--斜杠命令)。
+Xem chi tiết tại [Mục 8](#8-api-công-khai--macro--lệnh-gạch-chéo).
 
-### Q:用变量还是用内置物品/计划?
+### Hỏi: Nên dùng biến số hay dùng vật phẩm / kế hoạch tích hợp sẵn?
 
-- **物品、计划/悬念、场景、NPC、主角档案**:这些是柏宝书强约定领域,自动维护、有专门 UI 与注入格式,优先用内置。
-- **其它一切数值/标记/自由结构**(好感度、HP、金钱、任务阶段、flag、声望、装备、成就…):用自定义变量。
-- 规则:内置能覆盖的用内置,覆盖不到的用变量。二者共存不冲突(变量树独立于内置状态)。
-
----
-
-## 6. 向量记忆答疑
-
-### Q:向量记忆(柏宝库)是什么?为什么需要?
-
-摘要森林是"压缩记忆",信息有损;向量记忆是**全文召回**:把每片叶子(及其全文)embed 进向量库,生成时按当前剧情做语义检索,把最相关的历史片段重新注入,适合"多年前埋的伏笔突然要回收"这种摘要里已丢失细节的场景。需要插件自带的后端插件「柏宝库」(`/api/plugins/baibaoku/v1/`)。
-
-### Q:召回是怎么工作的?
-
-1. **查询重写**:用小模型把「最近剧情 + 状态快照」重写成 `INTENT` + 恰好 5 条检索 Q(不查窗口内已有内容,只找窗口外的)。
-2. **多路搜索**:对当前 chat scope + 各 bundle scope 做向量搜索。
-3. **精排/融合**:RRF 融合 + 重排,分「全文档 / 摘要档」两档。
-4. **去重**:排除滑动窗口内已可见的叶子。
-5. **注入**:通过 setExtensionPrompt 注入上下文。
-
-全程**静默降级**:后端不可用/失败不阻塞生成。
-
-### Q:怎么配置?
-
-设置 → 向量记忆:确认柏宝库可用、配置向量端点 / database / scope / embed 模型,再调召回参数(数量、阈值等)。新叶子会防抖同步进向量库;对账会清掉后端陈旧叶子。
-
-### Q:向量库的 scope 是什么?
-
-- 当前 chat 一个 scope;
-- 每次「带数据创建新对话」会生成一个 **bundle**(源聊天的向量快照),新聊天可跨 bundle 检索,让新聊天"记得"旧聊天里滚出去的内容。
-
-### Q:向量三个端点(embedding / rerank / queryRewrite)分别要什么模型?
-
-- **embedding**(必填):必须填支持 OpenAI 兼容 `/embeddings` 接口的端点 + **embedding 模型**(默认硅基流动 `Qwen3-Embedding-8B`)。对话/文本生成模型没有 embeddings 能力,填了必然失败(索引建不起来)。
-- **queryRewrite(查询重写)**:需要**对话模型**(走 `/chat/completions`),它要读剧情写检索词。⚠️ 该端点的 url/key 留空时**默认复用 embedding 端点与模型**——embedding 模型没有 chat/completions 能力,此时查询重写必然失败(见下条)。
-- **rerank(重排)**:需要专门的重排模型;不填则降级(用 embedding 相似度顺序)。
-
-### Q:向量配置正常但老是不召回,从哪排查?
-
-按顺序:
-
-1. **读「上次召回详情」**:设置 → 向量记忆 → 上次召回详情会记录每次不召回的原因(未达门槛 / 检索无候选 / 失败:具体信息),先看它。
-2. **查询重写**:强制启用、无降级,失败即本次召回整体取消并清空注入槽;常见失败原因是 queryRewrite 未单独配置、复用 embedding 模型去请求 chat/completions。给它单独配一个对话模型即可。
-3. **起召门槛**:AI 楼数 < `minAiFloors`(默认 30)跳过;所有楼仍在保留窗口内(无窗口外旧楼可召)跳过。窗口内已可见的叶子会被排除,避免与全文重复。
-4. **阈值**:摘要档要求 embedding 相似度 ≥ `embeddingThreshold`(默认 0.8);全文档档要求 rerank 得分 ≥ `rerankThreshold`(默认 0.9)。不达标时状态为「召回完成:无内容达标,本回合未注入」。
-5. **数据/地基**:老聊天或后开向量时旧叶子可能从未索引(需先补齐);柏宝库后端未装、数据库未选、scope 为空时召回直接不跑。
-6. **触发类型**:仅「产出新正文」的生成触发召回;`continue` / `quiet` / `impersonate` 不触发。
-
-### Q:为什么重生成/翻页时召回结果不变?
-
-正常,是召回缓存:召回输入(最新 user 楼、上一条 AI 楼、召回参数)一字未变时直接复用上次注入,省掉重写 + embed + 检索 + 重排的额度与时间。编辑最新输入或改召回参数(阈值/条数)后缓存自动失效重算;缓存 key 含 chatId,不会跨聊天误命中。
+- **Vật phẩm, Kế hoạch / Nghi vấn, Khung cảnh, NPC, Hồ sơ nhân vật chính**: đây là các lĩnh vực quy ước chặt chẽ của Bách Bảo Thư, được tự động duy trì, có giao diện UI và định dạng tiêm chuyên biệt, hãy ưu tiên dùng phần tích hợp sẵn.
+- **Tất cả các con số / cờ đánh dấu / cấu trúc tự do khác** (hảo cảm dạng số, HP, tiền bạc, giai đoạn nhiệm vụ, flag, danh vọng, trang bị, thành tựu…): dùng biến số tùy chỉnh.
+- Quy tắc: cái gì phần tích hợp sẵn bao phủ được thì dùng tích hợp sẵn, cái gì không bao phủ tới thì dùng biến số. Hai bên cùng tồn tại không xung đột (cây biến số độc lập với trạng thái tích hợp sẵn).
 
 ---
 
-## 7. 副 API 答疑
+## 6. Giải đáp về Trí nhớ vector
 
-### Q:为什么摘要要用"副 API"?不能复用主对话模型吗?
+### Hỏi: Trí nhớ vector (Bách Bảo Khố) là gì? Tại sao lại cần nó?
 
-摘要/总结是高频、长文本、独立任务,用主对话渠道会:占用生成排队、混入主对话上下文、消耗主对话配额。副 API 走独立渠道(可配多个),互不干扰。
+Rừng tóm tắt là "trí nhớ nén", có hao hụt thông tin; trí nhớ vector là **truy xuất toàn văn**: embed mỗi chiếc lá (cùng toàn văn của nó) vào kho vector, khi tạo phản hồi sẽ tìm kiếm ngữ nghĩa theo cốt truyện hiện tại, tiêm lại các phân đoạn lịch sử liên quan nhất, phù hợp với những kịch bản mà chi tiết đã bị mất trong bản tóm tắt như "phục bút cài cắm từ nhiều năm trước đột nhiên cần thu hồi". Hỗ trợ đầy đủ nhất khi có plugin backend đi kèm "Bách Bảo Khố" (`/api/plugins/baibaoku/v1/`), hoặc chạy ở chế độ cục bộ trên trình duyệt.
 
-### Q:一个渠道都不配会怎样?
+### Hỏi: Truy xuất hoạt động như thế nào?
 
-摘要/总结自动回退**主 API**(用主界面当前在用的 API,请求不带聊天历史)。主 API 也不可用时才报错(错误写 `lastError`,摘要页可见)。但摘要/总结是高频独立任务,占用主渠道会排队、混上下文、吃配额,建议至少配一个渠道;多渠道时「摘要」「总结」可分别指派(`resolveSender('summary' / 'resummary')`)。
+1. **Viết lại truy vấn**: Dùng mô hình nhỏ viết lại "cốt truyện gần nhất + ảnh chụp nhanh trạng thái" thành `INTENT` + đúng 5 câu truy vấn tìm kiếm Q (không tra cứu nội dung đã có trong cửa sổ, chỉ tìm ở ngoài cửa sổ).
+2. **Tìm kiếm đa luồng**: Thực hiện tìm kiếm vector trên scope của chat hiện tại + các bundle scope.
+3. **Sắp xếp tinh chỉnh / Dung hợp**: Dung hợp điểm số + sắp xếp lại (rerank), chia làm hai mức "Mức toàn văn / Mức tóm tắt".
+4. **Khử trùng lặp**: Loại trừ các lá đã nhìn thấy trong cửa sổ trượt.
+5. **Tiêm**: Tiêm vào ngữ cảnh thông qua setExtensionPrompt.
 
-### Q:副 API 怎么配?
+Toàn bộ quá trình **hạ cấp âm thầm**: khi backend không khả dụng / thất bại sẽ không làm chặn việc tạo phản hồi.
 
-设置 → 副 API:
+### Hỏi: Cấu hình như thế nào?
 
-- 可配多个渠道 + 各自排除参数(哪些模型/字段不用)。
-- 摘要、总结(resummary)、二次总结可以分别指定渠道(`resolveSender('summary' / 'resummary')`)。
+Cài đặt → Trí nhớ vector: bật công tắc, cấu hình ba điểm cuối mô hình (Embedding / Rerank / Viết lại Query), rồi điều chỉnh tham số truy xuất (số lượng, ngưỡng...). Lá mới sẽ được đồng bộ chống rung (debounce) vào kho vector; việc đối soát sẽ dọn sạch các lá cũ lỗi thời ở backend.
 
-### Q:返回格式不对("AI 道歉或掉格式")怎么办?
+### Hỏi: Scope của kho vector là gì?
 
-- 确认模型支持 JSON 输出、不擅自加 markdown 围栏。
-- 确认模型会先输出 `<thinking>` 检查块再输出 JSON(内置提示词已要求;自定义模板需自行保留该要求)。
-- 自定义提示词里保留 JSON 输出要求(自定义模板会强制追加兼容协议,但别删核心 JSON 字段)。
-- 摘要有重试次数设置(`summaryMaxRetries`)。
+- Cuộc trò chuyện hiện tại là một scope;
+- Mỗi lần "Tạo cuộc trò chuyện mới kèm dữ liệu" sẽ tạo ra một **bundle** (ảnh chụp nhanh vector của cuộc trò chuyện nguồn), cuộc trò chuyện mới có thể tìm kiếm xuyên qua các bundle, giúp cuộc trò chuyện mới "nhớ được" những nội dung đã cuộn đi mất trong cuộc trò chuyện cũ.
 
-### Q:破限(jailbreak)是什么?
+### Hỏi: Ba điểm cuối vector (embedding / rerank / queryRewrite) lần lượt cần mô hình gì?
 
-默认附在摘要/总结请求里的 system 提示,降低副 API 对露骨/暴力内容的拒答率——摘要面对的是已生成正文,**如实记录**而非二次审查。设置里可覆盖或留空(留空则不附加)。
+- **embedding** (bắt buộc): Bắt buộc phải điền điểm cuối hỗ trợ giao diện `/embeddings` tương thích OpenAI + **mô hình embedding** (mặc định SiliconFlow `Qwen/Qwen3-Embedding-8B`). Mô hình đối thoại / tạo văn bản không có khả năng embeddings, nếu điền vào chắc chắn sẽ thất bại (không dựng được chỉ mục).
+- **queryRewrite (Viết lại Query)**: Cần **mô hình đối thoại** (đi qua `/chat/completions`), nó phải đọc cốt truyện để viết từ khóa tìm kiếm. ⚠️ Khi url/key của điểm cuối này để trống sẽ **mặc định tái sử dụng địa chỉ và khóa của điểm cuối embedding**, nhưng bạn bắt buộc phải chọn riêng một mô hình đối thoại cho nó —— mô hình embedding không có khả năng chat/completions, nếu dùng nhầm mô hình embedding thì việc viết lại truy vấn chắc chắn sẽ thất bại (xem mục dưới).
+- **rerank (Sắp xếp lại)**: Cần mô hình sắp xếp lại chuyên dụng; nếu không điền sẽ hạ cấp (dùng thứ tự độ tương đồng embedding).
 
-### Q:摘要模型和人设/世界书什么关系?
+### Hỏi: Cấu hình vector bình thường nhưng mãi không thấy truy xuất, cần kiểm tra từ đâu?
 
-摘要请求会附带:角色卡设定、用户 persona、激活的世界书,以及"当前状态 + 历史 + 前情",全部标为**只读参考**(不写进 summary)。这保证摘要 AI 理解"主角是谁、世界什么规则",但不会把设定抄进摘要。
+Theo thứ tự sau:
 
-### Q:自定义提示词有哪些宏?
+1. **Đọc "Chi tiết lần truy xuất trước"**: Cài đặt → Trí nhớ vector → Chi tiết lần truy xuất trước sẽ ghi lại nguyên nhân mỗi lần không truy xuất (chưa đạt ngưỡng / tìm kiếm không có ứng viên / thất bại: thông tin cụ thể), hãy xem nó trước tiên.
+2. **Viết lại truy vấn**: Bắt buộc bật, không hạ cấp, nếu thất bại thì toàn bộ lần truy xuất này bị hủy và xóa trống khe tiêm; nguyên nhân thất bại thường gặp là queryRewrite chưa được cấu hình mô hình đối thoại riêng. Hãy cấu hình riêng cho nó một mô hình đối thoại là được.
+3. **Ngưỡng bắt đầu truy xuất**: Số tầng AI < `minAiFloors` (mặc định 30) sẽ bỏ qua; mọi tầng vẫn đang nằm trong cửa sổ giữ lại (không có tầng cũ ngoài cửa sổ để truy xuất) sẽ bỏ qua. Các lá đã nhìn thấy trong cửa sổ sẽ bị loại trừ để tránh trùng lặp với toàn văn.
+4. **Ngưỡng điểm**: Mức tóm tắt đòi hỏi độ tương đồng embedding ≥ `embeddingThreshold` (mặc định 0.8); mức toàn văn đòi hỏi điểm rerank ≥ `rerankThreshold` (mặc định 0.9). Khi không đạt chuẩn, trạng thái sẽ là "Truy xuất hoàn tất: không có nội dung đạt ngưỡng, lượt này chưa chèn".
+5. **Dữ liệu / Nền tảng**: Cuộc trò chuyện cũ hoặc bật vector muộn thì các lá cũ có thể chưa từng được lập chỉ mục (cần nhấn "Dựng lại chỉ mục vector của trò chuyện hiện tại" trước).
+6. **Loại kích hoạt**: Chỉ các lần tạo "sinh ra chính văn mới" mới kích hoạt truy xuất; `continue` / `quiet` / `impersonate` không kích hoạt.
 
-摘要模板支持 `{{user}}` `{{char}}` `{{history_block}}` `{{state_time}}` `{{state_location}}` `{{protagonist_block}}` `{{items_block}}` `{{itemlog_block}}` `{{scenes_block}}` `{{npcs_block}}` `{{plans_block}}` `{{resolved_plans_block}}` `{{content}}` `{{time_field}}` `{{time_rule}}` `{{summary_words}}` `{{vars_state_block}}` `{{vars_field}}` `{{vars_rule}}` `{{vars_block}}` `{{varlog_block}}` 等。总结模板有 `{{resummary_words}}`、`{{target}}`、`{{content}}`。字数档位(详细/精简)由设置切换。
+### Hỏi: Tại sao khi tạo lại (regenerate) / lật trang (swipe) thì kết quả truy xuất không đổi?
 
-### Q:批量补摘用自定义模板吗?
-
-不用——批量用内置 BATCH_SUMMARY_PROMPT(只产 summary+时间),自定义摘要模板不作用于批量。
+Đó là bình thường, nhờ bộ nhớ đệm truy xuất: khi đầu vào truy xuất (tầng user mới nhất, tầng AI liền trước, tham số truy xuất) không thay đổi một chữ nào thì sẽ tái sử dụng trực tiếp nội dung tiêm lần trước, tiết kiệm hạn mức và thời gian của Viết lại + Embed + Tìm kiếm + Sắp xếp lại. Sau khi chỉnh sửa nội dung nhập mới nhất hoặc sửa tham số truy xuất (ngưỡng / số lượng), bộ nhớ đệm sẽ tự động mất hiệu lực và tính toán lại; khóa đệm có chứa chatId nên sẽ không bị trúng nhầm xuyên cuộc trò chuyện.
 
 ---
 
-## 8. 公共 API / 宏 / 斜杠命令
+## 7. Giải đáp về API phụ
 
-柏宝书对外暴露只读接口,供其它插件/脚本/预设读取记忆与状态。详见 `PUBLIC_API.md`。要点:
+### Hỏi: Tại sao tóm tắt lại phải dùng "API phụ"? Không thể tái sử dụng mô hình đối thoại chính sao?
 
-### JS 全局 API `globalThis.STBaiBaiBook`
+Tóm tắt / đại tóm tắt là tác vụ độc lập, văn bản dài, tần suất cao; nếu dùng kênh đối thoại chính sẽ: chiếm hàng đợi tạo phản hồi, trộn lẫn vào ngữ cảnh đối thoại chính, tiêu hao hạn mức của đối thoại chính. API phụ đi theo kênh độc lập (có thể cấu hình nhiều kênh), không làm nhiễu lẫn nhau.
+
+### Hỏi: Nếu không cấu hình kênh nào cả thì sao?
+
+Tóm tắt / đại tóm tắt sẽ tự động lùi về **API chính** (dùng API hiện đang sử dụng ở giao diện chính, yêu cầu không kèm theo lịch sử trò chuyện). Chỉ khi API chính cũng không khả dụng mới báo lỗi (lỗi ghi vào `lastError`, hiển thị ở trang Tóm tắt). Tuy nhiên tóm tắt / đại tóm tắt là tác vụ độc lập tần suất cao, chiếm dụng kênh chính sẽ phải xếp hàng, trộn ngữ cảnh, tốn hạn mức, nên khuyên bạn cấu hình ít nhất một kênh phụ; khi có nhiều kênh thì "Tóm tắt" và "Đại tóm tắt" có thể được chỉ định riêng (`resolveSender('summary' / 'resummary')`).
+
+### Hỏi: Cấu hình API phụ như thế nào?
+
+Cài đặt → API phụ:
+
+- Có thể cấu hình nhiều kênh + tham số loại trừ riêng cho từng kênh (những trường tham số nào không gửi).
+- Tóm tắt và Đại tóm tắt (resummary) có thể chỉ định kênh riêng biệt.
+
+### Hỏi: Định dạng trả về không đúng ("AI xin lỗi hoặc làm rơi định dạng") thì phải làm sao?
+
+- Xác nhận mô hình hỗ trợ xuất JSON chuẩn, không tự ý cắt xén.
+- Xác nhận mô hình xuất khối kiểm tra `<thinking>` trước rồi mới xuất JSON (lời nhắc tích hợp sẵn đã yêu cầu; mẫu tùy chỉnh cần giữ lại yêu cầu này).
+- Trong lời nhắc tùy chỉnh hãy giữ lại yêu cầu xuất JSON (mẫu tùy chỉnh sẽ tự động được nối thêm giao thức tương thích, nhưng đừng xóa các trường JSON cốt lõi).
+- Tóm tắt có cài đặt số lần thử lại (`summaryMaxRetries`).
+
+### Hỏi: Phá giới hạn (jailbreak) là gì?
+
+Lời nhắc system mặc định được đính kèm trong yêu cầu tóm tắt / đại tóm tắt, giúp giảm tỷ lệ từ chối trả lời của API phụ đối với nội dung nhạy cảm / bạo lực —— tóm tắt đối mặt với chính văn đã được tạo ra, nhiệm vụ là **ghi chép trung thực** chứ không phải kiểm duyệt lần hai. Trong Cài đặt có thể ghi đè hoặc để trống (để trống sẽ dùng bản tích hợp sẵn).
+
+### Hỏi: Mô hình tóm tắt có quan hệ gì với thiết lập nhân vật / Sách Thế Giới?
+
+Yêu cầu tóm tắt sẽ đính kèm: thiết lập thẻ nhân vật, persona người dùng, Sách Thế Giới được kích hoạt, cùng với "trạng thái hiện tại + lịch sử + tiền đề", toàn bộ đều được đánh dấu là **tham khảo chỉ đọc** (không viết vào summary). Điều này đảm bảo AI tóm tắt hiểu được "nhân vật chính là ai, thế giới có quy tắc gì", nhưng sẽ không chép thiết lập vào bản tóm tắt.
+
+### Hỏi: Lời nhắc tùy chỉnh có những macro nào?
+
+Mẫu tóm tắt hỗ trợ `{{user}}` `{{char}}` `{{history_block}}` `{{state_time}}` `{{state_location}}` `{{protagonist_block}}` `{{items_block}}` `{{itemlog_block}}` `{{scenes_block}}` `{{npcs_block}}` `{{plans_block}}` `{{resolved_plans_block}}` `{{content}}` `{{time_field}}` `{{time_rule}}` `{{summary_words}}` `{{vars_state_block}}` `{{vars_field}}` `{{vars_rule}}` `{{vars_block}}` `{{varlog_block}}`... Mẫu đại tóm tắt có `{{resummary_words}}`, `{{target}}`, `{{content}}`. Mức số chữ (Chi tiết / Tinh gọn) được chuyển đổi trong Cài đặt.
+
+### Hỏi: Tóm tắt bù hàng loạt có dùng mẫu tùy chỉnh không?
+
+Không dùng —— tóm tắt hàng loạt dùng `BATCH_SUMMARY_PROMPT` tích hợp sẵn (chỉ sinh ra summary + thời gian), mẫu tóm tắt tùy chỉnh không tác động tới tóm tắt hàng loạt.
+
+---
+
+## 8. API công khai / Macro / Lệnh gạch chéo
+
+Bách Bảo Thư phơi bày giao diện chỉ đọc ra bên ngoài để các plugin / kịch bản / preset khác đọc trí nhớ và trạng thái. Xem chi tiết tại `PUBLIC_API.md`. Các điểm chính:
+
+### API toàn cục JS `globalThis.STBaiBaiBook`
 
 ```js
 const api = globalThis.STBaiBaiBook;
 api.apiVersion;      // 1
-api.pluginVersion;   // 插件版本
+api.pluginVersion;   // Phiên bản plugin
 api.capabilities;    // { globalApi, slashCommand, macros, parameterizedMacros, events }
 
-api.getSnapshot();                 // 完整快照(state/protagonist/vars/items/plans/scenes/npcs/itemLog + coverage)
-api.getSnapshot({ floor: 42, at: 'before' }); // 某楼之前/之后的状态
-api.getVar('关系.爱丽丝.好感度');   // 读变量,路径同内部;空路径 "" 返回整棵树
-api.getFloor(42);                  // 单楼(清洗后的正文 + 记忆摘要 + coverage)
-api.getHistory({ before: 42 });    // 历史压缩文本(text / relativeText / nodes)
-api.getInjectedHistory();          // 与正常注入同口径的历史(相对时间)
-api.query({ resource: 'vars' });   // 查询资源(vars/state/…)
-api.subscribe(fn);                 // 订阅变化
+api.getSnapshot();                 // Ảnh chụp nhanh đầy đủ (state/protagonist/vars/items/plans/scenes/npcs/itemLog + coverage)
+api.getSnapshot({ floor: 42, at: 'before' }); // Trạng thái trước / sau một tầng nào đó
+api.getVar('Quan hệ.Alice.Hảo cảm');   // Đọc biến số, đường dẫn giống bên trong; đường dẫn rỗng "" trả về toàn bộ cây
+api.getFloor(42);                  // Tầng đơn (chính văn sau khi làm sạch + tóm tắt trí nhớ + coverage)
+api.getHistory({ before: 42 });    // Văn bản nén lịch sử (text / relativeText / nodes)
+api.getInjectedHistory();          // Lịch sử cùng tiêu chuẩn với phần tiêm thông thường (thời gian tương đối)
+api.query({ resource: 'vars' });   // Truy vấn tài nguyên (vars/state/…)
+api.subscribe(fn);                 // Đăng ký nhận thông báo khi có thay đổi
 ```
 
-注意:
+Lưu ý:
 
-- 返回的是**深拷贝 DTO**,改返回值不会影响插件数据。
-- 楼层编号用 ST 的零基 `mesid`;`at:"before"` = 重放 `mesid < floor`,`after` = `<= floor`(默认)。
-- 番外楼永远忽略;`coverage.complete === false` 时结果可能有缺口,消费方别当完整记忆。
-- 读取不依赖总开关是否开启。
+- Giá trị trả về là **DTO sao chép sâu (deep clone)**, sửa đổi giá trị trả về sẽ không ảnh hưởng tới dữ liệu của plugin.
+- Số thứ tự tầng dùng `mesid` tính từ 0 của ST; `at: "before"` = phát lại `mesid < floor`, `after` = `<= floor` (mặc định).
+- Tầng ngoại truyện luôn bị bỏ qua; khi `coverage.complete === false` thì kết quả có thể có lỗ hổng, phía tiêu thụ đừng coi là trí nhớ hoàn chỉnh.
+- Việc đọc dữ liệu không phụ thuộc vào việc công tắc tổng có bật hay không.
 
-### STscript 斜杠命令
+### Lệnh gạch chéo STscript
 
-`/bbs-get`:`resource` 可取值 `var` / `vars` / `state` / `protagonist` / `items` / `plans` / `scenes` / `npcs` / `itemLog` / `snapshot` / `history` / `injectedHistory` / `floor` / `context`(省略时默认 snapshot);参数 `path`(变量路径)、`floor`(ST 零基 mesid)、`at`(before/after)、`before`(历史截止楼)、`format`(json/raw/text)。例如:
+`/bbs-get`: `resource` có thể nhận giá trị `var` / `vars` / `state` / `protagonist` / `items` / `plans` / `scenes` / `npcs` / `itemLog` / `snapshot` / `history` / `injectedHistory` / `floor` / `context` (khi lược bỏ mặc định là snapshot); các tham số `path` (đường dẫn biến số), `floor` (mesid tính từ 0 của ST), `at` (before/after), `before` (tầng kết thúc lịch sử), `format` (json/raw/text). Ví dụ:
 
 ```stscript
-/bbs-get resource=var path="关系.爱丽丝.好感度" floor=42 at=after format=raw
+/bbs-get resource=var path="Quan hệ.Alice.Hảo cảm" floor=42 at=after format=raw
 /bbs-get resource=context floor=42 format=json
 ```
 
-### 宏
+### Macro
 
-新宏引擎(实验性宏系统开启时)注册了参数化宏,旧宏引擎仅支持固定无参数宏:
+Bộ máy macro mới (khi bật hệ thống macro thử nghiệm) đăng ký các macro có tham số, bộ máy macro cũ chỉ hỗ trợ các macro cố định không tham số:
 
-- `{{bbsVars}}` → 当前自定义变量 JSON
-- `{{bbsState}}` → 当前时间与地点状态
-- `{{bbsSnapshot}}`、`{{bbsSnapshot::42::after}}` → 完整快照(可指定楼层/前后)
-- `{{bbsHistory}}`、`{{bbsHistory::42}}` → 带相对时间的压缩历史
-- `{{bbsInjectedHistory}}` → 与正常记忆注入同口径的历史
-- `{{bbsVar::关系.爱丽丝.好感度}}`、`{{bbsVar::队伍[0].hp::42::after}}` → 单变量(点号/数组路径,可带楼层)
-- `{{bbsFloor::42}}` → 单楼(正文 + 叶子摘要 JSON)
+- `{{bbsVars}}` → JSON biến số tùy chỉnh hiện tại
+- `{{bbsState}}` → Trạng thái thời gian và địa điểm hiện tại
+- `{{bbsSnapshot}}`, `{{bbsSnapshot::42::after}}` → Ảnh chụp nhanh đầy đủ (có thể chỉ định tầng / trước sau)
+- `{{bbsHistory}}`, `{{bbsHistory::42}}` → Lịch sử nén kèm thời gian tương đối
+- `{{bbsInjectedHistory}}` → Lịch sử cùng tiêu chuẩn với phần tiêm trí nhớ thông thường
+- `{{bbsVar::Quan hệ.Alice.Hảo cảm}}`, `{{bbsVar::Đội hình[0].hp::42::after}}` → Biến số đơn lẻ (đường dẫn dấu chấm / mảng, có thể kèm tầng)
+- `{{bbsFloor::42}}` → Tầng đơn (chính văn + JSON tóm tắt lá)
 
-### 就绪事件
+### Sự kiện sẵn sàng
 
 ```js
 window.addEventListener('st-baibai-book:ready', () => { ... }, { once: true });
-// 变化事件:st-baibai-book:changed
+// Sự kiện thay đổi: st-baibai-book:changed
 ```
 
 ---
 
-## 9. 数据、迁移、新对话
+## 9. Dữ liệu, di chuyển, cuộc trò chuyện mới
 
-### Q:「带数据创建新对话」是什么?
+### Hỏi: "Tạo cuộc trò chuyện mới kèm dữ liệu" là gì?
 
-新对话默认从空开始(变量值也独立)。「带数据创建新对话」把当前聊天的全量状态编码成**种子叶子**(delta 编码全量状态 + 向量 bundle 快照),新聊天从这份状态起步——比如"续写前传 / 分线"时,新线记得旧线的物品、计划、变量。
+Cuộc trò chuyện mới mặc định bắt đầu từ trống rỗng (giá trị biến số cũng độc lập). "Tạo cuộc trò chuyện mới kèm dữ liệu" mã hóa toàn bộ trạng thái của cuộc trò chuyện hiện tại thành một **lá hạt giống** (delta mã hóa trạng thái toàn lượng + ảnh chụp nhanh bundle vector), cuộc trò chuyện mới bắt đầu từ trạng thái này —— ví dụ khi "viết tiếp tiền truyện / phân nhánh", nhánh mới sẽ nhớ được vật phẩm, kế hoạch, biến số của nhánh cũ.
 
-### Q:从 Horae 迁移?
+### Hỏi: Di chuyển dữ liệu từ Horae?
 
-设置 → 从 Horae 迁移:导入 Horae 的历史摘要数据转成柏宝书格式(带起止时间,按楼层范围生成导入节点)。
+Cài đặt → Di chuyển dữ liệu từ Horae: nhập dữ liệu tóm tắt lịch sử của Horae chuyển thành định dạng Bách Bảo Thư (kèm thời gian bắt đầu/kết thúc, tạo nút nhập theo phạm vi tầng).
 
-### Q:升级后旧数据会丢吗?
+### Hỏi: Sau khi nâng cấp dữ liệu cũ có bị mất không?
 
-不会。森林/叶子都在聊天文件里,设置跨设备同步;旧格式兼容层(`normalizeTemplate` 兼容旧 `guide` 单字段、`timeLabel` 旧数据回退等)保证老数据可用。升级时还有隐藏正则合并逻辑(旧的隐藏规则原位收窄为时间规则)。
+Không. Rừng / lá đều nằm trong tệp trò chuyện, cài đặt đồng bộ đa thiết bị; tầng tương thích định dạng cũ (`normalizeTemplate` tương thích trường đơn `guide` cũ, dự phòng dữ liệu cũ `timeLabel`...) đảm bảo dữ liệu cũ vẫn dùng được. Khi nâng cấp còn có logic gộp regex ẩn (quy tắc ẩn cũ được thu hẹp tại chỗ thành quy tắc thẻ thời gian).
 
-### Q:怎么备份/导出?
+### Hỏi: Làm sao để sao lưu / xuất dữ liệu?
 
-- 聊天本身:ST 的聊天导入导出(叶子随聊天走)。
-- 设置:ST 的 settings 同步(extension_settings 在服务器 settings.json)。
-- 变量方案:变量页导出(模板+说明,不含值)。
+- Bản thân cuộc trò chuyện: tính năng nhập/xuất trò chuyện của ST (lá đi theo cuộc trò chuyện).
+- Cài đặt: đồng bộ settings của ST (`extension_settings` nằm trong `settings.json` trên máy chủ).
+- Phương án biến số: xuất ở trang Biến số (mẫu + giải thích, không chứa giá trị).
 
 ---
 
-## 10. 疑难排错速查
+## 10. Tra cứu nhanh xử lý sự cố
 
-| 症状 | 可能原因 / 处理 |
+| Triệu chứng | Nguyên nhân có thể / Cách xử lý |
 |---|---|
-| 完全不生效 | 总开关没开;角色在排除列表;没配副 API(摘要页看错误) |
-| 摘要走了主 API(没走副 API) | 未指派渠道时自动回退主 API(第 7 节);想走副渠道就在设置里指派 |
-| 摘要一直失败 | 副 API 渠道不通 / 模型输出格式差 → 换模型、调重试次数、查自定义提示词是否破坏了 JSON 要求 |
-| 没叶子、只有"待摘要" | 刚生成的楼还没摘;翻页后原摘要失效;副 API 失败(看 lastError) |
-| 状态没更新 | 变量:看模板/含义/规则是否配了(第 5 节);物品/计划:看是否有对应剧情事件;该楼可能还没摘要 |
-| token 还是那么多 | 先对比摘要页注入估算与总 token(第 3 节):注入占比小则大头在预设/世界书/正文,占比大才调插件(精简档/关向量/减状态) |
-| 模型老说"昨天" | 注入已带【3天前】相对标注但模型仍说"昨天" = 模型不理会注入 → 在角色卡/预设加"复述往事须引用注入时间"约束;若注入只有绝对时间,是该段时间解析不出(架空历/无年份),时间标签改用完整数字日期带年份 |
-| 向量老是不召回 | 先读「上次召回详情」;常见原因:queryRewrite 没单独配对话模型、楼层未达门槛/全在窗口内、阈值未达标、旧数据未索引(第 6 节) |
-| 摘要重复/漏记 | 近期已了结项会注入防重复(plans 两侧都看);编辑消息后记得重新摘要 |
-| 楼层消失 | 正常——已摘要楼层被隐藏正则藏出窗口(数据没删) |
-| 正文出现 `<bbs_items>` / `<bbs_vars>` 标签 | 正常——旁注,显示时被隐藏正则藏掉;手动改物品就改这里 |
-| 正文露出 `<bbs_start>` / `<bbs_end>` 标签 | 机制上显示层会藏掉;露出来 = 格式不被隐藏正则认:时间标签要求同一行内闭合,跨行藏不掉 → 在自定义时间标签提示词里强调"每个标签独占一行、闭合在同一行" |
-| 正文里没有时间标签 | 模型没遵守时间标签提示词 → 自定义更简单的提示词或换模型;此时时间靠叶子/推断兜底,相对时间可能不准 |
-| 切换聊天后记忆残留 | CHAT_CHANGED 会清召回残留并重载记忆;若仍异常,刷新页面 |
-| 想排除某些世界书内容 | 设置 → 排除世界书内容(按名字 / 正则,`renderWorldInfoTemplates` 控制是否展开模板) |
-| 想自定义清洗标签 | 设置 → 自定义清洗标签:正文里哪些自定义标签要被清掉(如 `<content>` 等) |
-| 主题/悬浮球 | 设置 → 基本设置(主题)、屏幕悬浮球(可开关) |
+| Hoàn toàn không có hiệu lực | Chưa bật công tắc tổng; nhân vật nằm trong danh sách loại trừ; chưa cấu hình API phụ (xem lỗi ở trang Tóm tắt) |
+| Tóm tắt đi qua API chính (không đi qua API phụ) | Khi chưa chỉ định kênh sẽ tự động lùi về API chính (Mục 7); muốn đi qua kênh phụ thì hãy chỉ định trong Cài đặt |
+| Tóm tắt thất bại liên tục | Kênh API phụ không thông / định dạng xuất của mô hình kém → đổi mô hình, điều chỉnh số lần thử lại, kiểm tra xem lời nhắc tùy chỉnh có làm hỏng yêu cầu JSON không |
+| Không có lá, chỉ có "Chờ tóm tắt" | Tầng vừa tạo chưa kịp tóm tắt; sau khi lật trang bản tóm tắt gốc mất hiệu lực; API phụ thất bại (xem lastError) |
+| Trạng thái không cập nhật | Biến số: xem đã cấu hình mẫu / ý nghĩa / quy tắc chưa (Mục 5); Vật phẩm / Kế hoạch: xem có sự kiện cốt truyện tương ứng không; tầng đó có thể chưa được tóm tắt |
+| Vẫn tốn nhiều token như vậy | Hãy đối chiếu ước tính lượng tiêm ở trang Tóm tắt với tổng token trước (Mục 3): nếu phần tiêm chiếm tỷ lệ nhỏ thì phần nặng nhất nằm ở preset / Sách Thế Giới / chính văn, nếu chiếm tỷ lệ lớn mới điều chỉnh plugin (mức Tinh gọn / tắt vector / giảm trạng thái) |
+| Mô hình cứ nói là "hôm qua" | Phần tiêm đã kèm nhãn tương đối 【3 ngày trước】 nhưng mô hình vẫn nói "hôm qua" = mô hình phớt lờ phần tiêm → thêm ràng buộc "khi thuật lại chuyện cũ phải dẫn chiếu thời gian tiêm" vào thẻ nhân vật / preset; nếu phần tiêm chỉ có thời gian tuyệt đối, tức là đoạn thời gian đó không phân tích ra được (lịch giả tưởng / không có năm), hãy đổi thẻ thời gian sang dùng ngày tháng chữ số đầy đủ có kèm năm |
+| Vector mãi không truy xuất | Đọc "Chi tiết lần truy xuất trước" trước tiên; nguyên nhân thường gặp: queryRewrite chưa cấu hình mô hình đối thoại riêng, số tầng chưa đạt ngưỡng / đều nằm trong cửa sổ, điểm chưa đạt ngưỡng, dữ liệu cũ chưa lập chỉ mục (Mục 6) |
+| Tóm tắt bị trùng lặp / bỏ sót | Các mục vừa kết thúc gần đây sẽ được tiêm để chống trùng lặp (cả hai phía đều xem plans); sau khi chỉnh sửa tin nhắn hãy nhớ tóm tắt lại |
+| Tầng bị biến mất | Bình thường —— tầng đã tóm tắt được ẩn khỏi cửa sổ (dữ liệu không bị xóa) |
+| Trong chính văn xuất hiện thẻ `<bbs_items>` / `<bbs_vars>` | Bình thường —— đó là chú thích, khi hiển thị sẽ được regex ẩn giấu đi; muốn sửa thủ công vật phẩm trong chính văn thì sửa ở đây |
+| Trong chính văn lộ ra thẻ `<bbs_start>` / `<bbs_end>` | Về cơ chế tầng hiển thị sẽ giấu đi; bị lộ ra = định dạng không được regex ẩn nhận diện: thẻ thời gian yêu cầu đóng thẻ trên cùng một dòng, vắt qua nhiều dòng sẽ không giấu được → trong lời nhắc thẻ thời gian tùy chỉnh hãy nhấn mạnh "mỗi thẻ chiếm riêng một dòng, đóng thẻ trên cùng một dòng" |
+| Trong chính văn không có thẻ thời gian | Mô hình không tuân thủ lời nhắc thẻ thời gian → tùy chỉnh lời nhắc đơn giản hơn hoặc đổi mô hình; lúc này thời gian dựa vào lá / suy đoán dự phòng, thời gian tương đối có thể không chuẩn |
+| Sau khi chuyển cuộc trò chuyện vẫn còn tàn dư trí nhớ | CHAT_CHANGED sẽ xóa tàn dư truy xuất và tải lại trí nhớ; nếu vẫn bất thường, hãy làm mới trang |
+| Muốn loại trừ một số nội dung Sách Thế Giới | Cài đặt → Loại trừ nội dung Sách Thế Giới (theo tên cuốn / regex tên mục, `renderWorldInfoTemplates` điều khiển việc có bung mẫu hay không) |
+| Muốn tùy chỉnh thẻ làm sạch | Cài đặt → Thẻ làm sạch tùy chỉnh: những thẻ tùy chỉnh nào trong chính văn cần được xóa bỏ (như `<snow>`...) |
+| Giao diện / Quả cầu nổi | Cài đặt → Cài đặt cơ bản (Giao diện), Quả cầu nổi trên màn hình (có thể bật/tắt) |
 
 ---
 
-## 11. 设置项速查(附默认值)
+## 11. Tra cứu nhanh các mục cài đặt (Kèm giá trị mặc định)
 
-> 答疑快速定位:「XX 设置是干嘛的」查这里。默认值来自代码,与设置页分组一致。
+> Định vị nhanh khi giải đáp: "Cài đặt XX dùng để làm gì" thì tra cứu tại đây. Giá trị mặc định lấy từ mã nguồn, đồng nhất với phân nhóm trên trang Cài đặt.
 
-### 总开关
+### Công tắc tổng
 
-| 设置 | 默认 | 作用 |
+| Cài đặt | Mặc định | Tác dụng |
 |---|---|---|
-| 记忆引擎(enabled) | 开 | 总开关;关闭后停止一切自动注入/摘要/总结/隐藏,菜单入口仍在,可重新打开界面再开启 |
+| Bộ máy trí nhớ (enabled) | Bật | Công tắc tổng; sau khi tắt sẽ dừng mọi hoạt động tự động tiêm / tóm tắt / đại tóm tắt / ẩn, lối vào menu vẫn còn, có thể mở lại giao diện để bật lên |
 
-### 基本设置
+### Cài đặt cơ bản
 
-| 设置 | 默认 | 作用 |
+| Cài đặt | Mặc định | Tác dụng |
 |---|---|---|
-| 主题 | 跟随 | 界面深色/浅色 |
+| Giao diện | Theo ST | Giao diện Sáng / Tối / Pastel / Xanh lá / Theo ST |
 
-### 屏幕悬浮球
+### Quả cầu nổi trên màn hình
 
-| 设置 | 默认 | 作用 |
+| Cài đặt | Mặc định | Tác dụng |
 |---|---|---|
-| 悬浮球 | 关 | 屏幕上可拖动的快捷悬浮球 |
+| Quả cầu nổi | Bật | Quả cầu nổi mở nhanh có thể kéo thả trên màn hình |
 
-### 副 API
+### API phụ
 
-| 设置 | 默认 | 作用 |
+| Cài đặt | Mặc định | Tác dụng |
 |---|---|---|
-| 渠道列表 | 空 | 独立 API 渠道:名称/地址/模型/密钥/排除参数 |
-| 摘要/总结渠道指派 | 空(跟随主 API) | 分别指派 summary、resummary 渠道;未指派回退主 API |
-| 自定义提示词 · 破限 | 空(内置默认) | 覆盖摘要/总结请求的默认破限提示 |
+| Danh sách kênh | Trống | Kênh API độc lập: Tên / Địa chỉ / Mô hình / Khóa bảo mật / Tham số loại trừ |
+| Chỉ định kênh Tóm tắt / Đại tóm tắt | Trống (Theo API chính) | Chỉ định riêng kênh cho summary và resummary; chưa chỉ định sẽ lùi về API chính |
+| Lời nhắc tùy chỉnh · Phá giới hạn | Trống (Mặc định tích hợp sẵn) | Ghi đè lời nhắc phá giới hạn mặc định của yêu cầu tóm tắt / đại tóm tắt |
 
-### 摘要设置
+### Cài đặt tóm tắt
 
-| 设置 | 默认 | 作用 |
+| Cài đặt | Mặc định | Tác dụng |
 |---|---|---|
-| 自动摘要 autoSummaryEnabled | 开 | 一键开关:自动隐藏 + 正文时间标签 + 积压拦截(不再各自独立开关) |
-| 仅注入剧情摘要 summaryOnlyMode | 关 | 兼容角色卡自带变量系统:照常分析/保存/展示状态,但不注入主模型、不写正文旁注 |
-| 字数档位 verbosity | 详细 | 内置模板的详细/精简;自定义模板不受影响 |
-| keepRecent | 3 | 保留最近 N 条 AI 消息发全文(滑动窗口);更早的自动摘要并隐藏 |
-| leafBatchThreshold | 12 | 叶子(L0)攒到 N 条压成一条 L1 总结(0=关闭) |
-| leafKeepRecent | 3 | L0→L1 时保留最近 N 条叶子不压,防注入断崖(0=攒够全压) |
-| resummaryThreshold | 6 | L1 攒到 N 条压成 L2(0=关闭) |
-| higherResummaryThreshold | 3 | L2 及以上攒到 N 条压上层(0=关闭) |
-| recentResolvedPlansCount | 5 | 状态快照附带近期已了结计划/悬念的条数(计划、悬念各取 N;0=不附带,防 AI 重复推进) |
-| summaryMaxRetries | 1 | 摘要/总结失败(请求错/JSON 解析错)的最大重试次数(0=不重试) |
-| batchMaxChars | 30000 | 批量补摘单块最大字符数(清洗后),攒够切块 |
-| batchMaxFloors | 10 | 批量补摘单块最大楼数兜底 |
+| Tóm tắt tự động autoSummaryEnabled | Bật | Công tắc một chạm: Tự động ẩn + Thẻ thời gian chính văn + Chặn tồn đọng (không còn tách thành công tắc độc lập nữa) |
+| Chỉ tiêm tóm tắt cốt truyện summaryOnlyMode | Tắt | Tương thích hệ thống biến số có sẵn của thẻ nhân vật: vẫn phân tích / lưu / hiển thị trạng thái như thường, nhưng không tiêm vào mô hình chính và không ghi chú thích chính văn |
+| Mức số chữ verbosity | Chi tiết | Chi tiết / Tinh gọn của mẫu tích hợp sẵn; mẫu tùy chỉnh không bị ảnh hưởng |
+| keepRecent | 3 | Giữ lại N tin nhắn AI gần nhất để gửi toàn văn (cửa sổ trượt); các tin cũ hơn tự động tóm tắt và ẩn đi |
+| leafBatchThreshold | 12 | Lá (L0) tích đủ N mục thì nén thành một bản đại tóm tắt L1 (0 = tắt) |
+| leafKeepRecent | 3 | Khi nén L0→L1 giữ lại N lá gần nhất không nén để chống đứt gãy thông tin tiêm (0 = tích đủ nén hết) |
+| resummaryThreshold | 7 | L1 tích đủ N mục thì nén thành L2 (0 = tắt) |
+| higherResummaryThreshold | 3 | L2 trở lên tích đủ N mục thì nén lên tầng cao hơn (0 = tắt) |
+| recentResolvedPlansCount | 5 | Số lượng mục kế hoạch / nghi vấn vừa kết thúc gần đây được đính kèm trong ảnh chụp nhanh trạng thái (kế hoạch, nghi vấn mỗi loại lấy N mục; 0 = không đính kèm, chống AI thúc đẩy trùng lặp) |
+| summaryMaxRetries | 1 | Số lần thử lại tối đa khi tóm tắt / đại tóm tắt thất bại (lỗi yêu cầu / lỗi phân tích JSON) (0 = không thử lại) |
+| batchMaxChars | 30000 | Số ký tự tối đa của một đợt khi tóm tắt bù hàng loạt (sau khi làm sạch), tích đủ sẽ cắt đợt |
+| batchMaxFloors | 10 | Giới hạn số tầng tối đa dự phòng của một đợt khi tóm tắt bù hàng loạt |
 
-### 注入设置
+### Cài đặt tiêm
 
-> 只影响主模型看到的状态块;副 API 摘要始终见全量、照常记录(记录关了不影响重开恢复)。
+> Chỉ ảnh hưởng tới các khối trạng thái mà mô hình chính nhìn thấy; API phụ tóm tắt luôn nhìn thấy toàn lượng và ghi nhận như thường (tắt tiêm không ảnh hưởng tới việc bật lại để khôi phục).
 
-| 设置 | 默认 | 作用 |
+| Cài đặt | Mặc định | Tác dụng |
 |---|---|---|
-| 眼下局势 sceneFocus | 开 | 互动局势卡:局面/在场人/焦点/张力/即将发生 |
-| 生活档案 lifeDetails | 开 | 主角及主要角色的生活小档案(关键词触发注入) |
-| 主角信息 protagonist | 开 | 主角性别/年龄/身份/外貌/着装/状态 |
-| 场景信息 scenes | 开 | 当前地点+祖先链+其他地点;关闭后 NPC/物品随之不注入 |
-| NPC 名册 npcs | 开 | 在场全量、同区域从简、不在场仅名与身份;依赖场景 |
-| 角色好感估计 npcAffinity | 开 | 名册内的五档好感估计;关闭后名册照发、只是不附带好感,适合角色卡自带好感系统的场合 |
-| 物品信息 items | 开 | 随身/可达物品全量,他处寄存仅名与数量;依赖场景 |
+| Cục diện trước mắt sceneFocus | Bật | Thẻ cục diện tương tác: Cục diện / Người có mặt / Tiêu điểm / Căng thẳng / Sắp diễn ra |
+| Hồ sơ đời sống lifeDetails | Bật | Hồ sơ nhỏ đời sống của nhân vật chính và nhân vật chính yếu (kích hoạt tiêm theo từ khóa) |
+| Thông tin nhân vật chính protagonist | Bật | Giới tính / Tuổi / Thân phận / Ngoại hình / Trang phục / Trạng thái của nhân vật chính |
+| Thông tin khung cảnh scenes | Bật | Địa điểm hiện tại + Chuỗi tổ tiên + Các địa điểm khác; sau khi tắt thì NPC / Vật phẩm cũng không được tiêm theo |
+| Danh sách NPC npcs | Bật | Có mặt gửi toàn lượng, cùng khu vực gửi rút gọn, không có mặt chỉ gửi tên và thân phận; phụ thuộc Khung cảnh |
+| Đánh giá hảo cảm nhân vật npcAffinity | Bật | Đánh giá hảo cảm 5 mức trong danh sách; sau khi tắt thì danh sách vẫn gửi như thường, chỉ là không đính kèm hảo cảm, phù hợp khi thẻ nhân vật đã có hệ thống hảo cảm riêng |
+| Hiểu biết của nhân vật về nhân vật chính knowledge | Bật | Danh sách những chuyện nhân vật biết hoặc tưởng là vậy về nhân vật chính |
+| Thông tin vật phẩm items | Bật | Vật phẩm mang theo / có thể tiếp cận gửi toàn lượng, gửi cất giữ nơi khác chỉ gửi tên và số lượng; phụ thuộc Khung cảnh |
 
-### 排除角色
+### Loại trừ nhân vật
 
-| 设置 | 默认 | 作用 |
+| Cài đặt | Mặc định | Tác dụng |
 |---|---|---|
-| 排除角色 excludedChars | 空 | 名单内角色(含重名卡)的聊天里记忆系统全部不生效 |
+| Loại trừ nhân vật excludedChars | Trống | Trong cuộc trò chuyện của các nhân vật trong danh sách (bao gồm cả thẻ trùng tên), toàn bộ hệ thống trí nhớ đều không có hiệu lực |
 
-### 排除世界书内容
+### Loại trừ nội dung Sách Thế Giới
 
-| 设置 | 默认 | 作用 |
+| Cài đặt | Mặc định | Tác dụng |
 |---|---|---|
-| 排除世界书文件名 excludedWorldNames | 空 | 整本排除:这些书的所有激活条目都不进摘要上下文(仅影响副 API) |
-| 排除世界书条目 excludedWorldInfoPatterns | 首次使用自动播种默认规则 | 按条目名过滤,每条当正则编译(普通名字=包含匹配);编译失败降级为字面子串 |
-| 渲染世界书模板 renderWorldInfoTemplates | 开 | 摘要前展开世界书 {{宏}}/EJS;含"写变量"EJS 的世界书每次摘要会额外执行、污染变量,可关 |
+| Tên tệp Sách Thế Giới loại trừ excludedWorldNames | Trống | Loại trừ nguyên cuốn: mọi mục kích hoạt của những cuốn sách này đều không đưa vào ngữ cảnh tóm tắt (chỉ ảnh hưởng API phụ) |
+| Mục Sách Thế Giới loại trừ excludedWorldInfoPatterns | Lần đầu sử dụng tự động gieo quy tắc mặc định | Lọc theo tên mục, mỗi mục được biên dịch như regex (tên thường = khớp bao gồm); biên dịch thất bại hạ cấp xuống chuỗi con |
+| Kết xuất mẫu Sách Thế Giới renderWorldInfoTemplates | Bật | Trước khi tóm tắt sẽ bung `{{macro}}`/EJS của Sách Thế Giới; Sách Thế Giới có chứa EJS "ghi biến số" mỗi lần tóm tắt sẽ thực thi thêm gây làm bẩn biến số, có thể tắt đi |
 
-### 自定义清洗标签
+### Thẻ làm sạch tùy chỉnh
 
-| 设置 | 默认 | 作用 |
+| Cài đặt | Mặc định | Tác dụng |
 |---|---|---|
-| 自定义清洗标签 customStripTags | 空 | 正文里整块删除的标签名(只填名不带尖括号,如 snow → `<snow>…</snow>` 连内容删);改动对召回即时生效,无需重建索引 |
+| Thẻ làm sạch tùy chỉnh customStripTags | Trống | Tên thẻ cần xóa nguyên khối trong chính văn (chỉ điền tên không kèm dấu ngoặc nhọn, như snow → xóa `<snow>…</snow>` cùng nội dung); thay đổi có hiệu lực tức thì đối với truy xuất, không cần dựng lại chỉ mục |
 
-### 自定义提示词
+### Lời nhắc tùy chỉnh
 
-| 设置 | 默认 | 作用 |
+| Cài đặt | Mặc định | Tác dụng |
 |---|---|---|
-| 摘要/总结/二次总结/破限/时间标签/向量重写 | 空=内置默认 | 覆盖对应内置模板;留空用内置。字数档位只影响内置模板 |
+| Tóm tắt / Đại tóm tắt / Đại tóm tắt cấp hai / Phá giới hạn / Thẻ thời gian | Trống = Mặc định tích hợp sẵn | Ghi đè mẫu tích hợp sẵn tương ứng; để trống dùng bản tích hợp sẵn. Mức số chữ chỉ ảnh hưởng tới mẫu tích hợp sẵn |
 
-### 向量记忆
+### Trí nhớ vector
 
-| 设置 | 默认 | 作用 |
+| Cài đặt | Mặc định | Tác dụng |
 |---|---|---|
-| 向量记忆 enabled | 关 | 向量召回总开关 |
-| embedding 端点 | 硅基流动 Qwen3-Embedding-8B | OpenAI 兼容 `/embeddings`;必填,需 embedding 模型 |
-| rerank 端点 | 复用 embedding | 重排模型;不填降级为 embedding 相似度序 |
-| queryRewrite 端点 | 复用 embedding | ⚠️ 需对话模型(`/chat/completions`);不单独配则必然失败(见第 6 节) |
-| queryRewriteMaxTokens | 8192 | 查询重写输出上限 |
-| database / scope | 空 | 柏宝库数据库与检索范围 |
-| 召回注入深度 injectionDepth | 0 | 召回结果注入位置(贴近对话) |
-| rerankCandidates | 20 | 检索取前 N 条候选进 rerank(后端按相似度排序,不套阈值) |
-| embeddingThreshold | 0.8 | 摘要档准入相似度下限 |
-| rerankThreshold | 0.9 | 全文档档准入重排分下限 |
-| fullTextCount | 2 | 全文档档最多发原文的条数 |
-| finalRecallCount | 5 | 召回注入总条数上限(先全文档后摘要档) |
-| minAiFloors | 30 | AI 楼起召门槛:AI 楼数少于该值不召回 |
+| Trí nhớ vector enabled | Tắt | Công tắc tổng truy xuất vector |
+| Điểm cuối embedding | SiliconFlow Qwen/Qwen3-Embedding-8B | `/embeddings` tương thích OpenAI; bắt buộc điền, cần mô hình embedding |
+| Điểm cuối rerank | Tái sử dụng embedding | Mô hình sắp xếp lại; không điền sẽ hạ cấp xuống thứ tự độ tương đồng embedding |
+| Điểm cuối queryRewrite | Tái sử dụng embedding | ⚠️ Cần mô hình đối thoại (`/chat/completions`); nếu không cấu hình mô hình riêng thì chắc chắn sẽ thất bại (xem Mục 6) |
+| queryRewriteMaxTokens | 8192 | Giới hạn token đầu ra của viết lại truy vấn |
+| Độ sâu tiêm truy xuất injectionDepth | 0 | Vị trí tiêm kết quả truy xuất (sát cuộc đối thoại) |
+| rerankCandidates | 20 | Tìm kiếm lấy N ứng viên đầu đưa vào rerank (backend sắp xếp theo độ tương đồng, không áp ngưỡng) |
+| embeddingThreshold | 0.8 | Giới hạn dưới độ tương đồng đầu vào của mức tóm tắt |
+| rerankThreshold | 0.9 | Giới hạn dưới điểm sắp xếp lại đầu vào của mức toàn văn |
+| fullTextCount | 2 | Số lượng mục tối đa gửi nguyên văn của mức toàn văn |
+| finalRecallCount | 5 | Giới hạn tổng số mục tiêm truy xuất (ưu tiên mức toàn văn trước rồi đến mức tóm tắt) |
+| minAiFloors | 30 | Ngưỡng tầng AI bắt đầu truy xuất: số tầng AI ít hơn giá trị này sẽ không truy xuất |
 
-### 其它功能
+### Các tính năng khác
 
-| 功能 | 作用 |
+| Tính năng | Tác dụng |
 |---|---|
-| 带数据创建新对话 | 把当前状态编码成种子叶子 + 向量 bundle 快照,新聊天从旧状态起步(续写前传/分线) |
-| 从 Horae 迁移 | 导入 Horae 历史摘要转成柏宝书格式(带起止时间) |
-| 获取数据 | 宏速查列表 + 一键导出 PUBLIC_API.md(给插件作者的接口文档) |
+| Tạo cuộc trò chuyện mới kèm dữ liệu | Mã hóa trạng thái hiện tại thành lá hạt giống + ảnh chụp nhanh bundle vector, cuộc trò chuyện mới bắt đầu từ trạng thái cũ (viết tiếp tiền truyện / phân nhánh) |
+| Di chuyển dữ liệu từ Horae | Nhập tóm tắt lịch sử Horae chuyển thành định dạng Bách Bảo Thư (kèm thời gian bắt đầu/kết thúc) |
+| Lấy dữ liệu | Danh sách tra cứu nhanh macro + xuất PUBLIC_API.md bằng một cú nhấn (tài liệu giao diện dành cho tác giả plugin) |
 
 ---
 
-## 附:核心概念速查
+## Phụ lục: Tra cứu nhanh các khái niệm cốt lõi
 
-- **叶子 Leaf**:单楼摘要 + 结构化增量,存消息 `extra.bbs_leaf`。
-- **森林 Forest**:叶子 + 压缩节点;压缩节点存 `chatMetadata`。
-- **L0 / L1 / L2+**:叶子 / 普通总结 / 二次总结(层级标签:摘要 / 总结L1 / 总结L2…)。
-- **派生状态 Derived**:物品/计划/场景/NPC/主角/变量,从叶子增量按楼重放,不落盘。
-- **时间标签**:`<bbs_start>`/`<bbs_end>`,正文事实化时间。
-- **旁注**:`<bbs_items>`(物品变动)/ `<bbs_vars>`(变量变动),让主模型"看到已改过",手动改物品的入口。
-- **注入槽**:`baibai_book_memory_history`(历史,顶部)、`baibai_book_memory_state`(当前状态,贴近对话)、`baibai_book_time_tag`(时间标签,最贴回复)。
-- **自定义变量**:一个 JSON 树 + 路径命令(set/add/assign/remove),三层模板(global/char/chat),值每聊天独立。
+- **Lá (Leaf)**: Tóm tắt tầng đơn + phần tăng thêm có cấu trúc, lưu ở `extra.bbs_leaf` của tin nhắn.
+- **Rừng (Forest)**: Lá + nút nén; nút nén lưu ở `chatMetadata`.
+- **L0 / L1 / L2+**: Lá / Đại tóm tắt thường / Đại tóm tắt cấp hai (nhãn cấp độ: Tóm tắt / Đại tóm tắt L1 / Đại tóm tắt L2…).
+- **Trạng thái dẫn xuất (Derived)**: Vật phẩm / Kế hoạch / Khung cảnh / NPC / Nhân vật chính / Biến số, phát lại theo tầng từ phần tăng thêm của lá, không lưu cứng ổ đĩa.
+- **Thẻ thời gian**: `<bbs_start>`/`<bbs_end>`, hiện thực hóa thời gian ngay trong chính văn.
+- **Chú thích (Aside)**: `<bbs_items>` (biến động vật phẩm) / `<bbs_vars>` (biến động biến số), giúp mô hình chính "nhìn thấy đã sửa đổi", đồng thời là lối vào để sửa vật phẩm thủ công trong chính văn.
+- **Khe tiêm**: `baibai_book_memory_history` (lịch sử, ở đỉnh), `baibai_book_memory_state` (trạng thái hiện tại, sát cuộc đối thoại), `baibai_book_time_tag` (thẻ thời gian, sát phản hồi nhất).
+- **Biến số tùy chỉnh**: Một cây JSON + lệnh đường dẫn (set/add/assign/remove), mẫu ba tầng (global/char/chat), giá trị độc lập theo từng cuộc trò chuyện.

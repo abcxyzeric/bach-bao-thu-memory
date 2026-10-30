@@ -16,11 +16,11 @@ import { getContext } from '@/st/context';
 import { toast } from '@/st/toast';
 import { computed, nextTick, ref } from 'vue';
 
-// NPC 是从叶子摘要重放出的派生数据,手动操作写入「最新一条有效叶子」;无有效叶子时无处挂载。
+// NPC là dữ liệu dẫn xuất được phát lại từ tóm tắt lá, thao tác thủ công ghi vào "lá hợp lệ mới nhất"; khi không có lá hợp lệ thì không có chỗ gắn kết.
 const hasLeaf = computed(() => derivedMeta.hasLeaf);
 const protagonistName = computed(() => {
   void derivedMeta.rev;
-  return getContext()?.name1?.trim() || '主角';
+  return getContext()?.name1?.trim() || 'Nhân vật chính';
 });
 const protagonistHasData = computed(() => Object.values(memory.protagonist).some(value => !!value?.trim()));
 const protagonistHasDetails = computed(() => [
@@ -31,14 +31,14 @@ const protagonistHasDetails = computed(() => [
   memory.protagonist.condition,
 ].some(value => !!value?.trim()));
 
-// 年龄显示:按锚点+当前故事时间推算(与注入端同一函数,界面显示 = AI 收到的)
+// Hiển thị tuổi: suy tính theo mốc + thời gian trong truyện hiện tại (cùng một hàm với đầu tiêm, giao diện hiển thị = nội dung AI nhận được)
 function shownAge(age?: string, ageTime?: string): string {
   return ageDisplay(age, ageTime, memory.state.time);
 }
-// 年龄悬浮提示:显示原始锚点,帮用户理解「约26岁」是怎么来的
+// Chú giải nổi của tuổi: hiển thị mốc gốc, giúp người dùng hiểu "Khoảng 26 tuổi" từ đâu mà có
 function ageTitle(age?: string, ageTime?: string): string {
   if (!age?.trim()) return '';
-  return ageTime?.trim() ? `记录于 ${ageTime.trim()}:${age.trim()}(随剧情时间自动推算)` : `年龄:${age.trim()}`;
+  return ageTime?.trim() ? `Ghi nhận lúc ${ageTime.trim()}: ${age.trim()} (tự động suy tính theo thời gian cốt truyện)` : `Tuổi: ${age.trim()}`;
 }
 const protagonistAge = computed(() => shownAge(memory.protagonist.age, memory.protagonist.ageTime));
 
@@ -69,12 +69,12 @@ function cancelProtagonistEdit() {
 function saveProtagonistEdit() {
   const draft = protagonistEditing.value;
   if (!draft) return;
-  // 年龄没改时带上旧锚点,防止重放把锚点刷成「此刻」(等于错误冻龄);真改了才留给重放盖新锚点
+  // Khi tuổi không thay đổi thì mang theo mốc cũ, ngăn việc phát lại làm mới mốc thành "ngay lúc này" (tương đương với đóng băng tuổi sai); thực sự sửa mới để phần phát lại đè mốc mới
   const ageTime = draft.age.trim() && draft.age.trim() === memory.protagonist.age ? memory.protagonist.ageTime : undefined;
   if (setProtagonist({ ...draft, ageTime })) protagonistEditing.value = null;
 }
 
-/* —— 生活小档案(三投放层:置顶常驻 / 时效相关浮现 / 沉降仅触发)—— */
+/* —— Hồ sơ nhỏ đời sống (ba tầng phân phối: Ghim đầu thường trực / Hiện lên theo thời hạn liên quan / Lắng đọng chỉ khi kích hoạt) —— */
 const lifeGroups = computed(() => {
   const pinned: MemLifeDetail[] = [];
   const active: MemLifeDetail[] = [];
@@ -84,10 +84,10 @@ const lifeGroups = computed(() => {
   }
   return { pinned, active, archive };
 });
-/* 列表顺序 = 置顶 → 时效/长期 → 沉降;层级差异交给卡片样式表达(置顶金条/沉降虚线),不再挂分组标题 */
+/* Thứ tự danh sách = Ghim đầu → Thời hạn/Dài hạn → Lắng đọng; sự khác biệt phân tầng giao cho kiểu dáng thẻ biểu đạt (ghim đầu vạch vàng / lắng đọng viền đứt), không gắn tiêu đề phân nhóm nữa */
 const lifeList = computed(() => [...lifeGroups.value.pinned, ...lifeGroups.value.active, ...lifeGroups.value.archive]);
 
-/* —— 生活小档案折叠:与摘要页计划/悬念同款。折叠态是本机视图偏好,走 localStorage、不进 apiSettings —— */
+/* —— Thu gọn Hồ sơ nhỏ đời sống: cùng kiểu với Kế hoạch / Nghi vấn ở trang Tóm tắt. Trạng thái thu gọn là tùy chọn chế độ xem trên máy, đi theo localStorage, không vào apiSettings —— */
 const LIFE_COLLAPSE_KEY = 'bbs.ui.lifeCollapsed.v1';
 function loadCollapsed(key: string): boolean {
   try {
@@ -100,11 +100,11 @@ function persistCollapsed(key: string, v: boolean) {
   try {
     localStorage.setItem(key, v ? '1' : '0');
   } catch {
-    /* localStorage 不可用时仅本次会话生效 */
+    /* Khi localStorage không khả dụng thì chỉ có hiệu lực trong phiên hiện tại */
   }
 }
 const lifeCollapsed = ref(loadCollapsed(LIFE_COLLAPSE_KEY));
-// 无条目即无可折叠:不显示箭头,也强制展开(避免删空后卡在收拢的空态)
+// Không có mục nào tức là không có gì để thu gọn: không hiển thị mũi tên, đồng thời ép mở rộng (tránh sau khi xóa sạch bị kẹt ở trạng thái trống đang thu gọn)
 const lifeFoldable = computed(() => memory.lifeDetails.length > 0);
 const lifeShown = computed(() => !lifeCollapsed.value || !lifeFoldable.value);
 function toggleLifeFold() {
@@ -119,7 +119,7 @@ function toggleDetailPin(d: MemLifeDetail) {
     return;
   }
   if (lifeGroups.value.pinned.length >= LIFE_PIN_CAP) {
-    toast(`置顶最多 ${LIFE_PIN_CAP} 条,先取消一条再置顶`, 'warning');
+    toast(`Ghim đầu tối đa ${LIFE_PIN_CAP} mục, vui lòng bỏ ghim một mục trước rồi mới ghim tiếp`, 'warning');
     return;
   }
   updateLifeDetail(d.id, { tier: 'pinned' });
@@ -131,11 +131,11 @@ function removeDetail(d: MemLifeDetail) {
   removeLifeDetail(d.id);
 }
 
-/* 生活细节 添加/编辑弹窗 */
+/* Hộp thoại Thêm / Chỉnh sửa chi tiết đời sống */
 const detailEditing = ref<{ id: string | null; subject: string; text: string; topics: string; anchors: string; until: string } | null>(null);
 const detailSubjectOptions = computed(() => [
-  { value: 'user', label: `主角 · ${protagonistName.value}` },
-  // 保留已删除/改名角色的历史归属选项,打开编辑不能悄悄改成 user。
+  { value: 'user', label: `Nhân vật chính · ${protagonistName.value}` },
+  // Giữ lại tùy chọn quy thuộc lịch sử của nhân vật đã xóa / đổi tên, khi mở chỉnh sửa không được âm thầm đổi thành user.
   ...[...new Set([...memory.npcs.map(n => n.name), ...memory.lifeDetails.map(lifeDetailSubject)])]
     .filter(name => name !== 'user').map(name => ({ value: name, label: name })),
 ]);
@@ -160,15 +160,15 @@ function saveDetailEdit() {
   if (ok) detailEditing.value = null;
 }
 
-// 触屏判定:跳过弹窗自动聚焦(移动端自动聚焦会弹输入法挡界面),与场景/摘要页一致。
+// Phán đoán màn hình cảm ứng: bỏ qua tự động focus hộp thoại (trên di động tự động focus sẽ bật bộ gõ che khuất giao diện), đồng nhất với trang Khung cảnh / Tóm tắt.
 const isTouch = typeof window !== 'undefined' && window.matchMedia?.('(hover: none)').matches;
 
-// 在场分档:与注入端(inject.ts)共用同一权威 classifyNpcPresence —— 读 location + locationPath,
-// 杜绝两套逻辑漂移,确保「界面显示的 = AI 收到的」。四档:
-//   主要角色(置顶,不论在场)/ 在场(全量)/ 同区域(名+身份+性格)/ 不在场(名+身份)。
+// Phân mức có mặt: dùng chung classifyNpcPresence có thẩm quyền với đầu tiêm (inject.ts) —— đọc location + locationPath,
+// ngăn chặn hai bộ logic trôi lệch nhau, đảm bảo "giao diện hiển thị = nội dung AI nhận được". Bốn mức:
+//   Nhân vật chính yếu (ghim đầu, bất kể có mặt hay không) / Có mặt (toàn lượng) / Cùng khu vực (tên + thân phận + tính cách) / Không có mặt (tên + thân phận).
 const sortByCreated = (a: MemNpc, b: MemNpc) => a.createdAt - b.createdAt;
 
-// 单趟分桶:每个非主要角色只判一次在场,避免三个 computed 各判一遍。
+// Chia thùng trong một lượt: mỗi nhân vật không phải chính yếu chỉ phán đoán có mặt một lần, tránh việc ba computed phán đoán lại ba lượt.
 const buckets = computed(() => {
   const present: MemNpc[] = [];
   const nearby: MemNpc[] = [];
@@ -176,7 +176,7 @@ const buckets = computed(() => {
   const here = memory.state.location || '';
   const locPath = memory.state.locationPath;
   for (const n of memory.npcs) {
-    if (n.important) continue; // 主要角色单列,不进在场判定
+    if (n.important) continue; // Nhân vật chính yếu liệt kê riêng, không đưa vào phán đoán có mặt
     const p = classifyNpcPresence(n, memory.scenes, here, locPath);
     (p === 'present' ? present : p === 'nearby' ? nearby : absent).push(n);
   }
@@ -190,17 +190,17 @@ const present = computed(() => buckets.value.present);
 const nearby = computed(() => buckets.value.nearby);
 const absent = computed(() => buckets.value.absent);
 
-/* —— 随行一键开关:随行→取消(留在当前地点);非随行→标记随行 —— */
+/* —— Công tắc một chạm Đi cùng: Đi cùng → hủy (ở lại địa điểm hiện tại); Không đi cùng → đánh dấu đi cùng —— */
 function toggleFollow(npc: MemNpc) {
   if (npc.follow === true) {
-    // 取消随行:留在当前所在地(无则留空,成为无位置的游离 NPC)
+    // Hủy đi cùng: ở lại nơi đang ở hiện tại (không có thì để trống, trở thành NPC trôi nổi không rõ vị trí)
     setNpcFollow(npc.name, false, memory.state.location || '');
   } else {
     setNpcFollow(npc.name, true);
   }
 }
 
-/* —— 主要角色一键升/降 —— */
+/* —— Tăng / Giảm cấp Nhân vật chính yếu bằng một chạm —— */
 function toggleImportant(npc: MemNpc) {
   setNpcImportant(npc.name, !npc.important);
 }
@@ -209,7 +209,7 @@ function askRemove(npc: MemNpc) {
   removing.value = npc;
 }
 
-/* —— 新增弹窗 —— */
+/* —— Hộp thoại thêm mới —— */
 const composerOpen = ref(false);
 const nameInput = ref<HTMLInputElement | null>(null);
 interface NpcDraft {
@@ -269,7 +269,7 @@ function addNpc() {
   composerOpen.value = false;
 }
 
-/* —— 编辑弹窗 —— */
+/* —— Hộp thoại chỉnh sửa —— */
 interface NpcEditing extends NpcDraft {
   oldName: string;
 }
@@ -323,22 +323,22 @@ function saveEdit() {
   editing.value = null;
 }
 
-/* —— 删除确认 —— */
+/* —— Xác nhận xóa —— */
 const removing = ref<MemNpc | null>(null);
 function confirmRemove() {
   if (removing.value) removeNpc(removing.value.name);
   removing.value = null;
 }
 
-/* —— 了解清单:角色知道/以为的主角的事(没记的私事 = 该角色不知道) —— */
+/* —— Danh sách hiểu biết: những chuyện về nhân vật chính mà nhân vật biết / tưởng là vậy (chuyện riêng tư chưa ghi = nhân vật đó không biết) —— */
 function knowCount(n: MemNpc): number {
   return knowledgeOf(memory.knowledge, n.name).length;
 }
 function knowTitle(n: MemNpc): string {
   const c = knowCount(n);
-  return `${n.name} 对主角的了解 · ${c ? `${c} 条` : '暂无记录'}`;
+  return `Hiểu biết của ${n.name} về nhân vật chính · ${c ? `${c} mục` : 'Chưa có bản ghi'}`;
 }
-/** 卡片预览:最近两条、新的在前——行宽不够要截断时,先保住最新的认知 */
+/** Xem trước trên thẻ: hai mục gần nhất, mục mới đứng trước —— khi chiều rộng dòng không đủ phải cắt ngắn, ưu tiên giữ lại nhận thức mới nhất trước */
 function knowPreview(n: MemNpc): string {
   return knowledgeOf(memory.knowledge, n.name).slice(-2).reverse().map(k => k.text).join(' / ');
 }
@@ -355,7 +355,7 @@ function closeKnow() {
   knowFor.value = null;
   knowEditing.value = null;
 }
-// 同义条目重放时会被去重:先挡下,免得「点了保存却没变化/条目消失」
+// Các mục đồng nghĩa khi phát lại sẽ bị khử trùng lặp: chặn lại trước để tránh việc "nhấn lưu mà không thấy thay đổi / mục biến mất"
 function knowDuplicated(text: string, exceptId?: string): boolean {
   const who = knowFor.value ?? '';
   return knowList.value.some(k => k.id !== exceptId && sameKnowledge(k, { subject: who, text }));
@@ -364,7 +364,7 @@ function addKnow() {
   const text = knowDraft.value.trim();
   if (!knowFor.value || !text) return;
   if (knowDuplicated(text)) {
-    toast('已有同样的条目', 'warning');
+    toast('Đã có mục tương tự', 'warning');
     return;
   }
   if (addKnowledge(knowFor.value, text)) knowDraft.value = '';
@@ -381,7 +381,7 @@ function saveKnowEdit() {
     return;
   }
   if (knowDuplicated(text, e.id)) {
-    toast('已有同样的条目', 'warning');
+    toast('Đã có mục tương tự', 'warning');
     return;
   }
   if (updateKnowledge(e.id, text)) knowEditing.value = null;
@@ -395,22 +395,22 @@ function deleteKnow(k: MemKnowledge) {
 <template>
   <section class="bbs-page">
     <div class="bbs-section-head">
-      <h2 class="bbs-title bbs-title-sub">角色</h2>
+      <h2 class="bbs-title bbs-title-sub">Nhân vật</h2>
       <button
         class="bbs-add-mini"
         type="button"
         :disabled="!hasLeaf"
-        :title="hasLeaf ? '手动添加角色' : '需先有摘要才能手动添加'"
+        :title="hasLeaf ? 'Thêm nhân vật thủ công' : 'Cần có tóm tắt trước mới có thể thêm thủ công'"
         @click="openComposer"
       >
         <Icon name="plus" />
       </button>
     </div>
-    <SummaryOnlyNotice subject="主角档案、NPC 名册与角色状态" />
+    <SummaryOnlyNotice subject="hồ sơ nhân vật chính, danh sách NPC và trạng thái nhân vật" />
 
     <hr class="bbs-rule" />
 
-    <!-- ===== 生活小档案:主角与主要角色的偏好/习惯/近期状态(三投放层)。置于主角卡之上且可折叠,不打断下方角色卡流 ===== -->
+    <!-- ===== Hồ sơ nhỏ đời sống: sở thích / thói quen / tình trạng gần đây của nhân vật chính và nhân vật chính yếu (ba tầng phân phối). Đặt phía trên thẻ nhân vật chính và có thể thu gọn, không làm ngắt luồng thẻ nhân vật bên dưới ===== -->
     <div class="bbs-protagonist-section">
       <div class="bbs-npc-grouphead">
         <button
@@ -419,25 +419,25 @@ function deleteKnow(k: MemKnowledge) {
           :class="{ 'is-static': !lifeFoldable }"
           :disabled="!lifeFoldable"
           :aria-expanded="lifeShown"
-          :title="lifeFoldable ? (lifeShown ? '收起生活小档案' : '展开生活小档案') : ''"
+          :title="lifeFoldable ? (lifeShown ? 'Thu gọn hồ sơ nhỏ đời sống' : 'Mở rộng hồ sơ nhỏ đời sống') : ''"
           @click="toggleLifeFold"
         >
           <Icon v-if="lifeFoldable" name="chevron" class="bbs-fold-caret" :class="{ 'is-collapsed': !lifeShown }" />
-          <h2 class="bbs-life-title" title="置顶条常驻发送;时效/长期条按相关性浮现;沉降条仅关键词触发">生活小档案</h2>
+          <h2 class="bbs-life-title" title="Mục ghim đầu gửi thường trực; mục thời hạn/dài hạn hiện lên theo độ liên quan; mục lắng đọng chỉ kích hoạt theo từ khóa">Hồ sơ nhỏ đời sống</h2>
           <span v-if="lifeFoldable" class="bbs-fold-count">{{ memory.lifeDetails.length }}</span>
         </button>
-        <span v-if="apiSettings.summaryOnlyMode" class="bbs-npc-grouphint is-local-only">仅供柏宝书记录,不发送给主对话 AI</span>
+        <span v-if="apiSettings.summaryOnlyMode" class="bbs-npc-grouphint is-local-only">Chỉ dùng để Bách Bảo Thư ghi nhận, không gửi cho AI đối thoại chính</span>
         <button
           class="bbs-add-mini"
           type="button"
           :disabled="!hasLeaf"
-          :title="hasLeaf ? '手动添加生活细节' : '需先有摘要才能手动添加'"
+          :title="hasLeaf ? 'Thêm chi tiết đời sống thủ công' : 'Cần có tóm tắt trước mới có thể thêm thủ công'"
           @click="openDetailComposer"
         >
           <Icon name="plus" />
         </button>
       </div>
-      <!-- grid 1fr↔0fr 收展:高度自适应、无需写死 max-height;reduced-motion 下瞬切(见样式) -->
+      <!-- Thu mở grid 1fr↔0fr: chiều cao tự thích ứng, không cần viết cứng max-height; dưới reduced-motion sẽ cắt tức thì (xem kiểu dáng) -->
       <div class="bbs-fold-wrap" :class="{ 'is-collapsed': !lifeShown }">
         <div class="bbs-fold-inner">
           <div v-if="lifeList.length" class="bbs-life-group">
@@ -446,7 +446,7 @@ function deleteKnow(k: MemKnowledge) {
                 <p class="bbs-life-text">{{ fmtLifeDetail(d, protagonistName) }}</p>
                 <div v-if="d.topics.length || d.until" class="bbs-life-meta">
                   <span v-if="d.topics.length" class="bbs-life-tag">{{ d.topics.join(' / ') }}</span>
-                  <span v-if="d.until" class="bbs-life-until">至 {{ d.until }}</span>
+                  <span v-if="d.until" class="bbs-life-until">Đến {{ d.until }}</span>
                 </div>
               </div>
               <span class="bbs-npc-acts">
@@ -454,7 +454,7 @@ function deleteKnow(k: MemKnowledge) {
                   class="bbs-item-act"
                   :class="{ active: d.tier === 'pinned' }"
                   type="button"
-                  :title="d.tier === 'pinned' ? '取消置顶' : '置顶(常驻发送,最多5条)'"
+                  :title="d.tier === 'pinned' ? 'Bỏ ghim đầu' : 'Ghim đầu (gửi thường trực, tối đa 5 mục)'"
                   @click="toggleDetailPin(d)"
                 >
                   <Icon name="pin" />
@@ -462,26 +462,26 @@ function deleteKnow(k: MemKnowledge) {
                 <button
                   class="bbs-item-act"
                   type="button"
-                  :title="d.tier === 'archive' ? '恢复为时效层' : '沉降(仅相关时浮现)'"
+                  :title="d.tier === 'archive' ? 'Khôi phục về tầng thời hạn' : 'Lắng đọng (chỉ hiện lên khi có liên quan)'"
                   @click="toggleDetailArchive(d)"
                 >
                   <Icon :name="d.tier === 'archive' ? 'upload' : 'download'" />
                 </button>
-                <button class="bbs-item-act" type="button" title="编辑" @click="openDetailEdit(d)"><Icon name="edit" /></button>
-                <button class="bbs-item-act bbs-item-del" type="button" title="删除" @click="removeDetail(d)"><Icon name="trash" /></button>
+                <button class="bbs-item-act" type="button" title="Chỉnh sửa" @click="openDetailEdit(d)"><Icon name="edit" /></button>
+                <button class="bbs-item-act bbs-item-del" type="button" title="Xóa" @click="removeDetail(d)"><Icon name="trash" /></button>
               </span>
             </article>
           </div>
-          <p v-if="!memory.lifeDetails.length" class="bbs-npc-mainhint">尚无生活细节。摘要会记录主角及主要角色明确说过/正文揭示的偏好、习惯和近况,每条标明所属人物;也可手动添加或纠正归属。</p>
+          <p v-if="!memory.lifeDetails.length" class="bbs-npc-mainhint">Chưa có chi tiết đời sống. Tóm tắt sẽ ghi lại sở thích, thói quen và tình trạng gần đây mà nhân vật chính cùng các nhân vật chính yếu đã nói rõ / chính văn hé lộ, mỗi mục ghi rõ nhân vật sở hữu; cũng có thể thêm thủ công hoặc chỉnh sửa lại quy thuộc.</p>
         </div>
       </div>
     </div>
 
     <div class="bbs-protagonist-section">
       <div class="bbs-npc-grouphead">
-        <span class="bbs-npc-grouptag is-protagonist"><Icon name="characters" />主角</span>
+        <span class="bbs-npc-grouptag is-protagonist"><Icon name="characters" />Nhân vật chính</span>
         <span class="bbs-npc-grouphint" :class="{ 'is-local-only': apiSettings.summaryOnlyMode }">
-          {{ apiSettings.summaryOnlyMode ? '仅供柏宝书记录，不发送给主对话 AI' : '始终完整发送,与 NPC 名册分开记录' }}
+          {{ apiSettings.summaryOnlyMode ? 'Chỉ dùng để Bách Bảo Thư ghi nhận, không gửi cho AI đối thoại chính' : 'Luôn gửi đầy đủ, ghi nhận tách biệt với danh sách NPC' }}
         </span>
       </div>
       <article class="bbs-npc bbs-protagonist">
@@ -495,7 +495,7 @@ function deleteKnow(k: MemKnowledge) {
                 class="bbs-item-act"
                 type="button"
                 :disabled="!hasLeaf"
-                :title="hasLeaf ? '编辑主角当前档案' : '需先有摘要才能编辑'"
+                :title="hasLeaf ? 'Chỉnh sửa hồ sơ hiện tại của nhân vật chính' : 'Cần có tóm tắt trước mới có thể chỉnh sửa'"
                 @click="openProtagonistEdit"
               >
                 <Icon name="edit" />
@@ -503,23 +503,23 @@ function deleteKnow(k: MemKnowledge) {
             </span>
           </div>
           <dl v-if="protagonistHasDetails" class="bbs-npc-fields">
-            <div v-if="memory.protagonist.identity" class="bbs-npc-field f-title"><dt>身份</dt><dd>{{ memory.protagonist.identity }}</dd></div>
-            <div v-if="memory.protagonist.appearance" class="bbs-npc-field f-desc"><dt>外貌</dt><dd>{{ memory.protagonist.appearance }}</dd></div>
-            <div v-if="memory.protagonist.outfit" class="bbs-npc-field f-outfit"><dt>着装</dt><dd>{{ memory.protagonist.outfit }}</dd></div>
-            <div v-if="memory.protagonist.condition" class="bbs-npc-field f-cond"><dt>状态</dt><dd>{{ memory.protagonist.condition }}</dd></div>
+            <div v-if="memory.protagonist.identity" class="bbs-npc-field f-title"><dt>Thân phận</dt><dd>{{ memory.protagonist.identity }}</dd></div>
+            <div v-if="memory.protagonist.appearance" class="bbs-npc-field f-desc"><dt>Ngoại hình</dt><dd>{{ memory.protagonist.appearance }}</dd></div>
+            <div v-if="memory.protagonist.outfit" class="bbs-npc-field f-outfit"><dt>Trang phục</dt><dd>{{ memory.protagonist.outfit }}</dd></div>
+            <div v-if="memory.protagonist.condition" class="bbs-npc-field f-cond"><dt>Trạng thái</dt><dd>{{ memory.protagonist.condition }}</dd></div>
           </dl>
-          <p v-else-if="!protagonistHasData" class="bbs-npc-mainhint">尚无主角状态记录。后续摘要会从剧情中的明确事实逐步补充。</p>
+          <p v-else-if="!protagonistHasData" class="bbs-npc-mainhint">Chưa có bản ghi trạng thái nhân vật chính. Các tóm tắt tiếp theo sẽ từng bước bổ sung từ các sự thật rõ ràng trong cốt truyện.</p>
         </div>
       </article>
     </div>
 
     <div v-if="memory.npcs.length" class="bbs-npc-groups">
-      <!-- 主要角色:核心主演,永远全量发送。这里突出「即时状态面板」(着装/状态/所在),弱化身份档案 -->
+      <!-- Nhân vật chính yếu: diễn viên chính cốt lõi, luôn gửi toàn lượng. Ở đây làm nổi bật "bảng trạng thái tức thời" (trang phục / trạng thái / nơi ở), làm dịu hồ sơ thân phận -->
       <div v-if="mains.length" class="bbs-npc-group">
         <div class="bbs-npc-grouphead">
-          <span class="bbs-npc-grouptag is-main"><Icon name="star" />主要角色</span>
+          <span class="bbs-npc-grouptag is-main"><Icon name="star" />Nhân vật chính yếu</span>
           <span class="bbs-npc-grouphint" :class="{ 'is-local-only': apiSettings.summaryOnlyMode }">
-            {{ apiSettings.summaryOnlyMode ? '仍会重点维护状态，但不发送给主对话 AI' : '始终随剧情发送,重点维护当前状态' }}
+            {{ apiSettings.summaryOnlyMode ? 'Vẫn sẽ chú trọng duy trì trạng thái, nhưng không gửi cho AI đối thoại chính' : 'Luôn gửi kèm theo cốt truyện, chú trọng duy trì trạng thái hiện tại' }}
           </span>
         </div>
         <div class="bbs-npc-list">
@@ -530,36 +530,36 @@ function deleteKnow(k: MemKnowledge) {
                 <span v-if="n.gender" class="bbs-npc-gender">{{ n.gender }}</span>
                 <span v-if="shownAge(n.age, n.ageTime)" class="bbs-npc-gender" :title="ageTitle(n.age, n.ageTime)">{{ shownAge(n.age, n.ageTime) }}</span>
                 <span class="bbs-npc-acts">
-                  <button class="bbs-item-act bbs-npc-star active" type="button" title="主要角色 · 点击取消" @click="toggleImportant(n)"><Icon name="star" /></button>
+                  <button class="bbs-item-act bbs-npc-star active" type="button" title="Nhân vật chính yếu · Nhấn để bỏ đánh dấu" @click="toggleImportant(n)"><Icon name="star" /></button>
                   <button v-if="apiSettings.injection.knowledge || knowCount(n)" class="bbs-item-act" :class="{ active: knowCount(n) }" type="button" :title="knowTitle(n)" @click="openKnow(n)"><Icon name="bulb" /></button>
-                  <button class="bbs-item-act" type="button" title="编辑" @click="openEdit(n)"><Icon name="edit" /></button>
-                  <button class="bbs-item-act bbs-item-del" type="button" title="删除" @click="askRemove(n)"><Icon name="trash" /></button>
+                  <button class="bbs-item-act" type="button" title="Chỉnh sửa" @click="openEdit(n)"><Icon name="edit" /></button>
+                  <button class="bbs-item-act bbs-item-del" type="button" title="Xóa" @click="askRemove(n)"><Icon name="trash" /></button>
                 </span>
               </div>
               <dl v-if="n.title || n.relation || fmtNpcAffinity(n) || n.outfit || n.condition || n.follow || n.location || knowCount(n)" class="bbs-npc-fields">
-                <div v-if="n.title" class="bbs-npc-field f-title"><dt>身份</dt><dd>{{ n.title }}</dd></div>
-                <div v-if="n.relation" class="bbs-npc-field f-rel"><dt>关系</dt><dd>{{ n.relation }}</dd></div>
-                <div v-if="fmtNpcAffinity(n)" class="bbs-npc-field"><dt title="对主角的内心好感与外在态度估计">好感</dt><dd>{{ fmtNpcAffinity(n) }}</dd></div>
+                <div v-if="n.title" class="bbs-npc-field f-title"><dt>Thân phận</dt><dd>{{ n.title }}</dd></div>
+                <div v-if="n.relation" class="bbs-npc-field f-rel"><dt>Quan hệ</dt><dd>{{ n.relation }}</dd></div>
+                <div v-if="fmtNpcAffinity(n)" class="bbs-npc-field"><dt title="Đánh giá hảo cảm nội tâm và thái độ bên ngoài đối với nhân vật chính">Hảo cảm</dt><dd>{{ fmtNpcAffinity(n) }}</dd></div>
                 <div v-if="n.follow || n.location" class="bbs-npc-field f-loc">
-                  <dt>所在</dt>
-                  <dd :class="{ 'is-follow': n.follow }">{{ n.follow ? '随主角同行' : n.location }}</dd>
+                  <dt>Nơi ở</dt>
+                  <dd :class="{ 'is-follow': n.follow }">{{ n.follow ? 'Đi cùng nhân vật chính' : n.location }}</dd>
                 </div>
-                <div v-if="n.outfit" class="bbs-npc-field f-outfit"><dt>着装</dt><dd>{{ n.outfit }}</dd></div>
-                <div v-if="n.condition" class="bbs-npc-field f-cond"><dt>状态</dt><dd>{{ n.condition }}</dd></div>
-                <div v-if="knowCount(n)" class="bbs-npc-field f-know" :title="knowTitle(n)" @click="openKnow(n)"><dt>了解</dt><dd><span class="bbs-npc-know-text">{{ knowPreview(n) }}</span><span class="bbs-npc-know-count">{{ knowCount(n) }} 条</span></dd></div>
+                <div v-if="n.outfit" class="bbs-npc-field f-outfit"><dt>Trang phục</dt><dd>{{ n.outfit }}</dd></div>
+                <div v-if="n.condition" class="bbs-npc-field f-cond"><dt>Trạng thái</dt><dd>{{ n.condition }}</dd></div>
+                <div v-if="knowCount(n)" class="bbs-npc-field f-know" :title="knowTitle(n)" @click="openKnow(n)"><dt>Hiểu biết</dt><dd><span class="bbs-npc-know-text">{{ knowPreview(n) }}</span><span class="bbs-npc-know-count">{{ knowCount(n) }} mục</span></dd></div>
               </dl>
-              <p v-else class="bbs-npc-mainhint">尚无状态记录 —— 编辑可补充当前着装 / 状态 / 所在。</p>
+              <p v-else class="bbs-npc-mainhint">Chưa có bản ghi trạng thái —— nhấn chỉnh sửa để bổ sung trang phục / trạng thái / nơi ở hiện tại.</p>
             </div>
           </article>
         </div>
       </div>
 
-      <!-- 在场:随行 / 所在当前场景。全量信息发给 AI,这里也全量展示 -->
+      <!-- Có mặt: đi cùng / đang ở khung cảnh hiện tại. Thông tin toàn lượng gửi cho AI, ở đây cũng hiển thị toàn lượng -->
       <div v-if="present.length" class="bbs-npc-group">
         <div class="bbs-npc-grouphead">
-          <span class="bbs-npc-grouptag is-present">在场</span>
+          <span class="bbs-npc-grouptag is-present">Có mặt</span>
           <span class="bbs-npc-grouphint" :class="{ 'is-local-only': apiSettings.summaryOnlyMode }">
-            {{ apiSettings.summaryOnlyMode ? '仍按在场状态完整记录，但不发送给主对话 AI' : '完整信息随剧情发送' }}
+            {{ apiSettings.summaryOnlyMode ? 'Vẫn ghi nhận đầy đủ theo trạng thái có mặt, nhưng không gửi cho AI đối thoại chính' : 'Thông tin đầy đủ gửi kèm theo cốt truyện' }}
           </span>
         </div>
         <div class="bbs-npc-list">
@@ -573,7 +573,7 @@ function deleteKnow(k: MemKnowledge) {
                   <button
                     class="bbs-item-act bbs-npc-star"
                     type="button"
-                    :title="apiSettings.summaryOnlyMode ? '标记为主要角色(仅调整柏宝书内的角色分组)' : '标记为主要角色(始终全量发送、追踪状态)'"
+                    :title="apiSettings.summaryOnlyMode ? 'Đánh dấu là nhân vật chính yếu (chỉ điều chỉnh phân nhóm nhân vật trong Bách Bảo Thư)' : 'Đánh dấu là nhân vật chính yếu (luôn gửi toàn lượng, theo dõi trạng thái)'"
                     @click="toggleImportant(n)"
                   >
                     <Icon name="star" />
@@ -582,42 +582,42 @@ function deleteKnow(k: MemKnowledge) {
                     class="bbs-item-act bbs-npc-pin"
                     :class="{ active: n.follow }"
                     type="button"
-                    :title="n.follow ? '随行中 · 点击取消(留在当前地点)' : '标记为随行同伴'"
+                    :title="n.follow ? 'Đang đi cùng · Nhấn để bỏ (ở lại địa điểm hiện tại)' : 'Đánh dấu là bạn đồng hành đi cùng'"
                     @click="toggleFollow(n)"
                   >
                     <Icon name="pin" />
                   </button>
                   <button v-if="apiSettings.injection.knowledge || knowCount(n)" class="bbs-item-act" :class="{ active: knowCount(n) }" type="button" :title="knowTitle(n)" @click="openKnow(n)"><Icon name="bulb" /></button>
-                  <button class="bbs-item-act" type="button" title="编辑" @click="openEdit(n)"><Icon name="edit" /></button>
-                  <button class="bbs-item-act bbs-item-del" type="button" title="删除" @click="askRemove(n)"><Icon name="trash" /></button>
+                  <button class="bbs-item-act" type="button" title="Chỉnh sửa" @click="openEdit(n)"><Icon name="edit" /></button>
+                  <button class="bbs-item-act bbs-item-del" type="button" title="Xóa" @click="askRemove(n)"><Icon name="trash" /></button>
                 </span>
               </div>
               <dl v-if="n.title || n.relation || fmtNpcAffinity(n) || n.ties || n.personality || n.desc || n.outfit || n.condition || n.follow || n.location || knowCount(n)" class="bbs-npc-fields">
-                <div v-if="n.title" class="bbs-npc-field f-title"><dt>身份</dt><dd>{{ n.title }}</dd></div>
-                <div v-if="n.relation" class="bbs-npc-field f-rel"><dt>关系</dt><dd>{{ n.relation }}</dd></div>
-                <div v-if="fmtNpcAffinity(n)" class="bbs-npc-field"><dt title="对主角的内心好感与外在态度估计">好感</dt><dd>{{ fmtNpcAffinity(n) }}</dd></div>
+                <div v-if="n.title" class="bbs-npc-field f-title"><dt>Thân phận</dt><dd>{{ n.title }}</dd></div>
+                <div v-if="n.relation" class="bbs-npc-field f-rel"><dt>Quan hệ</dt><dd>{{ n.relation }}</dd></div>
+                <div v-if="fmtNpcAffinity(n)" class="bbs-npc-field"><dt title="Đánh giá hảo cảm nội tâm và thái độ bên ngoài đối với nhân vật chính">Hảo cảm</dt><dd>{{ fmtNpcAffinity(n) }}</dd></div>
                 <div v-if="n.follow || n.location" class="bbs-npc-field f-loc">
-                  <dt>所在</dt>
-                  <dd :class="{ 'is-follow': n.follow }">{{ n.follow ? '随主角同行' : n.location }}</dd>
+                  <dt>Nơi ở</dt>
+                  <dd :class="{ 'is-follow': n.follow }">{{ n.follow ? 'Đi cùng nhân vật chính' : n.location }}</dd>
                 </div>
-                <div v-if="n.outfit" class="bbs-npc-field f-outfit"><dt>着装</dt><dd>{{ n.outfit }}</dd></div>
-                <div v-if="n.condition" class="bbs-npc-field f-cond"><dt>状态</dt><dd>{{ n.condition }}</dd></div>
-                <div v-if="n.personality" class="bbs-npc-field f-trait"><dt>性格</dt><dd>{{ n.personality }}</dd></div>
-                <div v-if="n.desc" class="bbs-npc-field f-desc"><dt>外貌</dt><dd>{{ n.desc }}</dd></div>
-                <div v-if="n.ties" class="bbs-npc-field f-ties"><dt>人际</dt><dd>{{ n.ties }}</dd></div>
-                <div v-if="knowCount(n)" class="bbs-npc-field f-know" :title="knowTitle(n)" @click="openKnow(n)"><dt>了解</dt><dd><span class="bbs-npc-know-text">{{ knowPreview(n) }}</span><span class="bbs-npc-know-count">{{ knowCount(n) }} 条</span></dd></div>
+                <div v-if="n.outfit" class="bbs-npc-field f-outfit"><dt>Trang phục</dt><dd>{{ n.outfit }}</dd></div>
+                <div v-if="n.condition" class="bbs-npc-field f-cond"><dt>Trạng thái</dt><dd>{{ n.condition }}</dd></div>
+                <div v-if="n.personality" class="bbs-npc-field f-trait"><dt>Tính cách</dt><dd>{{ n.personality }}</dd></div>
+                <div v-if="n.desc" class="bbs-npc-field f-desc"><dt>Ngoại hình</dt><dd>{{ n.desc }}</dd></div>
+                <div v-if="n.ties" class="bbs-npc-field f-ties"><dt>Mối quan hệ</dt><dd>{{ n.ties }}</dd></div>
+                <div v-if="knowCount(n)" class="bbs-npc-field f-know" :title="knowTitle(n)" @click="openKnow(n)"><dt>Hiểu biết</dt><dd><span class="bbs-npc-know-text">{{ knowPreview(n) }}</span><span class="bbs-npc-know-count">{{ knowCount(n) }} mục</span></dd></div>
               </dl>
             </div>
           </article>
         </div>
       </div>
 
-      <!-- 同区域:在附近但未必照面。发名+身份+性格给 AI,这里也只展示这三样 -->
+      <!-- Cùng khu vực: ở gần đây nhưng chưa chắc đã chạm mặt. Gửi tên + thân phận + tính cách cho AI, ở đây cũng chỉ hiển thị ba thông tin đó -->
       <div v-if="nearby.length" class="bbs-npc-group">
         <div class="bbs-npc-grouphead">
-          <span class="bbs-npc-grouptag is-nearby">同区域</span>
+          <span class="bbs-npc-grouptag is-nearby">Cùng khu vực</span>
           <span class="bbs-npc-grouphint" :class="{ 'is-local-only': apiSettings.summaryOnlyMode }">
-            {{ apiSettings.summaryOnlyMode ? '仍按同区域分档记录，但不发送给主对话 AI' : '在附近,发送名字、身份与性格' }}
+            {{ apiSettings.summaryOnlyMode ? 'Vẫn ghi nhận phân mức theo cùng khu vực, nhưng không gửi cho AI đối thoại chính' : 'Ở gần đây, gửi tên, thân phận và tính cách' }}
           </span>
         </div>
         <div class="bbs-npc-list">
@@ -631,7 +631,7 @@ function deleteKnow(k: MemKnowledge) {
                   <button
                     class="bbs-item-act bbs-npc-star"
                     type="button"
-                    :title="apiSettings.summaryOnlyMode ? '标记为主要角色(仅调整柏宝书内的角色分组)' : '标记为主要角色(始终全量发送、追踪状态)'"
+                    :title="apiSettings.summaryOnlyMode ? 'Đánh dấu là nhân vật chính yếu (chỉ điều chỉnh phân nhóm nhân vật trong Bách Bảo Thư)' : 'Đánh dấu là nhân vật chính yếu (luôn gửi toàn lượng, theo dõi trạng thái)'"
                     @click="toggleImportant(n)"
                   >
                     <Icon name="star" />
@@ -639,35 +639,35 @@ function deleteKnow(k: MemKnowledge) {
                   <button
                     class="bbs-item-act bbs-npc-pin"
                     type="button"
-                    title="标记为随行同伴(将随主角在场)"
+                    title="Đánh dấu là bạn đồng hành đi cùng (sẽ có mặt cùng nhân vật chính)"
                     @click="toggleFollow(n)"
                   >
                     <Icon name="pin" />
                   </button>
                   <button v-if="apiSettings.injection.knowledge || knowCount(n)" class="bbs-item-act" :class="{ active: knowCount(n) }" type="button" :title="knowTitle(n)" @click="openKnow(n)"><Icon name="bulb" /></button>
-                  <button class="bbs-item-act" type="button" title="编辑" @click="openEdit(n)"><Icon name="edit" /></button>
-                  <button class="bbs-item-act bbs-item-del" type="button" title="删除" @click="askRemove(n)"><Icon name="trash" /></button>
+                  <button class="bbs-item-act" type="button" title="Chỉnh sửa" @click="openEdit(n)"><Icon name="edit" /></button>
+                  <button class="bbs-item-act bbs-item-del" type="button" title="Xóa" @click="askRemove(n)"><Icon name="trash" /></button>
                 </span>
               </div>
               <dl v-if="n.title || n.relation || fmtNpcAffinity(n) || n.personality || n.location || knowCount(n)" class="bbs-npc-fields">
-                <div v-if="n.title" class="bbs-npc-field f-title"><dt>身份</dt><dd>{{ n.title }}</dd></div>
-                <div v-if="n.relation" class="bbs-npc-field f-rel"><dt>关系</dt><dd>{{ n.relation }}</dd></div>
-                <div v-if="fmtNpcAffinity(n)" class="bbs-npc-field"><dt title="对主角的内心好感与外在态度估计">好感</dt><dd>{{ fmtNpcAffinity(n) }}</dd></div>
-                <div v-if="n.location" class="bbs-npc-field f-loc"><dt>所在</dt><dd>{{ n.location }}</dd></div>
-                <div v-if="n.personality" class="bbs-npc-field f-trait"><dt>性格</dt><dd>{{ n.personality }}</dd></div>
-                <div v-if="knowCount(n)" class="bbs-npc-field f-know" :title="knowTitle(n)" @click="openKnow(n)"><dt>了解</dt><dd><span class="bbs-npc-know-text">{{ knowPreview(n) }}</span><span class="bbs-npc-know-count">{{ knowCount(n) }} 条</span></dd></div>
+                <div v-if="n.title" class="bbs-npc-field f-title"><dt>Thân phận</dt><dd>{{ n.title }}</dd></div>
+                <div v-if="n.relation" class="bbs-npc-field f-rel"><dt>Quan hệ</dt><dd>{{ n.relation }}</dd></div>
+                <div v-if="fmtNpcAffinity(n)" class="bbs-npc-field"><dt title="Đánh giá hảo cảm nội tâm và thái độ bên ngoài đối với nhân vật chính">Hảo cảm</dt><dd>{{ fmtNpcAffinity(n) }}</dd></div>
+                <div v-if="n.location" class="bbs-npc-field f-loc"><dt>Nơi ở</dt><dd>{{ n.location }}</dd></div>
+                <div v-if="n.personality" class="bbs-npc-field f-trait"><dt>Tính cách</dt><dd>{{ n.personality }}</dd></div>
+                <div v-if="knowCount(n)" class="bbs-npc-field f-know" :title="knowTitle(n)" @click="openKnow(n)"><dt>Hiểu biết</dt><dd><span class="bbs-npc-know-text">{{ knowPreview(n) }}</span><span class="bbs-npc-know-count">{{ knowCount(n) }} mục</span></dd></div>
               </dl>
             </div>
           </article>
         </div>
       </div>
 
-      <!-- 不在场:只发名+身份给 AI,这里也压暗、收起细节 -->
+      <!-- Không có mặt: chỉ gửi tên + thân phận cho AI, ở đây cũng làm tối đi và thu gọn chi tiết -->
       <div v-if="absent.length" class="bbs-npc-group">
         <div class="bbs-npc-grouphead">
-          <span class="bbs-npc-grouptag">不在场</span>
+          <span class="bbs-npc-grouptag">Không có mặt</span>
           <span class="bbs-npc-grouphint" :class="{ 'is-local-only': apiSettings.summaryOnlyMode }">
-            {{ apiSettings.summaryOnlyMode ? '仍保留名册分档，但不发送给主对话 AI' : '仅发送简要名册与已有好感档位,省 token' }}
+            {{ apiSettings.summaryOnlyMode ? 'Vẫn giữ nguyên phân mức danh sách, nhưng không gửi cho AI đối thoại chính' : 'Chỉ gửi danh sách tóm lược và mức hảo cảm đã có, tiết kiệm token' }}
           </span>
         </div>
         <div class="bbs-npc-list">
@@ -681,7 +681,7 @@ function deleteKnow(k: MemKnowledge) {
                   <button
                     class="bbs-item-act bbs-npc-star"
                     type="button"
-                    :title="apiSettings.summaryOnlyMode ? '标记为主要角色(仅调整柏宝书内的角色分组)' : '标记为主要角色(始终全量发送、追踪状态)'"
+                    :title="apiSettings.summaryOnlyMode ? 'Đánh dấu là nhân vật chính yếu (chỉ điều chỉnh phân nhóm nhân vật trong Bách Bảo Thư)' : 'Đánh dấu là nhân vật chính yếu (luôn gửi toàn lượng, theo dõi trạng thái)'"
                     @click="toggleImportant(n)"
                   >
                     <Icon name="star" />
@@ -689,26 +689,26 @@ function deleteKnow(k: MemKnowledge) {
                   <button
                     class="bbs-item-act bbs-npc-pin"
                     type="button"
-                    title="标记为随行同伴(将随主角在场)"
+                    title="Đánh dấu là bạn đồng hành đi cùng (sẽ có mặt cùng nhân vật chính)"
                     @click="toggleFollow(n)"
                   >
                     <Icon name="pin" />
                   </button>
                   <button v-if="apiSettings.injection.knowledge || knowCount(n)" class="bbs-item-act" :class="{ active: knowCount(n) }" type="button" :title="knowTitle(n)" @click="openKnow(n)"><Icon name="bulb" /></button>
-                  <button class="bbs-item-act" type="button" title="编辑" @click="openEdit(n)"><Icon name="edit" /></button>
-                  <button class="bbs-item-act bbs-item-del" type="button" title="删除" @click="askRemove(n)"><Icon name="trash" /></button>
+                  <button class="bbs-item-act" type="button" title="Chỉnh sửa" @click="openEdit(n)"><Icon name="edit" /></button>
+                  <button class="bbs-item-act bbs-item-del" type="button" title="Xóa" @click="askRemove(n)"><Icon name="trash" /></button>
                 </span>
               </div>
               <dl class="bbs-npc-fields">
-                <div v-if="n.title" class="bbs-npc-field f-title"><dt>身份</dt><dd>{{ n.title }}</dd></div>
-                <div v-if="n.relation" class="bbs-npc-field f-rel"><dt>关系</dt><dd>{{ n.relation }}</dd></div>
-                <div v-if="fmtNpcAffinity(n)" class="bbs-npc-field"><dt title="对主角的内心好感与外在态度估计">好感</dt><dd>{{ fmtNpcAffinity(n) }}</dd></div>
+                <div v-if="n.title" class="bbs-npc-field f-title"><dt>Thân phận</dt><dd>{{ n.title }}</dd></div>
+                <div v-if="n.relation" class="bbs-npc-field f-rel"><dt>Quan hệ</dt><dd>{{ n.relation }}</dd></div>
+                <div v-if="fmtNpcAffinity(n)" class="bbs-npc-field"><dt title="Đánh giá hảo cảm nội tâm và thái độ bên ngoài đối với nhân vật chính">Hảo cảm</dt><dd>{{ fmtNpcAffinity(n) }}</dd></div>
                 <div class="bbs-npc-field f-loc">
-                  <dt>所在</dt>
+                  <dt>Nơi ở</dt>
                   <dd v-if="n.location">{{ n.location }}</dd>
-                  <dd v-else class="is-nowhere">所在不明</dd>
+                  <dd v-else class="is-nowhere">Chưa rõ nơi ở</dd>
                 </div>
-                <div v-if="knowCount(n)" class="bbs-npc-field f-know" :title="knowTitle(n)" @click="openKnow(n)"><dt>了解</dt><dd><span class="bbs-npc-know-text">{{ knowPreview(n) }}</span><span class="bbs-npc-know-count">{{ knowCount(n) }} 条</span></dd></div>
+                <div v-if="knowCount(n)" class="bbs-npc-field f-know" :title="knowTitle(n)" @click="openKnow(n)"><dt>Hiểu biết</dt><dd><span class="bbs-npc-know-text">{{ knowPreview(n) }}</span><span class="bbs-npc-know-count">{{ knowCount(n) }} mục</span></dd></div>
               </dl>
             </div>
           </article>
@@ -718,288 +718,288 @@ function deleteKnow(k: MemKnowledge) {
 
     <div v-else class="bbs-empty">
       <span class="bbs-empty-icon"><Icon name="npcs" /></span>
-      <p>还没有登场的 NPC。摘要时会记下与主角有交集的人物,也可点右上角「+」手动添加。</p>
+      <p>Chưa có NPC nào xuất hiện. Khi tóm tắt sẽ ghi lại các nhân vật có giao tiếp với nhân vật chính, cũng có thể nhấn nút "+" ở góc trên bên phải để thêm thủ công.</p>
     </div>
 
     <ModalMask :open="!!protagonistEditing" @close="cancelProtagonistEdit">
-      <div v-if="protagonistEditing" class="bbs-modal" role="dialog" aria-modal="true" aria-label="编辑主角档案">
+      <div v-if="protagonistEditing" class="bbs-modal" role="dialog" aria-modal="true" aria-label="Chỉnh sửa hồ sơ nhân vật chính">
         <header class="bbs-modal-head">
-          <span class="bbs-modal-title">编辑主角档案</span>
-          <button class="bbs-item-act" type="button" title="关闭" @click="cancelProtagonistEdit"><Icon name="close" /></button>
+          <span class="bbs-modal-title">Chỉnh sửa hồ sơ nhân vật chính</span>
+          <button class="bbs-item-act" type="button" title="Đóng" @click="cancelProtagonistEdit"><Icon name="close" /></button>
         </header>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">性别</span>
-          <input v-model="protagonistEditing.gender" class="bbs-input" type="text" placeholder="如:男、女" />
+          <span class="bbs-modal-label">Giới tính</span>
+          <input v-model="protagonistEditing.gender" class="bbs-input" type="text" placeholder="VD: Nam, Nữ" />
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">年龄(记录当时的值,随剧情时间自动推算)</span>
-          <input v-model="protagonistEditing.age" class="bbs-input" type="text" placeholder="如:25、二十出头" />
+          <span class="bbs-modal-label">Tuổi (ghi nhận giá trị tại thời điểm đó, tự động suy tính theo thời gian cốt truyện)</span>
+          <input v-model="protagonistEditing.age" class="bbs-input" type="text" placeholder="VD: 25, Ngoài hai mươi" />
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">当前身份 / 职业 / 种族 / 公开地位</span>
-          <textarea v-model="protagonistEditing.identity" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="可选"></textarea>
+          <span class="bbs-modal-label">Thân phận / Nghề nghiệp / Chủng tộc / Địa vị công khai hiện tại</span>
+          <textarea v-model="protagonistEditing.identity" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="Tùy chọn"></textarea>
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">稳定外貌 / 身体特征</span>
-          <textarea v-model="protagonistEditing.appearance" class="bbs-input bbs-modal-textarea" rows="2" placeholder="如:黑色短发、左眉有疤"></textarea>
+          <span class="bbs-modal-label">Ngoại hình ổn định / Đặc điểm cơ thể</span>
+          <textarea v-model="protagonistEditing.appearance" class="bbs-input bbs-modal-textarea" rows="2" placeholder="VD: Tóc ngắn màu đen, lông mày trái có sẹo"></textarea>
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">当前着装</span>
-          <textarea v-model="protagonistEditing.outfit" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="可选"></textarea>
+          <span class="bbs-modal-label">Trang phục hiện tại</span>
+          <textarea v-model="protagonistEditing.outfit" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="Tùy chọn"></textarea>
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">当前身体状态 / 健康</span>
-          <textarea v-model="protagonistEditing.condition" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="无异常时留空"></textarea>
+          <span class="bbs-modal-label">Trạng thái cơ thể / Sức khỏe hiện tại</span>
+          <textarea v-model="protagonistEditing.condition" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="Khi không có gì bất thường thì để trống"></textarea>
         </label>
         <footer class="bbs-modal-foot">
-          <button class="bbs-btn" type="button" @click="cancelProtagonistEdit">取消</button>
-          <button class="bbs-btn bbs-btn-primary" type="button" @click="saveProtagonistEdit">保存</button>
+          <button class="bbs-btn" type="button" @click="cancelProtagonistEdit">Hủy</button>
+          <button class="bbs-btn bbs-btn-primary" type="button" @click="saveProtagonistEdit">Lưu</button>
         </footer>
       </div>
     </ModalMask>
 
-    <!-- 生活细节 添加/编辑弹窗 -->
+    <!-- Hộp thoại Thêm / Chỉnh sửa chi tiết đời sống -->
     <ModalMask :open="!!detailEditing" @close="cancelDetailEdit">
-      <div v-if="detailEditing" class="bbs-modal" role="dialog" aria-modal="true" aria-label="生活细节">
+      <div v-if="detailEditing" class="bbs-modal" role="dialog" aria-modal="true" aria-label="Chi tiết đời sống">
         <header class="bbs-modal-head">
-          <span class="bbs-modal-title">{{ detailEditing.id ? '编辑生活细节' : '添加生活细节' }}</span>
-          <button class="bbs-item-act" type="button" title="关闭" @click="cancelDetailEdit"><Icon name="close" /></button>
+          <span class="bbs-modal-title">{{ detailEditing.id ? 'Chỉnh sửa chi tiết đời sống' : 'Thêm chi tiết đời sống' }}</span>
+          <button class="bbs-item-act" type="button" title="Đóng" @click="cancelDetailEdit"><Icon name="close" /></button>
         </header>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">所属人物</span>
-          <BbsSelect v-model="detailEditing.subject" :options="detailSubjectOptions" aria-label="生活细节所属人物" />
+          <span class="bbs-modal-label">Nhân vật sở hữu</span>
+          <BbsSelect v-model="detailEditing.subject" :options="detailSubjectOptions" aria-label="Nhân vật sở hữu chi tiết đời sống" />
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">细节内容(此人明说过/正文揭示的偏好、习惯或近期状态)</span>
-          <textarea v-model="detailEditing.text" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="如:认为煎饼果子不加脆饼就没有灵魂(姓名由所属人物自动显示)"></textarea>
+          <span class="bbs-modal-label">Nội dung chi tiết (sở thích, thói quen hoặc tình trạng gần đây mà người này đã nói rõ / chính văn hé lộ)</span>
+          <textarea v-model="detailEditing.text" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="VD: Cho rằng bánh kếp không thêm bánh giòn thì mất hết linh hồn (tên sẽ tự động hiển thị theo nhân vật sở hữu)"></textarea>
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">主题标签(可选,1-3 个,斜杠分隔)</span>
-          <input v-model="detailEditing.topics" class="bbs-input" type="text" placeholder="如 饮食/作息/工作" />
+          <span class="bbs-modal-label">Nhãn chủ đề (tùy chọn, 1-3 nhãn, ngăn cách bằng dấu gạch chéo)</span>
+          <input v-model="detailEditing.topics" class="bbs-input" type="text" placeholder="VD: Ăn uống/Sinh hoạt/Công việc" />
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">关键词(可选,触发匹配用,斜杠分隔)</span>
-          <input v-model="detailEditing.anchors" class="bbs-input" type="text" placeholder="如 香菜/项目/死线" />
+          <span class="bbs-modal-label">Từ khóa (tùy chọn, dùng để khớp kích hoạt, ngăn cách bằng dấu gạch chéo)</span>
+          <input v-model="detailEditing.anchors" class="bbs-input" type="text" placeholder="VD: Rau mùi/Dự án/Deadline" />
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">时效(可选,故事内到期时间;长期偏好留空)</span>
-          <input v-model="detailEditing.until" class="bbs-input" type="text" placeholder="如 1988/10/1;留空=长期稳定" />
+          <span class="bbs-modal-label">Thời hạn (tùy chọn, thời gian hết hạn trong truyện; sở thích dài hạn thì để trống)</span>
+          <input v-model="detailEditing.until" class="bbs-input" type="text" placeholder="VD: 1988/10/1; để trống = ổn định lâu dài" />
         </label>
         <footer class="bbs-modal-foot">
-          <button class="bbs-btn" type="button" @click="cancelDetailEdit">取消</button>
-          <button class="bbs-btn bbs-btn-primary" type="button" :disabled="!detailEditing.text.trim()" @click="saveDetailEdit">保存</button>
+          <button class="bbs-btn" type="button" @click="cancelDetailEdit">Hủy</button>
+          <button class="bbs-btn bbs-btn-primary" type="button" :disabled="!detailEditing.text.trim()" @click="saveDetailEdit">Lưu</button>
         </footer>
       </div>
     </ModalMask>
 
-    <!-- 添加弹窗:position:fixed 内联(不用 Teleport,见 base.css 说明) -->
+    <!-- Hộp thoại thêm mới: position:fixed nội tuyến (không dùng Teleport to="body", xem giải thích ở base.css) -->
     <ModalMask :open="composerOpen" @close="closeComposer">
-      <div class="bbs-modal" role="dialog" aria-modal="true" aria-label="添加角色">
+      <div class="bbs-modal" role="dialog" aria-modal="true" aria-label="Thêm nhân vật">
         <header class="bbs-modal-head">
-          <span class="bbs-modal-title">添加角色</span>
-          <button class="bbs-item-act" type="button" title="关闭" @click="closeComposer"><Icon name="close" /></button>
+          <span class="bbs-modal-title">Thêm nhân vật</span>
+          <button class="bbs-item-act" type="button" title="Đóng" @click="closeComposer"><Icon name="close" /></button>
         </header>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">名字</span>
-          <input ref="nameInput" v-model="draft.name" class="bbs-input" type="text" placeholder="角色名" @keydown.enter="addNpc" />
+          <span class="bbs-modal-label">Tên</span>
+          <input ref="nameInput" v-model="draft.name" class="bbs-input" type="text" placeholder="Tên nhân vật" @keydown.enter="addNpc" />
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">性别</span>
-          <input v-model="draft.gender" class="bbs-input" type="text" placeholder="如:男、女" @keydown.enter="addNpc" />
+          <span class="bbs-modal-label">Giới tính</span>
+          <input v-model="draft.gender" class="bbs-input" type="text" placeholder="VD: Nam, Nữ" @keydown.enter="addNpc" />
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">年龄(记录当时的值,随剧情时间自动推算)</span>
-          <input v-model="draft.age" class="bbs-input" type="text" placeholder="如:25、二十出头" @keydown.enter="addNpc" />
+          <span class="bbs-modal-label">Tuổi (ghi nhận giá trị tại thời điểm đó, tự động suy tính theo thời gian cốt truyện)</span>
+          <input v-model="draft.age" class="bbs-input" type="text" placeholder="VD: 25, Ngoài hai mươi" @keydown.enter="addNpc" />
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">身份(职业 / 与主角的关系)</span>
-          <textarea v-model="draft.title" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="如:归雁客栈掌柜、青梅竹马"></textarea>
+          <span class="bbs-modal-label">Thân phận (nghề nghiệp / mối quan hệ với nhân vật chính)</span>
+          <textarea v-model="draft.title" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="VD: Chủ quán trọ Quy Nhạn, Thanh mai trúc mã"></textarea>
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">与主角的关系(称谓在前 + 一句态度)</span>
-          <textarea v-model="draft.relation" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="如:主角的师姐,明面冷淡暗中维护"></textarea>
+          <span class="bbs-modal-label">Quan hệ với nhân vật chính (danh xưng đứng trước + một câu thái độ)</span>
+          <textarea v-model="draft.relation" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="VD: Sư tỷ của nhân vật chính, ngoài mặt lạnh nhạt ngầm bảo vệ"></textarea>
         </label>
         <div v-for="f in NPC_AFFINITY_FIELDS" :key="f.key" class="bbs-modal-field">
-          <span class="bbs-modal-label">{{ f.label }}(对 {{ protagonistName }})</span>
+          <span class="bbs-modal-label">{{ f.label }} (đối với {{ protagonistName }})</span>
           <BbsSelect v-model="draft[f.key]" :options="f.options" :aria-label="f.label" />
         </div>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">好感说明(定性估计,不是本轮心情;未知不等于中性)</span>
-          <textarea v-model="draft.affinityNote" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="如:内心在意,但习惯以冷淡掩饰;没有新依据时保持不变"></textarea>
+          <span class="bbs-modal-label">Ghi chú hảo cảm (đánh giá định tính, không phải tâm trạng lượt này; chưa rõ không đồng nghĩa với trung tính)</span>
+          <textarea v-model="draft.affinityNote" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="VD: Trong lòng để ý, nhưng quen lấy vẻ lạnh nhạt che giấu; khi không có căn cứ mới thì giữ nguyên"></textarea>
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">与其他角色的关系(仅血缘 / 婚姻 / 宿敌等长期关系)</span>
-          <textarea v-model="draft.ties" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="如:阿黛尔之父;与镇长有旧怨"></textarea>
+          <span class="bbs-modal-label">Quan hệ với các nhân vật khác (chỉ ghi quan hệ lâu dài như huyết thống / hôn nhân / kẻ thù truyền kiếp)</span>
+          <textarea v-model="draft.ties" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="VD: Cha của Adele; có thù cũ với trấn trưởng"></textarea>
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">性格</span>
-          <textarea v-model="draft.personality" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="如:沉默寡言、护短"></textarea>
+          <span class="bbs-modal-label">Tính cách</span>
+          <textarea v-model="draft.personality" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="VD: Trầm mặc ít lời, bênh vực người mình"></textarea>
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">外貌描述(固定特征:发色 / 身材 / 疤痕,勿写穿着)</span>
-          <textarea v-model="draft.desc" class="bbs-input bbs-modal-textarea" rows="2" placeholder="可选"></textarea>
+          <span class="bbs-modal-label">Mô tả ngoại hình (đặc điểm cố định: màu tóc / vóc dáng / vết sẹo, không viết trang phục)</span>
+          <textarea v-model="draft.desc" class="bbs-input bbs-modal-textarea" rows="2" placeholder="Tùy chọn"></textarea>
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">当前着装(会随剧情变化)</span>
-          <textarea v-model="draft.outfit" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="如:红斗篷、佩长剑"></textarea>
+          <span class="bbs-modal-label">Trang phục hiện tại (sẽ thay đổi theo cốt truyện)</span>
+          <textarea v-model="draft.outfit" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="VD: Áo choàng đỏ, đeo trường kiếm"></textarea>
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">当前状态(受伤 / 疲惫等,无则留空)</span>
-          <textarea v-model="draft.condition" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="可选"></textarea>
+          <span class="bbs-modal-label">Trạng thái hiện tại (bị thương / mệt mỏi..., không có thì để trống)</span>
+          <textarea v-model="draft.condition" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="Tùy chọn"></textarea>
         </label>
         <label class="bbs-modal-field bbs-modal-check">
           <input v-model="draft.important" type="checkbox" class="bbs-checkbox" />
           <span class="bbs-modal-label">
-            {{ apiSettings.summaryOnlyMode ? '主要角色(核心主演,仅在柏宝书内重点追踪状态)' : '主要角色(核心主演,始终全量发送、重点追踪状态)' }}
+            {{ apiSettings.summaryOnlyMode ? 'Nhân vật chính yếu (diễn viên chính cốt lõi, chỉ chú trọng theo dõi trạng thái trong Bách Bảo Thư)' : 'Nhân vật chính yếu (diễn viên chính cốt lõi, luôn gửi toàn lượng, chú trọng theo dõi trạng thái)' }}
           </span>
         </label>
         <label class="bbs-modal-field bbs-modal-check">
           <input v-model="draft.follow" type="checkbox" class="bbs-checkbox" />
-          <span class="bbs-modal-label">随行同伴(跟随主角移动,永远在场)</span>
+          <span class="bbs-modal-label">Bạn đồng hành đi cùng (di chuyển theo nhân vật chính, luôn có mặt)</span>
         </label>
         <label v-if="!draft.follow" class="bbs-modal-field">
-          <span class="bbs-modal-label">所在地点(留空=所在不明,不再视为在场)</span>
-          <textarea v-model="draft.location" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="如:归雁客栈、王宫;留空=所在不明"></textarea>
+          <span class="bbs-modal-label">Địa điểm hiện tại (để trống = chưa rõ nơi ở, không còn coi là có mặt)</span>
+          <textarea v-model="draft.location" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="VD: Quán trọ Quy Nhạn, Vương cung; để trống = chưa rõ nơi ở"></textarea>
         </label>
         <footer class="bbs-modal-foot">
-          <button class="bbs-btn" type="button" @click="closeComposer">取消</button>
-          <button class="bbs-btn bbs-btn-primary" type="button" :disabled="!draft.name.trim()" @click="addNpc">添加</button>
+          <button class="bbs-btn" type="button" @click="closeComposer">Hủy</button>
+          <button class="bbs-btn bbs-btn-primary" type="button" :disabled="!draft.name.trim()" @click="addNpc">Thêm</button>
         </footer>
       </div>
     </ModalMask>
 
-    <!-- 编辑弹窗 -->
+    <!-- Hộp thoại chỉnh sửa -->
     <ModalMask :open="!!editing" @close="cancelEdit">
-      <div v-if="editing" class="bbs-modal" role="dialog" aria-modal="true" aria-label="编辑角色">
+      <div v-if="editing" class="bbs-modal" role="dialog" aria-modal="true" aria-label="Chỉnh sửa nhân vật">
         <header class="bbs-modal-head">
-          <span class="bbs-modal-title">编辑角色</span>
-          <button class="bbs-item-act" type="button" title="关闭" @click="cancelEdit"><Icon name="close" /></button>
+          <span class="bbs-modal-title">Chỉnh sửa nhân vật</span>
+          <button class="bbs-item-act" type="button" title="Đóng" @click="cancelEdit"><Icon name="close" /></button>
         </header>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">名字</span>
-          <input v-model="editing.name" class="bbs-input" type="text" placeholder="角色名" />
+          <span class="bbs-modal-label">Tên</span>
+          <input v-model="editing.name" class="bbs-input" type="text" placeholder="Tên nhân vật" />
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">性别</span>
-          <input v-model="editing.gender" class="bbs-input" type="text" placeholder="如:男、女" />
+          <span class="bbs-modal-label">Giới tính</span>
+          <input v-model="editing.gender" class="bbs-input" type="text" placeholder="VD: Nam, Nữ" />
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">年龄(记录当时的值,随剧情时间自动推算;不改则保留原锚点)</span>
-          <input v-model="editing.age" class="bbs-input" type="text" placeholder="如:25、二十出头" />
+          <span class="bbs-modal-label">Tuổi (ghi nhận giá trị tại thời điểm đó, tự động suy tính theo thời gian cốt truyện; không sửa sẽ giữ nguyên mốc gốc)</span>
+          <input v-model="editing.age" class="bbs-input" type="text" placeholder="VD: 25, Ngoài hai mươi" />
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">身份(职业 / 与主角的关系)</span>
-          <textarea v-model="editing.title" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="如:归雁客栈掌柜、青梅竹马"></textarea>
+          <span class="bbs-modal-label">Thân phận (nghề nghiệp / mối quan hệ với nhân vật chính)</span>
+          <textarea v-model="editing.title" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="VD: Chủ quán trọ Quy Nhạn, Thanh mai trúc mã"></textarea>
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">与主角的关系(称谓在前 + 一句态度)</span>
-          <textarea v-model="editing.relation" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="如:主角的师姐,明面冷淡暗中维护"></textarea>
+          <span class="bbs-modal-label">Quan hệ với nhân vật chính (danh xưng đứng trước + một câu thái độ)</span>
+          <textarea v-model="editing.relation" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="VD: Sư tỷ của nhân vật chính, ngoài mặt lạnh nhạt ngầm bảo vệ"></textarea>
         </label>
         <div v-for="f in NPC_AFFINITY_FIELDS" :key="f.key" class="bbs-modal-field">
-          <span class="bbs-modal-label">{{ f.label }}(对 {{ protagonistName }})</span>
+          <span class="bbs-modal-label">{{ f.label }} (đối với {{ protagonistName }})</span>
           <BbsSelect v-model="editing[f.key]" :options="f.options" :aria-label="f.label" />
         </div>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">好感说明(定性估计,不是本轮心情;未知不等于中性)</span>
-          <textarea v-model="editing.affinityNote" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="如:内心在意,但习惯以冷淡掩饰;没有新依据时保持不变"></textarea>
+          <span class="bbs-modal-label">Ghi chú hảo cảm (đánh giá định tính, không phải tâm trạng lượt này; chưa rõ không đồng nghĩa với trung tính)</span>
+          <textarea v-model="editing.affinityNote" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="VD: Trong lòng để ý, nhưng quen lấy vẻ lạnh nhạt che giấu; khi không có căn cứ mới thì giữ nguyên"></textarea>
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">与其他角色的关系(仅血缘 / 婚姻 / 宿敌等长期关系)</span>
-          <textarea v-model="editing.ties" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="如:阿黛尔之父;与镇长有旧怨"></textarea>
+          <span class="bbs-modal-label">Quan hệ với các nhân vật khác (chỉ ghi quan hệ lâu dài như huyết thống / hôn nhân / kẻ thù truyền kiếp)</span>
+          <textarea v-model="editing.ties" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="VD: Cha của Adele; có thù cũ với trấn trưởng"></textarea>
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">性格</span>
-          <textarea v-model="editing.personality" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="如:沉默寡言、护短"></textarea>
+          <span class="bbs-modal-label">Tính cách</span>
+          <textarea v-model="editing.personality" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="VD: Trầm mặc ít lời, bênh vực người mình"></textarea>
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">外貌描述(固定特征:发色 / 身材 / 疤痕,勿写穿着)</span>
-          <textarea v-model="editing.desc" class="bbs-input bbs-modal-textarea" rows="2" placeholder="可选"></textarea>
+          <span class="bbs-modal-label">Mô tả ngoại hình (đặc điểm cố định: màu tóc / vóc dáng / vết sẹo, không viết trang phục)</span>
+          <textarea v-model="editing.desc" class="bbs-input bbs-modal-textarea" rows="2" placeholder="Tùy chọn"></textarea>
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">当前着装(会随剧情变化)</span>
-          <textarea v-model="editing.outfit" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="如:红斗篷、佩长剑"></textarea>
+          <span class="bbs-modal-label">Trang phục hiện tại (sẽ thay đổi theo cốt truyện)</span>
+          <textarea v-model="editing.outfit" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="VD: Áo choàng đỏ, đeo trường kiếm"></textarea>
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">当前状态(受伤 / 疲惫等,无则留空)</span>
-          <textarea v-model="editing.condition" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="可选"></textarea>
+          <span class="bbs-modal-label">Trạng thái hiện tại (bị thương / mệt mỏi..., không có thì để trống)</span>
+          <textarea v-model="editing.condition" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="Tùy chọn"></textarea>
         </label>
         <label class="bbs-modal-field bbs-modal-check">
           <input v-model="editing.important" type="checkbox" class="bbs-checkbox" />
           <span class="bbs-modal-label">
-            {{ apiSettings.summaryOnlyMode ? '主要角色(核心主演,仅在柏宝书内重点追踪状态)' : '主要角色(核心主演,始终全量发送、重点追踪状态)' }}
+            {{ apiSettings.summaryOnlyMode ? 'Nhân vật chính yếu (diễn viên chính cốt lõi, chỉ chú trọng theo dõi trạng thái trong Bách Bảo Thư)' : 'Nhân vật chính yếu (diễn viên chính cốt lõi, luôn gửi toàn lượng, chú trọng theo dõi trạng thái)' }}
           </span>
         </label>
         <label class="bbs-modal-field bbs-modal-check">
           <input v-model="editing.follow" type="checkbox" class="bbs-checkbox" />
-          <span class="bbs-modal-label">随行同伴(跟随主角移动,永远在场)</span>
+          <span class="bbs-modal-label">Bạn đồng hành đi cùng (di chuyển theo nhân vật chính, luôn có mặt)</span>
         </label>
         <label v-if="!editing.follow" class="bbs-modal-field">
-          <span class="bbs-modal-label">所在地点(留空=所在不明,不再视为在场)</span>
-          <textarea v-model="editing.location" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="如:归雁客栈、王宫;留空=所在不明"></textarea>
+          <span class="bbs-modal-label">Địa điểm hiện tại (để trống = chưa rõ nơi ở, không còn coi là có mặt)</span>
+          <textarea v-model="editing.location" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" placeholder="VD: Quán trọ Quy Nhạn, Vương cung; để trống = chưa rõ nơi ở"></textarea>
         </label>
         <footer class="bbs-modal-foot">
-          <button class="bbs-btn" type="button" @click="cancelEdit">取消</button>
-          <button class="bbs-btn bbs-btn-primary" type="button" :disabled="!editing.name.trim()" @click="saveEdit">保存</button>
+          <button class="bbs-btn" type="button" @click="cancelEdit">Hủy</button>
+          <button class="bbs-btn bbs-btn-primary" type="button" :disabled="!editing.name.trim()" @click="saveEdit">Lưu</button>
         </footer>
       </div>
     </ModalMask>
 
-    <!-- 了解清单弹窗:看/改某角色知道或以为的主角的事 -->
+    <!-- Hộp thoại danh sách hiểu biết: xem/sửa những chuyện về nhân vật chính mà một nhân vật nào đó biết hoặc tưởng là vậy -->
     <ModalMask :open="!!knowFor" @close="closeKnow">
-      <div v-if="knowFor" class="bbs-modal" role="dialog" aria-modal="true" aria-label="角色对主角的了解">
+      <div v-if="knowFor" class="bbs-modal" role="dialog" aria-modal="true" aria-label="Hiểu biết của nhân vật về nhân vật chính">
         <header class="bbs-modal-head">
-          <span class="bbs-modal-title">{{ knowFor }} 对{{ protagonistName }}的了解</span>
-          <button class="bbs-item-act" type="button" title="关闭" @click="closeKnow"><Icon name="close" /></button>
+          <span class="bbs-modal-title">Hiểu biết của {{ knowFor }} về {{ protagonistName }}</span>
+          <button class="bbs-item-act" type="button" title="Đóng" @click="closeKnow"><Icon name="close" /></button>
         </header>
-        <p class="bbs-know-hint">只记该角色亲耳听到、亲眼看到或听人说起的事。没记的私事(身世、经历、秘密、喜好、名字)默认该角色不知道;条目是角色自己以为的,被骗了就照记被骗后的认知。</p>
+        <p class="bbs-know-hint">Chỉ ghi nhận những chuyện mà nhân vật đó tận tai nghe thấy, tận mắt nhìn thấy hoặc nghe người khác kể lại. Những chuyện riêng tư chưa được ghi lại (thân thế, trải nghiệm, bí mật, sở thích, tên tuổi) mặc định nhân vật đó không biết; các mục là điều tự bản thân nhân vật tưởng là vậy, nếu bị lừa thì ghi nhận đúng theo nhận thức sau khi bị lừa.</p>
         <ul v-if="knowList.length" class="bbs-know-list">
           <li v-for="k in knowList" :key="k.id" class="bbs-know-row">
             <template v-if="knowEditing?.id === k.id">
-              <textarea v-model="knowEditing.text" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" aria-label="编辑了解条目"></textarea>
+              <textarea v-model="knowEditing.text" v-autosize class="bbs-input bbs-modal-textarea bbs-modal-autogrow" rows="1" aria-label="Chỉnh sửa mục hiểu biết"></textarea>
               <span class="bbs-know-acts">
-                <button class="bbs-btn" type="button" @click="knowEditing = null">取消</button>
-                <button class="bbs-btn bbs-btn-primary" type="button" :disabled="!knowEditing.text.trim()" @click="saveKnowEdit">保存</button>
+                <button class="bbs-btn" type="button" @click="knowEditing = null">Hủy</button>
+                <button class="bbs-btn bbs-btn-primary" type="button" :disabled="!knowEditing.text.trim()" @click="saveKnowEdit">Lưu</button>
               </span>
             </template>
             <template v-else>
               <span class="bbs-know-text">{{ k.text }}</span>
               <span class="bbs-know-acts">
-                <button class="bbs-item-act" type="button" title="编辑" @click="startKnowEdit(k)"><Icon name="edit" /></button>
-                <button class="bbs-item-act bbs-item-del" type="button" title="删除" @click="deleteKnow(k)"><Icon name="trash" /></button>
+                <button class="bbs-item-act" type="button" title="Chỉnh sửa" @click="startKnowEdit(k)"><Icon name="edit" /></button>
+                <button class="bbs-item-act bbs-item-del" type="button" title="Xóa" @click="deleteKnow(k)"><Icon name="trash" /></button>
               </span>
             </template>
           </li>
         </ul>
-        <p v-else class="bbs-know-hint">暂无记录:剧情里没交代过的主角私事,该角色默认不知道。老相识早就知道的事,可以在下面手动补上。</p>
+        <p v-else class="bbs-know-hint">Chưa có bản ghi: những chuyện riêng tư của nhân vật chính chưa từng được tiết lộ trong cốt truyện thì mặc định nhân vật này không biết. Những chuyện mà người quen cũ đã biết từ trước có thể bổ sung thủ công ở bên dưới.</p>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">添加一条</span>
+          <span class="bbs-modal-label">Thêm một mục</span>
           <textarea
             v-model="knowDraft"
             v-autosize
             class="bbs-input bbs-modal-textarea bbs-modal-autogrow"
             rows="1"
             :disabled="!hasLeaf"
-            :placeholder="hasLeaf ? '如:认定主角是行商 / 怀疑主角在隐瞒身世 / 不知道主角是王子' : '需先有摘要才能手动添加'"
+            :placeholder="hasLeaf ? 'VD: Cho rằng nhân vật chính là thương nhân / Nghi ngờ nhân vật chính đang giấu thân thế / Không biết nhân vật chính là hoàng tử' : 'Cần có tóm tắt trước mới có thể thêm thủ công'"
           ></textarea>
         </label>
         <footer class="bbs-modal-foot">
-          <button class="bbs-btn" type="button" @click="closeKnow">关闭</button>
-          <button class="bbs-btn bbs-btn-primary" type="button" :disabled="!hasLeaf || !knowDraft.trim()" @click="addKnow">添加</button>
+          <button class="bbs-btn" type="button" @click="closeKnow">Đóng</button>
+          <button class="bbs-btn bbs-btn-primary" type="button" :disabled="!hasLeaf || !knowDraft.trim()" @click="addKnow">Thêm</button>
         </footer>
       </div>
     </ModalMask>
 
     <ConfirmDialog
       :open="!!removing"
-      title="删除角色"
+      title="Xóa nhân vật"
       tone="danger"
-      confirm-text="删除"
+      confirm-text="Xóa"
       confirm-icon="trash"
       @update:open="v => { if (!v) removing = null; }"
       @confirm="confirmRemove"
       @cancel="removing = null"
     >
-      删除「{{ removing?.name }}」。此操作写入最新摘要,删除楼层可回退。
+      Xóa "{{ removing?.name }}". Thao tác này được ghi vào tóm tắt mới nhất, xóa tầng có thể hoàn tác.
     </ConfirmDialog>
   </section>
 </template>
@@ -1028,7 +1028,7 @@ function deleteKnow(k: MemKnowledge) {
   gap: 8px;
 }
 
-/* 分组头:在场/不在场是这页的信息骨架(= AI 实际收到的分档),用细标签 + 一句说明点明取舍 */
+/* Đầu nhóm: Có mặt / Không có mặt là khung xương thông tin của trang này (= phân mức thực tế AI nhận được), dùng nhãn mảnh + một câu giải thích chỉ rõ sự chọn lọc */
 .bbs-npc-grouphead {
   display: flex;
   align-items: baseline;
@@ -1047,13 +1047,13 @@ function deleteKnow(k: MemKnowledge) {
   background: var(--bbs-accent);
   color: var(--bbs-accent-ink);
 }
-/* 同区域:描边空心 pill —— 介于「在场(实心强调)」与「不在场(实心灰底)」之间 */
+/* Cùng khu vực: viên nang rỗng có viền —— nằm giữa "Có mặt (nhấn mạnh đặc ruột)" và "Không có mặt (nền xám đặc)" */
 .bbs-npc-grouptag.is-nearby {
   background: transparent;
   border: 1px solid var(--bbs-line-strong);
-  padding: 1px 8px; /* 补偿 1px 边框,保持与实心标签等高 */
+  padding: 1px 8px; /* Bù lại viền 1px, giữ chiều cao bằng với nhãn đặc ruột */
 }
-/* 主要角色分组标签:同强调底色 + 星标,与置顶组的「核心」地位呼应 */
+/* Nhãn nhóm Nhân vật chính yếu: cùng màu nền nhấn + biểu tượng ngôi sao, hưởng ứng vị thế "cốt lõi" của nhóm ghim đầu */
 .bbs-npc-grouptag.is-main {
   display: inline-flex;
   align-items: center;
@@ -1083,8 +1083,8 @@ function deleteKnow(k: MemKnowledge) {
   gap: 8px;
 }
 
-/* —— 角色卡:与物品/场景同款的安静卡片。在场/随行只用「左侧一道色条」表态,
-      不再用大圆球——保持列表整体的克制,把强调留给那道竖条。 —— */
+/* —— Thẻ nhân vật: thẻ tĩnh lặng cùng kiểu với Vật phẩm / Khung cảnh. Có mặt / Đi cùng chỉ dùng "một vạch màu bên trái" để biểu thị trạng thái,
+      không dùng quả cầu tròn lớn nữa —— giữ sự tiết chế cho toàn bộ danh sách, dành sự nhấn mạnh cho vạch dọc đó. —— */
 .bbs-npc {
   position: relative;
   display: flex;
@@ -1092,9 +1092,9 @@ function deleteKnow(k: MemKnowledge) {
   border: 1px solid var(--bbs-line);
   border-radius: var(--bbs-radius);
   background: var(--bbs-surface);
-  overflow: hidden; /* 让左色条贴着圆角边缘 */
+  overflow: hidden; /* Để vạch màu bên trái bám sát mép bo góc */
 }
-/* 在场:左缘一道青瓷色条 */
+/* Có mặt: một vạch màu thanh từ ở mép trái */
 .bbs-npc.is-present::before {
   content: '';
   position: absolute;
@@ -1115,7 +1115,7 @@ function deleteKnow(k: MemKnowledge) {
   background: var(--bbs-warning);
   opacity: 0.65;
 }
-/* 同区域:左色条更细更淡 —— 在「在场(3px@0.5)」与「不在场(无条)」之间的一档 */
+/* Cùng khu vực: vạch màu trái mảnh hơn và nhạt hơn —— một nấc nằm giữa "Có mặt (3px@0.5)" và "Không có mặt (không vạch)" */
 .bbs-npc.is-nearby::before {
   content: '';
   position: absolute;
@@ -1126,12 +1126,12 @@ function deleteKnow(k: MemKnowledge) {
   background: var(--bbs-accent);
   opacity: 0.28;
 }
-/* 随行:色条加粗加实,作同伴的最高标识 */
+/* Đi cùng: vạch màu đậm hơn và đặc hơn, làm dấu hiệu cao nhất của bạn đồng hành */
 .bbs-npc.is-follow::before {
   width: 3px;
   opacity: 1;
 }
-/* 主要角色:整条左色条加粗实色,卡片更醒目,呼应「核心主演」地位 */
+/* Nhân vật chính yếu: toàn bộ vạch màu trái dày hơn và đặc màu, thẻ bắt mắt hơn, hưởng ứng vị thế "diễn viên chính cốt lõi" */
 .bbs-npc.is-main::before {
   width: 4px;
   opacity: 1;
@@ -1139,7 +1139,7 @@ function deleteKnow(k: MemKnowledge) {
 .bbs-npc.is-main {
   border-color: var(--bbs-line-strong);
 }
-/* 不在场:整行压暗 + 虚线框,与「只发名+身份」的弱化呼应 */
+/* Không có mặt: cả dòng ép tối + khung nét đứt, hưởng ứng sự làm dịu của việc "chỉ gửi tên + thân phận" */
 .bbs-npc.is-absent {
   background: transparent;
   border-style: dashed;
@@ -1155,8 +1155,8 @@ function deleteKnow(k: MemKnowledge) {
   flex-direction: column;
   gap: 4px;
 }
-/* 头行:名字 + 性别/年龄 + 操作区。只放定长内容——所在地、身份这类变长文本一律下沉到
-   下方字段表,否则它们会吃光行宽、把名字挤成一两个字。 */
+/* Dòng đầu: Tên + Giới tính/Tuổi + Vùng thao tác. Chỉ đặt nội dung có độ dài cố định —— các văn bản có độ dài biến thiên như nơi ở, thân phận nhất loạt đưa xuống
+   bảng trường bên dưới, nếu không chúng sẽ nuốt hết chiều rộng dòng, ép tên chỉ còn một hai chữ. */
 .bbs-npc-head {
   display: flex;
   align-items: center;
@@ -1166,15 +1166,15 @@ function deleteKnow(k: MemKnowledge) {
   font-size: 14px;
   font-weight: 600;
   color: var(--bbs-ink);
-  /* 允许收缩 + 单行省略:长名字截断显示(title 悬浮见全名),
-     不把右侧操作钮顶出卡片——卡有 overflow:hidden,溢出即被裁掉点不到 */
+  /* Cho phép thu hẹp + lược bớt một dòng: tên dài cắt ngắn hiển thị (di chuột qua title thấy toàn bộ tên),
+     không đẩy nút thao tác bên phải vọt ra ngoài thẻ —— thẻ có overflow:hidden, tràn ra là bị cắt mất không nhấn được */
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* 性别小标签:紧凑灰色括注,跟在名字后面 */
+/* Nhãn nhỏ giới tính: chú thích màu xám nhỏ gọn, đi theo sau tên */
 .bbs-npc-gender {
   font-size: 11px;
   color: var(--bbs-ink-muted);
@@ -1189,8 +1189,8 @@ function deleteKnow(k: MemKnowledge) {
   margin-left: auto;
 }
 
-/* —— 字段表:身份/性格/外貌统一成「彩色类别标签 + 内容」的对齐行。
-      标签同宽左对齐成一条竖列,用语义色区分类别,内容统一字号——治「三行同灰、层次乱」。 —— */
+/* —— Bảng trường: Thân phận / Tính cách / Ngoại hình thống nhất thành dòng căn chỉnh "nhãn phân loại có màu + nội dung".
+      Nhãn cùng chiều rộng căn trái thành một cột dọc, dùng màu ngữ nghĩa phân biệt phân loại, nội dung thống nhất cỡ chữ —— trị bệnh "ba dòng cùng xám, phân tầng rối loạn". —— */
 .bbs-npc-fields {
   margin: 2px 0 0;
   display: flex;
@@ -1204,15 +1204,15 @@ function deleteKnow(k: MemKnowledge) {
 }
 .bbs-npc-field dt {
   flex: 0 0 auto;
-  width: 30px;
+  width: 72px;
   text-align: center;
-  padding: 1px 0;
+  padding: 1px 4px;
   border-radius: var(--bbs-radius-sm);
   font-size: 10.5px;
   font-weight: 600;
   line-height: 1.5;
-  letter-spacing: 0.04em;
-  /* 默认中性,具体类别在下方各自染色 */
+  letter-spacing: 0.02em;
+  /* Mặc định trung tính, các phân loại cụ thể bên dưới tự nhuộm màu riêng */
   background: var(--bbs-surface-2);
   color: var(--bbs-ink-muted);
 }
@@ -1225,7 +1225,7 @@ function deleteKnow(k: MemKnowledge) {
   color: var(--bbs-ink-soft);
   word-break: break-word;
 }
-/* 身份:强调金标签——这是最关键的一类身份信息 */
+/* Thân phận: nhãn vàng nhấn mạnh —— đây là loại thông tin thân phận mấu chốt nhất */
 .bbs-npc-field.f-title dt {
   background: var(--bbs-accent-soft);
   color: var(--bbs-accent);
@@ -1233,7 +1233,7 @@ function deleteKnow(k: MemKnowledge) {
 .bbs-npc-field.f-title dd {
   color: var(--bbs-ink);
 }
-/* 着装:暖色标签——即时层核心,与「会变的当前状态」呼应,内容也加重 */
+/* Trang phục: nhãn màu ấm —— cốt lõi của tầng tức thời, hưởng ứng với "trạng thái hiện tại có thể thay đổi", nội dung cũng được làm đậm hơn */
 .bbs-npc-field.f-outfit dt {
   background: var(--bbs-warning-soft);
   color: var(--bbs-warning);
@@ -1241,17 +1241,17 @@ function deleteKnow(k: MemKnowledge) {
 .bbs-npc-field.f-outfit dd {
   color: var(--bbs-ink);
 }
-/* 状态/健康:警示色标签——受伤/异常一眼可辨 */
+/* Trạng thái / Sức khỏe: nhãn màu cảnh báo —— bị thương / bất thường nhìn thoáng qua là nhận ra */
 .bbs-npc-field.f-cond dt {
   background: var(--bbs-danger-soft);
   color: var(--bbs-danger);
 }
-/* 性格:中性偏暖(沿用默认中性,与档案层弱化一致) */
+/* Tính cách: trung tính hơi ấm (tiếp tục dùng trung tính mặc định, đồng nhất với sự làm dịu của tầng hồ sơ) */
 .bbs-npc-field.f-trait dt {
   background: var(--bbs-surface-2);
   color: var(--bbs-ink-muted);
 }
-/* 与主角的关系:强调色标签——关系是「他是谁的谁」,与身份同级重要 */
+/* Quan hệ với nhân vật chính: nhãn màu nhấn —— quan hệ là "người đó là gì của ai", quan trọng ngang cấp với thân phận */
 .bbs-npc-field.f-rel dt {
   background: var(--bbs-accent-soft);
   color: var(--bbs-accent);
@@ -1259,26 +1259,26 @@ function deleteKnow(k: MemKnowledge) {
 .bbs-npc-field.f-rel dd {
   color: var(--bbs-ink);
 }
-/* 人际(与其他角色):中性标签(档案层次要细节) */
-/* 外貌:中性标签(沿用默认),作次要细节 */
-/* 所在:青瓷描边——位置是「他现在在哪」,属即时层,但比着装/状态弱一档,故只染字不填底 */
+/* Mối quan hệ (với các nhân vật khác): nhãn trung tính (chi tiết thứ yếu của tầng hồ sơ) */
+/* Ngoại hình: nhãn trung tính (tiếp tục dùng mặc định), làm chi tiết thứ yếu */
+/* Nơi ở: viền thanh từ —— vị trí là "người đó hiện đang ở đâu", thuộc tầng tức thời, nhưng nhẹ hơn trang phục/trạng thái một nấc, nên chỉ nhuộm màu chữ không tô nền */
 .bbs-npc-field.f-loc dt {
   background: transparent;
   border: 1px solid color-mix(in srgb, var(--bbs-accent) 35%, transparent);
   color: var(--bbs-accent);
-  /* 描边占 2px,减内距让这枚标签与其他填底标签仍同宽同高 */
-  padding: 0;
+  /* Viền chiếm 2px, giảm lề trong để nhãn này vẫn cùng chiều rộng chiều cao với các nhãn tô nền khác */
+  padding: 0 3px;
 }
-/* 随行中:所在内容点亮强调色,替代原头行那枚「随行」标 */
+/* Đang đi cùng: nội dung nơi ở bật sáng màu nhấn, thay thế cho nhãn "Đi cùng" ở dòng đầu trước đây */
 .bbs-npc-field.f-loc dd.is-follow {
   color: var(--bbs-accent);
 }
-/* 所在不明:虚化斜体,与「不在场」组的压暗基调一致 */
+/* Chưa rõ nơi ở: chữ nghiêng làm mờ, đồng nhất với tông màu ép tối của nhóm "Không có mặt" */
 .bbs-npc-field.f-loc dd.is-nowhere {
   font-style: italic;
   opacity: 0.7;
 }
-/* 了解:只预览最近两条、单行截断,条数钉在行尾不被截掉;整行点开看全部——让人知道记了什么,又不把卡片撑高 */
+/* Hiểu biết: chỉ xem trước hai mục gần nhất, cắt ngắn một dòng, số mục ghim ở cuối dòng không bị cắt mất; nhấn vào cả dòng để mở xem toàn bộ —— giúp biết đã ghi những gì mà không làm thẻ bị kéo cao */
 .bbs-npc-field.f-know {
   cursor: pointer;
 }
@@ -1303,7 +1303,7 @@ function deleteKnow(k: MemKnowledge) {
   color: var(--bbs-accent);
 }
 
-/* 主要角色无状态时的占位提示:引导补录当前状态,避免空卡 */
+/* Gợi ý giữ chỗ khi nhân vật chính yếu chưa có trạng thái: hướng dẫn ghi bổ sung trạng thái hiện tại, tránh thẻ trống */
 .bbs-npc-mainhint {
   margin: 4px 0 0;
   font-size: 12px;
@@ -1311,7 +1311,7 @@ function deleteKnow(k: MemKnowledge) {
   color: var(--bbs-ink-muted);
 }
 
-/* PC(支持 hover)上操作按钮默认隐藏,悬停整卡才浮现;触屏常驻(与物品页一致) */
+/* Trên PC (hỗ trợ hover) các nút thao tác mặc định ẩn đi, di chuột qua cả thẻ mới hiện lên; màn hình cảm ứng hiển thị thường trực (đồng nhất với trang Vật phẩm) */
 @media (hover: hover) {
   .bbs-npc-acts {
     opacity: 0;
@@ -1323,7 +1323,7 @@ function deleteKnow(k: MemKnowledge) {
   }
 }
 
-/* 行内操作按钮:复刻 items 页(scoped 不继承,重声明同款) */
+/* Nút thao tác nội tuyến: sao chép lại từ trang items (scoped không kế thừa, khai báo lại cùng kiểu) */
 .bbs-item-act {
   display: inline-flex;
   align-items: center;
@@ -1344,7 +1344,7 @@ function deleteKnow(k: MemKnowledge) {
 .bbs-item-del:hover {
   color: var(--bbs-danger);
 }
-/* 随行开关:激活态点亮强调色,把「这是同伴」表达在按钮本身 */
+/* Công tắc Đi cùng: trạng thái kích hoạt bật sáng màu nhấn, biểu đạt "đây là bạn đồng hành" ngay trên bản thân nút bấm */
 .bbs-npc-pin.active {
   color: var(--bbs-accent);
 }
@@ -1352,7 +1352,7 @@ function deleteKnow(k: MemKnowledge) {
   color: var(--bbs-accent);
   background: var(--bbs-accent-soft);
 }
-/* 主要角色星标:激活态点亮(实心感由强调色填充表达) */
+/* Ngôi sao Nhân vật chính yếu: trạng thái kích hoạt bật sáng (cảm giác đặc ruột được biểu đạt bằng tô màu nhấn) */
 .bbs-npc-star.active {
   color: var(--bbs-accent);
 }
@@ -1360,7 +1360,7 @@ function deleteKnow(k: MemKnowledge) {
   color: var(--bbs-accent);
   background: var(--bbs-accent-soft);
 }
-/* 了解清单弹窗:条目行 = 正文 + 行尾操作;条目多时列表内滚动,添加框始终可见 */
+/* Hộp thoại danh sách hiểu biết: dòng mục = văn bản chính + thao tác cuối dòng; khi có nhiều mục sẽ cuộn trong danh sách, khung thêm mới luôn nhìn thấy */
 .bbs-know-hint {
   margin: 0;
   font-size: 12px;
@@ -1403,7 +1403,7 @@ function deleteKnow(k: MemKnowledge) {
   align-items: center;
   gap: 2px;
 }
-/* 主要角色卡的操作区常驻(置顶组无需 hover 才显,星标本身就是状态指示) */
+/* Vùng thao tác của thẻ nhân vật chính yếu hiển thị thường trực (nhóm ghim đầu không cần hover mới hiện, bản thân ngôi sao đã là chỉ báo trạng thái) */
 .bbs-npc.is-main .bbs-npc-acts {
   opacity: 1;
 }
@@ -1416,8 +1416,8 @@ function deleteKnow(k: MemKnowledge) {
   min-height: 60px;
   font-family: inherit;
 }
-/* 自适应高度:默认贴合一行,内容多才长高(v-autosize 量 scrollHeight 写回);
-   min-height 归零、resize 交给指令,封顶后滚动。 */
+/* Tự động điều chỉnh chiều cao: mặc định khớp sát một dòng, nhiều nội dung mới cao lên (v-autosize đo scrollHeight ghi lại);
+   min-height đưa về 0, resize giao cho directive, chạm trần sẽ cuộn. */
 .bbs-modal-autogrow {
   resize: none;
   min-height: 0;
@@ -1437,8 +1437,8 @@ function deleteKnow(k: MemKnowledge) {
   flex: 1;
 }
 
-/* —— 生活小档案 —— */
-/* 区块标题:与摘要页区块标题同款的普通小标题字,不用药丸题签 */
+/* —— Hồ sơ nhỏ đời sống —— */
+/* Tiêu đề phân khu: chữ tiêu đề nhỏ thông thường cùng kiểu với tiêu đề phân khu trang Tóm tắt, không dùng nhãn viên nang */
 .bbs-life-title {
   margin: 0;
   font-size: 14px;
@@ -1448,7 +1448,7 @@ function deleteKnow(k: MemKnowledge) {
 .bbs-npc-grouphead .bbs-add-mini {
   margin-left: auto;
 }
-/* —— 折叠头/容器:与摘要页计划/悬念折叠同款。标题行整体可点:左箭头 + 题签 + 金色计数标 —— */
+/* —— Đầu thu gọn / Vùng chứa: cùng kiểu với thu gọn Kế hoạch / Nghi vấn ở trang Tóm tắt. Toàn bộ dòng tiêu đề có thể nhấn: mũi tên trái + nhãn tiêu đề + nhãn đếm màu vàng —— */
 .bbs-fold-head {
   flex: 0 0 auto;
   min-width: 0;
@@ -1461,11 +1461,11 @@ function deleteKnow(k: MemKnowledge) {
   color: inherit;
   cursor: pointer;
 }
-/* 无可折叠(零条目)时退化为普通标题:不是按钮观感、光标默认 */
+/* Khi không có gì để thu gọn (không có mục nào) thì thoái hóa thành tiêu đề thường: không mang cảm giác nút bấm, con trỏ mặc định */
 .bbs-fold-head.is-static {
   cursor: default;
 }
-/* 折叠箭头:展开朝下,收拢转 -90° 朝右;hover 整行才点亮强调色 */
+/* Mũi tên thu gọn: mở rộng hướng xuống, thu gọn xoay -90° hướng sang phải; hover cả dòng mới bật sáng màu nhấn */
 .bbs-fold-caret {
   flex: 0 0 auto;
   color: var(--bbs-ink-muted);
@@ -1478,7 +1478,7 @@ function deleteKnow(k: MemKnowledge) {
 .bbs-fold-head:focus-visible .bbs-fold-caret {
   color: var(--bbs-accent);
 }
-/* 计数标:金底描边小药丸,始终显示;收拢时尤其有用——点明藏了多少条 */
+/* Nhãn đếm: viên nang nhỏ viền nền vàng, luôn hiển thị; khi thu gọn lại càng hữu ích —— chỉ rõ đang ẩn bao nhiêu mục */
 .bbs-fold-count {
   flex: 0 0 auto;
   font-size: 11px;
@@ -1490,7 +1490,7 @@ function deleteKnow(k: MemKnowledge) {
   padding: 1px 9px;
   font-variant-numeric: tabular-nums;
 }
-/* —— 可收展容器:grid 1fr↔0fr,高度随内容自适应,无需写死 max-height —— */
+/* —— Vùng chứa có thể thu mở: grid 1fr↔0fr, chiều cao tự thích ứng theo nội dung, không cần viết cứng max-height —— */
 .bbs-fold-wrap {
   display: grid;
   grid-template-rows: 1fr;
@@ -1499,7 +1499,7 @@ function deleteKnow(k: MemKnowledge) {
 .bbs-fold-wrap.is-collapsed {
   grid-template-rows: 0fr;
 }
-/* min-height:0 + overflow:hidden 才能让 0fr 真正压到零高 */
+/* min-height:0 + overflow:hidden mới có thể ép 0fr thực sự về chiều cao bằng không */
 .bbs-fold-inner {
   min-height: 0;
   overflow: hidden;
@@ -1514,7 +1514,7 @@ function deleteKnow(k: MemKnowledge) {
 .bbs-life-group {
   margin-top: 8px;
 }
-/* 一条细节:与 NPC 卡同族的卡片容器(主题描边/圆角/纸面) */
+/* Một mục chi tiết: vùng chứa thẻ cùng họ với thẻ NPC (viền giao diện / bo góc / mặt giấy) */
 .bbs-life {
   position: relative;
   display: flex;
@@ -1525,9 +1525,9 @@ function deleteKnow(k: MemKnowledge) {
   border-radius: var(--bbs-radius);
   background: var(--bbs-surface);
   margin-bottom: 6px;
-  overflow: hidden; /* 让置顶色条贴着圆角边缘 */
+  overflow: hidden; /* Để vạch màu ghim đầu bám sát mép bo góc */
 }
-/* 置顶:左缘一道金色条,呼应角色卡「在场」、点明「常驻发送」 */
+/* Ghim đầu: một vạch màu vàng ở mép trái, hưởng ứng thẻ nhân vật "Có mặt", chỉ rõ "gửi thường trực" */
 .bbs-life.is-pinned::before {
   content: '';
   position: absolute;
@@ -1538,7 +1538,7 @@ function deleteKnow(k: MemKnowledge) {
   background: var(--bbs-accent);
   opacity: 0.5;
 }
-/* 沉降:虚线框 + 压暗,呼应角色卡「不在场」的弱化 */
+/* Lắng đọng: khung nét đứt + ép tối, hưởng ứng sự làm dịu của thẻ nhân vật "Không có mặt" */
 .bbs-life.is-archive {
   background: transparent;
   border-style: dashed;
@@ -1563,7 +1563,7 @@ function deleteKnow(k: MemKnowledge) {
   gap: 6px;
   margin-top: 4px;
 }
-/* 主题/时效小签:与计划卡时间签同款的描边小标签 */
+/* Nhãn nhỏ chủ đề / thời hạn: nhãn nhỏ có viền cùng kiểu với nhãn thời gian của thẻ kế hoạch */
 .bbs-life-tag,
 .bbs-life-until {
   font-size: 10.5px;
@@ -1586,10 +1586,10 @@ function deleteKnow(k: MemKnowledge) {
   color: var(--bbs-accent);
 }
 
-/* ============ 窄屏:生活细节卡的重排 ============ */
+/* ============ Màn hình hẹp: sắp xếp lại thẻ chi tiết đời sống ============ */
 @media (max-width: 640px) {
-  /* 生活小档案:主题/时效标签与操作钮同占顶行,正文整行排在下方。
-     main 改 display:contents,让文本/标签直接参与卡片 flex 排序,无需改模板结构 */
+  /* Hồ sơ nhỏ đời sống: nhãn chủ đề/thời hạn và nút thao tác cùng chiếm dòng đỉnh, văn bản chính xếp nguyên dòng ở bên dưới.
+     main đổi thành display:contents, để văn bản/nhãn trực tiếp tham gia sắp xếp flex của thẻ, không cần sửa cấu trúc template */
   .bbs-life {
     flex-wrap: wrap;
   }

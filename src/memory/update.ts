@@ -1,11 +1,11 @@
 /**
- * 检测更新:对比「本地 manifest.json 的 version」与「远端 GitHub 仓库 manifest.json 的 version」,
- * 有新版本则在设置 tab 亮角标 + 设置页给「立即更新」入口,确认后走 ST 扩展更新 API 自动更新并刷新。
+ * Kiểm tra cập nhật: đối chiếu "version của manifest.json cục bộ" với "version của manifest.json trên kho GitHub từ xa",
+ * nếu có phiên bản mới thì bật chấm đỏ ở tab Cài đặt + đưa ra lối vào "Cập nhật ngay" ở trang Cài đặt, sau khi xác nhận sẽ đi qua API cập nhật tiện ích mở rộng của ST để tự động cập nhật và làm mới trang.
  *
- * ⚠️ 刻意不持久化「有更新」结果(不写 localStorage):
- *   旧做法把 updateAvailable 缓存进 localStorage,只有点更新按钮才清——结果是更新完仍提示有更新,
- *   必须手点一次才消。这里改为每次都实时比对两份 manifest 的 version:本地装上新版后 version 自然变大,
- *   下次比对即不再提示。只用内存标记 checkedThisSession 防一次会话内重复请求,页面一刷新就重查。
+ * ⚠️ Cố ý không lưu bền vững kết quả "có bản cập nhật" (không ghi localStorage):
+ *   Cách làm cũ lưu đệm updateAvailable vào localStorage, chỉ khi bấm nút cập nhật mới xóa —— kết quả là cập nhật xong vẫn báo có bản cập nhật,
+ *   bắt buộc phải bấm tay một lần mới mất. Ở đây đổi sang mỗi lần đều đối chiếu thời gian thực version của hai bản manifest: sau khi máy cục bộ cài bản mới thì version tự nhiên lớn lên,
+ *   lần đối chiếu tiếp theo sẽ không nhắc nữa. Chỉ dùng cờ trong bộ nhớ checkedThisSession để tránh gửi yêu cầu lặp lại trong một phiên, vừa làm mới trang là kiểm tra lại.
  */
 
 import { reactive } from 'vue';
@@ -13,19 +13,19 @@ import { getContext } from '@/st/context';
 import { PLUGIN_VERSION } from '@/version';
 
 /**
- * 本地版本号:由 Vite 从 package.json 注入,并由构建前脚本同步到 manifest.json。
- * 比 fetch 本地 manifest 省一次请求、无路径/缓存坑;更新装上新版后这串自然变大,下次比对即不再提示。
+ * Số phiên bản cục bộ: do Vite tiêm từ package.json, và được script trước khi đóng gói đồng bộ vào manifest.json.
+ * Tiết kiệm một lần gửi yêu cầu so với fetch manifest cục bộ, không dính bẫy đường dẫn / bộ nhớ đệm; sau khi cập nhật cài bản mới chuỗi này tự nhiên lớn lên, lần đối chiếu sau sẽ không nhắc nữa.
  */
 const CURRENT_VERSION = PLUGIN_VERSION;
 
-/** 远端 manifest:GitHub raw(带时间戳绕缓存)。homePage 指向 baibai-git/ST-BaiBai-Book。 */
+/** Manifest từ xa: GitHub raw (kèm dấu thời gian để vượt qua bộ nhớ đệm). homePage trỏ tới baibai-git/ST-BaiBai-Book. */
 const REMOTE_MANIFEST_URL = 'https://raw.githubusercontent.com/baibai-git/ST-BaiBai-Book/main/manifest.json';
 
-/** 对外响应式状态:驱动设置 tab 角标与设置页版本区块。 */
+/** Trạng thái phản ứng (reactive) hướng ra ngoài: điều khiển chấm thông báo ở tab cài đặt và khu vực phiên bản ở trang cài đặt. */
 export const updateState = reactive<{
-  current: string; // 本地版本(代码内常量)
-  latest: string; // 远端版本(空=未查到/请求失败)
-  available: boolean; // 远端 > 本地
+  current: string; // Phiên bản cục bộ (hằng số trong mã nguồn)
+  latest: string; // Phiên bản từ xa (trống = chưa tra được / yêu cầu thất bại)
+  available: boolean; // Từ xa > Cục bộ
   checking: boolean;
   updating: boolean;
 }>({
@@ -36,10 +36,10 @@ export const updateState = reactive<{
   updating: false,
 });
 
-// 一次会话内只主动查一次(刷新页面即重置 → 重查),避免重复打 GitHub。
+// Trong một phiên chỉ chủ động kiểm tra một lần (làm mới trang là đặt lại → kiểm tra lại), tránh gọi GitHub lặp đi lặp lại.
 let checkedThisSession = false;
 
-/** 解析「a 是否比 b 新」:按 . 分段比较数字,缺段补 0(如 0.0.1 vs 0.1)。非数字段按 0 处理。 */
+/** Phân tích "a có mới hơn b hay không": tách đoạn theo dấu . để so sánh từng số, thiếu đoạn thì bù 0 (như 0.0.1 vs 0.1). Đoạn phi chữ số xử lý như 0. */
 function isNewer(a: string, b: string): boolean {
   if (!a || !b) return false;
   const pa = a.split('.').map(n => Number.parseInt(n, 10) || 0);
@@ -54,7 +54,7 @@ function isNewer(a: string, b: string): boolean {
   return false;
 }
 
-/** 读远端 manifest.json 的 version。请求失败/超时返回空串(静默,不打扰用户)。 */
+/** Đọc version của manifest.json từ xa. Yêu cầu thất bại / quá thời gian trả về chuỗi rỗng (âm thầm, không làm phiền người dùng). */
 async function readRemoteVersion(): Promise<string> {
   try {
     const ctrl = new AbortController();
@@ -77,8 +77,8 @@ async function readRemoteVersion(): Promise<string> {
 }
 
 /**
- * 检测更新:实时比对本地与远端 manifest 版本,刷新 updateState。
- * 一次会话只主动查一次;force=true 跳过该限制(供「重新检查」手动触发)。
+ * Kiểm tra cập nhật: đối chiếu thời gian thực phiên bản manifest cục bộ và từ xa, làm mới updateState.
+ * Một phiên chỉ chủ động kiểm tra một lần; force=true bỏ qua giới hạn đó (phục vụ nút "Kiểm tra lại" kích hoạt thủ công).
  */
 export async function checkForUpdate(force = false): Promise<void> {
   if (updateState.checking) return;
@@ -90,14 +90,14 @@ export async function checkForUpdate(force = false): Promise<void> {
       updateState.latest = latest;
       updateState.available = isNewer(latest, CURRENT_VERSION);
     }
-    // 远端拿不到则保持上次结论(不误报、不误清)。
+    // Không lấy được từ xa thì giữ nguyên kết luận lần trước (không báo nhầm, không xóa nhầm).
     checkedThisSession = true;
   } finally {
     updateState.checking = false;
   }
 }
 
-/** 本扩展文件夹名(third-party 下的目录名)。据模块 URL 解析,取不到回退已知名。 */
+/** Tên thư mục tiện ích mở rộng này (tên thư mục dưới third-party). Phân tích từ URL mô-đun, không lấy được thì lùi về tên đã biết. */
 function extensionFolderName(): string {
   try {
     const path = new URL(import.meta.url).pathname;
@@ -109,12 +109,12 @@ function extensionFolderName(): string {
       if (folder) return folder;
     }
   } catch {
-    /* 解析失败回退 */
+    /* Phân tích thất bại thì lùi về mặc định */
   }
   return 'ST-BaiBai-Book';
 }
 
-/** 探测本扩展安装类型(global/local/system),决定更新 API 的 global 参数。取不到当 local。 */
+/** Thăm dò loại cài đặt của tiện ích mở rộng này (global/local/system), quyết định tham số global của API cập nhật. Không lấy được thì coi như local. */
 async function discoverExtensionType(folder: string): Promise<'global' | 'local' | 'system' | null> {
   try {
     const headers = getContext()?.getRequestHeaders?.() ?? {};
@@ -132,8 +132,8 @@ async function discoverExtensionType(folder: string): Promise<'global' | 'local'
 }
 
 /**
- * 执行更新:调 ST 的 /api/extensions/update 拉取最新代码,成功后刷新页面生效。
- * 失败抛错(由调用方提示)。全局扩展需管理员权限,后端会自行校验并返回错误文案。
+ * Thực thi cập nhật: gọi /api/extensions/update của ST để kéo mã nguồn mới nhất về, sau khi thành công thì làm mới trang để có hiệu lực.
+ * Thất bại sẽ ném lỗi (do bên gọi hiển thị thông báo). Tiện ích mở rộng toàn cục cần quyền quản trị viên, backend sẽ tự kiểm tra và trả về thông báo lỗi.
  */
 export async function performUpdate(): Promise<void> {
   if (updateState.updating) return;
@@ -151,7 +151,7 @@ export async function performUpdate(): Promise<void> {
       const text = await resp.text().catch(() => '');
       throw new Error(text || resp.statusText || `HTTP ${resp.status}`);
     }
-    // 更新成功:本地代码已换新版,刷新页面加载新产物(刷新后比对自然不再提示)。
+    // Cập nhật thành công: mã cục bộ đã đổi sang bản mới, làm mới trang để nạp bản dựng mới (sau khi làm mới đối chiếu tự nhiên sẽ không nhắc nữa).
     updateState.available = false;
     setTimeout(() => location.reload(), 800);
   } finally {

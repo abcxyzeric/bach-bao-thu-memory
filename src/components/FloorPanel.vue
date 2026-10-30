@@ -1,18 +1,18 @@
 <script setup lang="ts">
 /**
- * 楼内摘要面板(挂在每条 AI 楼的 shadow 内,由 floorPanel.ts 逐楼挂载)。
+ * Bảng tóm tắt trong tầng (gắn bên trong shadow của mỗi tầng AI, do floorPanel.ts gắn kết từng tầng).
  *
- * 形态:一张与摘要页同源的卡片(.bbs-summary-card 语言)。
- *   - 卡片头(锚点):严格单行 —— 楼号 + 摘要预览 + 番外键 + 单楼摘要键。
- *   - 卡片体(抽屉):grid 0fr↔1fr 高度过渡(同 SummaryNode.vue,内容常驻不脱流,无闪烁)。
- *     变动按类型分组、以「标签流」横向排列。
+ * Hình thái: một tấm thẻ cùng nguồn với trang Tóm tắt (ngôn ngữ thiết kế .bbs-summary-card).
+ *   - Đầu thẻ (điểm neo): một dòng nghiêm ngặt —— Số tầng + Xem trước tóm tắt + Nút ngoại truyện + Nút tóm tắt tầng đơn.
+ *   - Thân thẻ (ngăn kéo): chuyển tiếp chiều cao grid 0fr↔1fr (giống SummaryNode.vue, nội dung thường trực không rời luồng, không nhấp nháy).
+ *     Biến động được phân nhóm theo loại, xếp theo "luồng thẻ".
  *
- * 编辑:**逐条就地编辑**。点摘要正文 / 时间 / 地点 / 某条变动标签,就地展开该单元的输入框,
- *   保存即写、取消即收,其余保持只读。同一时刻只有一个单元在编辑(editKey)。
- *   写走 apply.ts 的 editLeafFull(整体重放),targeted 修改由 commitDelta 克隆-改-回写完成。
+ * Chỉnh sửa: **chỉnh sửa từng mục tại chỗ**. Nhấn vào nội dung chính tóm tắt / thời gian / địa điểm / một nhãn biến động nào đó, mở rộng tại chỗ ô nhập liệu của đơn vị đó,
+ *   lưu là ghi, hủy là thu lại, phần còn lại giữ nguyên chỉ đọc. Cùng một thời điểm chỉ có một đơn vị đang chỉnh sửa (editKey).
+ *   Ghi dữ liệu đi theo editLeafFull của apply.ts (phát lại tổng thể), sửa đổi có mục tiêu do commitDelta nhân bản - sửa - ghi lại hoàn tất.
  *
- * 数据:chat 非 reactive。leaf 返回浅拷贝(新引用)+ 追踪 sig.tick / derivedMeta.rev,
- *   任何来源(ST 事件、主界面摘要、楼内编辑)的变化都能刷新。
+ * Dữ liệu: chat không phải reactive. leaf trả về bản sao nông (tham chiếu mới) + theo dõi sig.tick / derivedMeta.rev,
+ *   thay đổi từ bất kỳ nguồn nào (sự kiện ST, tóm tắt giao diện chính, chỉnh sửa trong tầng) đều có thể làm mới.
  */
 import { computed, nextTick, reactive, ref, watch } from 'vue';
 import Icon from '@/components/Icon.vue';
@@ -29,23 +29,23 @@ import type { LeafExtra, StoredDelta, ItemDelta, NpcDelta, ProtagonistDelta, Con
 
 const props = defineProps<{ floor: number; sig: { tick: number } }>();
 
-// —— 读当前楼消息/叶子。两个刷新源都追踪:
-//   · sig.tick:注入宿主的 ST 事件(渲染/翻页/切聊天)
-//   · derivedMeta.rev:任何 recomputeDerived(主界面摘要、楼内编辑、引擎自动摘要)
+// —— Đọc tin nhắn / lá của tầng hiện tại. Cả hai nguồn làm mới đều được theo dõi:
+//   · sig.tick: sự kiện ST của chủ thể tiêm (kết xuất / lật trang / chuyển trò chuyện)
+//   · derivedMeta.rev: bất kỳ recomputeDerived nào (tóm tắt giao diện chính, chỉnh sửa trong tầng, engine tự động tóm tắt)
 const msg = computed<STMessage | undefined>(() => {
   void props.sig.tick;
   void derivedMeta.rev;
   return getContext()?.chat?.[props.floor];
 });
-// ⚠️ msg 返回 chat[floor] 同一对象引用(原地改标记/叶子,引用不变),Vue computed 靠 === 判定
-// 会认为 msg「没变」而不向下游传播。故 omit/valid/leaf 都必须**各自**直接追踪 rev/tick,
-// 不能只靠 msg —— 否则番外标记切换后 omit 不刷新(番外按钮状态不变,是这个 bug 的根因)。
+// ⚠️ msg trả về cùng một tham chiếu đối tượng chat[floor] (sửa đánh dấu/lá tại chỗ, tham chiếu không đổi), Vue computed phán đoán dựa trên ===
+// sẽ cho rằng msg "chưa đổi" mà không lan truyền xuống hạ lưu. Do đó omit/valid/leaf đều bắt buộc phải **tự mình** theo dõi trực tiếp rev/tick,
+// không thể chỉ dựa vào msg —— nếu không sau khi chuyển đổi đánh dấu ngoại truyện thì omit không làm mới (trạng thái nút ngoại truyện không đổi, là nguyên nhân gốc của bug này).
 const omit = computed(() => {
   void props.sig.tick;
   void derivedMeta.rev;
   return !!msg.value?.extra?.bbs_omit;
 });
-// leaf 还额外返回浅拷贝(新引用),让依赖 leaf 的下游(d/*Tags/preview)也强制重算。
+// leaf còn trả về thêm bản sao nông (tham chiếu mới), để hạ lưu phụ thuộc vào leaf (d/*Tags/preview) cũng bị ép tính lại.
 const leaf = computed<LeafExtra | null>(() => {
   void props.sig.tick;
   void derivedMeta.rev;
@@ -73,15 +73,15 @@ const summarizingHere = computed(() => {
 });
 const summaryActionDisabled = computed(() => busy.value || engineState.running || omit.value);
 const summaryActionTitle = computed(() => {
-  if (omit.value) return '番外楼不参与摘要,请先取消番外';
-  if (summarizingHere.value) return `正在生成楼层 #${props.floor} 的摘要`;
-  return valid.value ? `重新生成楼层 #${props.floor} 的摘要` : `生成楼层 #${props.floor} 的摘要`;
+  if (omit.value) return 'Tầng ngoại truyện không tham gia tóm tắt, vui lòng bỏ ngoại truyện trước';
+  if (summarizingHere.value) return `Đang tạo tóm tắt cho tầng #${props.floor}`;
+  return valid.value ? `Tạo lại tóm tắt cho tầng #${props.floor}` : `Tạo tóm tắt cho tầng #${props.floor}`;
 });
 
 const previewText = computed(() => {
-  if (omit.value) return '不计入记忆';
+  if (omit.value) return 'Không tính vào trí nhớ';
   if (valid.value && leaf.value?.text) return leaf.value.text;
-  return valid.value ? '(无摘要正文)' : '待摘要';
+  return valid.value ? '(Không có nội dung tóm tắt)' : 'Chờ tóm tắt';
 });
 const previewMuted = computed(() => omit.value || !(valid.value && leaf.value?.text));
 
@@ -94,73 +94,73 @@ const timeLabel = computed(() => {
   return s || e || l.timeLabel?.trim() || '';
 });
 
-/* ============ 变动 → 标签行(带定位信息,供就地编辑用) ============ */
+/* ============ Biến động → Dòng thẻ (kèm thông tin định vị để chỉnh sửa tại chỗ) ============ */
 type Op = 'add' | 'update' | 'remove' | 'resolve' | 'reopen' | 'reparent';
-// 单字符曾让人费解(「改」是什么?),改用明确词条 + 语义色徽标(见 .bbs-fp-op 的 op-* 着色)
-const opLabel: Record<Op, string> = { add: '新增', update: '更新', remove: '移除', resolve: '了结', reopen: '重启', reparent: '迁移' };
+// Ký tự đơn từng gây khó hiểu ("Sửa" là gì?), đổi sang dùng từ ngữ rõ ràng + huy hiệu màu ngữ nghĩa (xem tô màu op-* của .bbs-fp-op)
+const opLabel: Record<Op, string> = { add: 'Thêm mới', update: 'Cập nhật', remove: 'Gỡ bỏ', resolve: 'Kết thúc', reopen: 'Mở lại', reparent: 'Di dời' };
 
-// key 用于定位到 delta 里的具体桶+序号,如 'item:add:0'
-// text=主文本(名字/标题,一行),sub=副文本(描述/字段细节,淡色小字另起一行)。
-// 之前把所有细节挤进一行、加大圆角、还居中,长内容就成了臃肿的居中泡泡。拆成「主 + 副」的
-// 账册式左对齐条目后,名字为纲、细节为目,长短皆可读。
+// key dùng để định vị tới thùng cụ thể + số thứ tự trong delta, như 'item:add:0'
+// text=văn bản chính (tên/tiêu đề, một dòng), sub=văn bản phụ (mô tả/chi tiết trường, chữ nhỏ màu nhạt xuống dòng riêng).
+// Trước đây nhét tất cả chi tiết vào một dòng, bo góc lớn, lại còn căn giữa, nội dung dài biến thành bong bóng căn giữa cồng kềnh. Tách thành mục kiểu sổ cái
+// căn trái "chính + phụ", lấy tên làm cốt, chi tiết làm nhánh, dài ngắn đều dễ đọc.
 interface Tag {
   key: string;
   op: Op;
   bucket: string; // add/update/remove/reparent/resolve/reopen
   idx: number;
   text: string;
-  sub?: string; // 副文本(可选)
-  editable: boolean; // items/npcs 可就地改字段;scenes/plans 只可删
+  sub?: string; // Văn bản phụ (tùy chọn)
+  editable: boolean; // items/npcs có thể sửa trường tại chỗ; scenes/plans chỉ có thể xóa
 }
 
 function fmtItem(x: ItemDelta): { text: string; sub?: string } {
   const text = typeof x.qty === 'number' ? `${x.name} ×${x.qty}` : x.name;
   return { text, sub: x.desc || undefined };
 }
-// 角色可编辑的文本字段注册表:统一驱动「展示副文本 / 编辑载入 / 保存 / 按需渲染输入框」,
-// 一处定义,避免多处重复且保证一致。key=NpcDelta 字段名,draft=edit 草稿字段名,label=展示/占位。
+// Bảng đăng ký các trường văn bản có thể chỉnh sửa của nhân vật: thống nhất dẫn động "hiển thị văn bản phụ / tải chỉnh sửa / lưu / kết xuất ô nhập theo nhu cầu",
+// định nghĩa một nơi, tránh lặp lại nhiều chỗ và đảm bảo đồng nhất. key=tên trường NpcDelta, draft=tên trường nháp trong edit, label=hiển thị/placeholder.
 const NPC_FIELDS = [
-  { key: 'title', draft: 'title', label: '身份' },
-  { key: 'age', draft: 'npcAge', label: '年龄' },
-  { key: 'relation', draft: 'relation', label: '关系' },
-  { key: 'affinityNote', draft: 'affinityNote', label: '好感说明' },
-  { key: 'outfit', draft: 'outfit', label: '着装' },
-  { key: 'condition', draft: 'condition', label: '状态' },
-  { key: 'desc', draft: 'npcDesc', label: '外貌' },
-  { key: 'personality', draft: 'personality', label: '性格' },
-  { key: 'ties', draft: 'ties', label: '人际' },
-  { key: 'location', draft: 'npcLoc', label: '位置' },
+  { key: 'title', draft: 'title', label: 'Thân phận' },
+  { key: 'age', draft: 'npcAge', label: 'Tuổi' },
+  { key: 'relation', draft: 'relation', label: 'Quan hệ' },
+  { key: 'affinityNote', draft: 'affinityNote', label: 'Ghi chú hảo cảm' },
+  { key: 'outfit', draft: 'outfit', label: 'Trang phục' },
+  { key: 'condition', draft: 'condition', label: 'Trạng thái' },
+  { key: 'desc', draft: 'npcDesc', label: 'Ngoại hình' },
+  { key: 'personality', draft: 'personality', label: 'Tính cách' },
+  { key: 'ties', draft: 'ties', label: 'Mối quan hệ' },
+  { key: 'location', draft: 'npcLoc', label: 'Vị trí' },
 ] as const;
 
-/** 旧存档里的伤情片段补丁(新叶子入库前已固化成全文):列出来,重放实际施加了什么才看得见。 */
+/** Bản vá phân mảnh thương tích trong bản lưu cũ (lá mới trước khi vào kho đã được cố định thành toàn văn): liệt kê ra để thấy được khi phát lại thực tế đã áp dụng những gì. */
 function fmtConditionPatch(p: ConditionPatch | undefined): string {
   if (!p) return '';
   return [
-    ...(p.replace ?? []).map(op => op.text ? `改${op.id}→${op.text}` : `删${op.id}`),
-    ...(p.add ?? []).map(op => `加:${op.text}`),
-  ].join('；');
+    ...(p.replace ?? []).map(op => op.text ? `Sửa ${op.id}→${op.text}` : `Xóa ${op.id}`),
+    ...(p.add ?? []).map(op => `Thêm:${op.text}`),
+  ].join('; ');
 }
 
-// 角色变动:主文本=名(·身份);副文本=delta 里本轮出现的字段。更新 delta 只含被改字段,
-// 故副文本恰好就是「这层楼改了什么」——之前挤在一行还居中,极难读,拆成副行后清爽。
+// Biến động nhân vật: văn bản chính = Tên (·Thân phận); văn bản phụ = các trường xuất hiện trong lượt này ở delta. Delta cập nhật chỉ chứa các trường bị sửa,
+// nên văn bản phụ vừa khéo chính là "tầng này đã sửa những gì" —— trước đây nhét vào một dòng lại còn căn giữa, cực kỳ khó đọc, tách thành dòng phụ trông thoáng sạch.
 function fmtNpc(x: NpcDelta): { text: string; sub?: string } {
   const text = x.title ? `${x.name}·${x.title}` : x.name;
   const parts: string[] = [];
-  // 身份已进主文本(名·身份),副文本从「年龄」起,避免重复
-  if (x.age) parts.push(`年龄:${x.age}`);
-  if (x.relation) parts.push(`关系:${x.relation}`);
+  // Thân phận đã đưa vào văn bản chính (Tên·Thân phận), văn bản phụ bắt đầu từ "Tuổi", tránh lặp lại
+  if (x.age) parts.push(`Tuổi:${x.age}`);
+  if (x.relation) parts.push(`Quan hệ:${x.relation}`);
   const affinity = fmtNpcAffinity(x, true);
-  if (affinity) parts.push(`好感估计:${affinity}`);
-  if (x.outfit) parts.push(`着装:${x.outfit}`);
-  if (x.condition) parts.push(`状态:${x.condition}`);
+  if (affinity) parts.push(`Đánh giá hảo cảm:${affinity}`);
+  if (x.outfit) parts.push(`Trang phục:${x.outfit}`);
+  if (x.condition) parts.push(`Trạng thái:${x.condition}`);
   const patch = fmtConditionPatch(x.conditionPatch);
-  if (patch) parts.push(`状态补丁:${patch}`);
-  if (x.desc) parts.push(`外貌:${x.desc}`);
-  if (x.personality) parts.push(`性格:${x.personality}`);
-  if (x.ties) parts.push(`人际:${x.ties}`);
-  if (x.location) parts.push(`位置:${x.location}`);
-  if (x.follow === true) parts.push('随行');
-  if (x.important === true) parts.push('主要角色');
+  if (patch) parts.push(`Bản vá trạng thái:${patch}`);
+  if (x.desc) parts.push(`Ngoại hình:${x.desc}`);
+  if (x.personality) parts.push(`Tính cách:${x.personality}`);
+  if (x.ties) parts.push(`Mối quan hệ:${x.ties}`);
+  if (x.location) parts.push(`Vị trí:${x.location}`);
+  if (x.follow === true) parts.push('Đi cùng');
+  if (x.important === true) parts.push('Nhân vật chính yếu');
   return { text, sub: parts.length ? parts.join(' · ') : undefined };
 }
 
@@ -185,28 +185,28 @@ const npcTags = computed<Tag[]>(() => {
 const protagonistTags = computed<Tag[]>(() => {
   const protagonist = d.value?.protagonist;
   if (!protagonist) return [];
-  // conditionPatch 是对象,不走文本键;用 Partial 只列文本键,补丁单独格式化追加。
+  // conditionPatch là đối tượng, không đi theo khóa văn bản; dùng Partial chỉ liệt kê khóa văn bản, bản vá được định dạng nối thêm riêng.
   const labels: Partial<Record<keyof ProtagonistDelta, string>> = {
-    gender: '性别',
-    age: '年龄',
-    ageTime: '年龄锚点',
-    identity: '身份',
-    appearance: '外貌',
-    outfit: '着装',
-    condition: '状态',
+    gender: 'Giới tính',
+    age: 'Tuổi',
+    ageTime: 'Mốc tuổi',
+    identity: 'Thân phận',
+    appearance: 'Ngoại hình',
+    outfit: 'Trang phục',
+    condition: 'Trạng thái',
   };
   const parts = (Object.keys(labels) as Array<keyof ProtagonistDelta>)
     .filter(key => protagonist[key] !== undefined)
-    .map(key => `${labels[key]}:${protagonist[key] || '(清空)'}`);
+    .map(key => `${labels[key]}:${protagonist[key] || '(Xóa trống)'}`);
   const patch = fmtConditionPatch(protagonist.conditionPatch);
-  if (patch) parts.push(`状态补丁:${patch}`);
+  if (patch) parts.push(`Bản vá trạng thái:${patch}`);
   if (!parts.length) return [];
   return [{
     key: 'protagonist:update:0',
     op: 'update',
     bucket: 'update',
     idx: 0,
-    text: '主角档案',
+    text: 'Hồ sơ nhân vật chính',
     sub: parts.join(' · '),
     editable: false,
   }];
@@ -226,33 +226,33 @@ const planTags = computed<Tag[]>(() => {
   if (!pl) return [];
   const out: Tag[] = [];
   (pl.add ?? []).forEach((x, i) =>
-    out.push({ key: `plan:add:${i}`, op: 'add', bucket: 'add', idx: i, text: x.content, sub: x.kind === 'suspense' ? '悬念' : '计划', editable: true }),
+    out.push({ key: `plan:add:${i}`, op: 'add', bucket: 'add', idx: i, text: x.content, sub: x.kind === 'suspense' ? 'Nghi vấn' : 'Kế hoạch', editable: true }),
   );
-  // resolve/reopen/remove 存 id,反查内容显示;resolve 还带 outcome/reason(兼容裸字符串旧数据)
+  // resolve/reopen/remove lưu id, tra ngược nội dung để hiển thị; resolve còn kèm outcome/reason (tương thích dữ liệu cũ dạng chuỗi trần)
   (pl.resolve ?? []).forEach((r, i) => {
     const id = typeof r === 'string' ? r : r.id;
     const oc = typeof r === 'string' ? undefined : r.outcome;
-    const verb = oc === 'done' ? '达成' : oc === 'cancelled' ? '取消' : oc === 'failed' ? '失败' : '了结';
+    const verb = oc === 'done' ? 'Hoàn thành' : oc === 'cancelled' ? 'Hủy bỏ' : oc === 'failed' ? 'Thất bại' : 'Kết thúc';
     const reason = typeof r === 'string' ? '' : (r.reason?.trim() ?? '');
     out.push({ key: `plan:resolve:${i}`, op: 'resolve', bucket: 'resolve', idx: i, text: planLabel(verb, id), sub: reason || undefined, editable: false });
   });
-  // update 此前不显示:改过的内容/期限在楼层面板里无从查起,也删不掉
+  // update trước đây không hiển thị: nội dung/thời hạn đã sửa không cách nào tra cứu trong bảng tầng, cũng không xóa được
   (pl.update ?? []).forEach((u, i) => {
-    const sub = [u.content && `内容:${u.content}`, u.targetTime !== undefined && `期限:${u.targetTime || '(清除)'}`].filter(Boolean).join(' · ');
-    out.push({ key: `plan:update:${i}`, op: 'update', bucket: 'update', idx: i, text: planLabel('更新', u.id), sub: sub || undefined, editable: false });
+    const sub = [u.content && `Nội dung:${u.content}`, u.targetTime !== undefined && `Thời hạn:${u.targetTime || '(Xóa bỏ)'}`].filter(Boolean).join(' · ');
+    out.push({ key: `plan:update:${i}`, op: 'update', bucket: 'update', idx: i, text: planLabel('Cập nhật', u.id), sub: sub || undefined, editable: false });
   });
-  (pl.reopen ?? []).forEach((id, i) => out.push({ key: `plan:reopen:${i}`, op: 'reopen', bucket: 'reopen', idx: i, text: planLabel('重启', id), editable: false }));
-  (pl.remove ?? []).forEach((id, i) => out.push({ key: `plan:remove:${i}`, op: 'remove', bucket: 'remove', idx: i, text: planLabel('删除', id), editable: false }));
+  (pl.reopen ?? []).forEach((id, i) => out.push({ key: `plan:reopen:${i}`, op: 'reopen', bucket: 'reopen', idx: i, text: planLabel('Mở lại', id), editable: false }));
+  (pl.remove ?? []).forEach((id, i) => out.push({ key: `plan:remove:${i}`, op: 'remove', bucket: 'remove', idx: i, text: planLabel('Xóa', id), editable: false }));
   return out;
 });
 function planLabel(verb: string, id: string): string {
   void derivedMeta.rev;
   const c = planContentById(id);
-  return c ? `${verb}:${c}` : `${verb}一项`;
+  return c ? `${verb}:${c}` : `${verb} một mục`;
 }
-// 变量变动:varOps 是扁平命令数组(非 add/update/remove 分桶),逐条映射成标签。
-// op 复用现有徽标语义:set/add=更新(中性)、assign=新增(强调)、remove=移除(危险)。
-// 可就地编辑(按命令类型暴露不同字段,见模板 var 分支);删除走 deleteTag 的 var 特判。
+// Biến động biến số: varOps là mảng lệnh phẳng (không chia thùng add/update/remove), ánh xạ từng mục thành nhãn.
+// op tái sử dụng ngữ nghĩa huy hiệu hiện có: set/add=Cập nhật (trung tính), assign=Thêm mới (nhấn mạnh), remove=Gỡ bỏ (nguy hiểm).
+// Có thể chỉnh sửa tại chỗ (phơi bày các trường khác nhau tùy theo kiểu lệnh, xem nhánh var trong template); xóa đi theo xử lý riêng cho var của deleteTag.
 const VAR_OP_TO_TAGOP: Record<VarOp['op'], Op> = { set: 'update', add: 'update', assign: 'add', remove: 'remove' };
 const varTags = computed<Tag[]>(() => {
   const ops = d.value?.varOps;
@@ -262,14 +262,14 @@ const varTags = computed<Tag[]>(() => {
     return { key: `var:op:${i}`, op: VAR_OP_TO_TAGOP[op.op], bucket: 'op', idx: i, text, sub, editable: true };
   });
 });
-// 正在编辑的变量命令(供模板按 op 类型决定显示哪些字段:值/增量/键)
+// Lệnh biến số đang được chỉnh sửa (cung cấp cho template quyết định hiển thị những trường nào theo kiểu op: Giá trị / Lượng tăng / Khóa)
 const editingVarOp = computed<VarOp | null>(() => {
   const key = editKey.value;
   if (!key || !key.startsWith('var:')) return null;
   return d.value?.varOps?.[Number(key.split(':')[2])] ?? null;
 });
-// 值 ↔ 输入框互转:字符串原样;数字/布尔/对象转 JSON 文本。解析反之:先试 JSON,失败当纯字符串。
-// 故 "敌对"→字符串、"60"→数字、"true"→布尔、'{"a":1}'→对象,round-trip 稳定。
+// Chuyển đổi qua lại giữa Giá trị ↔ Ô nhập liệu: chuỗi giữ nguyên; số/boolean/đối tượng chuyển thành văn bản JSON. Phân tích ngược lại: thử JSON trước, thất bại thì coi là chuỗi thuần.
+// Do đó "Thù địch"→chuỗi, "60"→số, "true"→boolean, '{"a":1}'→đối tượng, round-trip ổn định.
 function varValueToInput(v: JsonValue | undefined): string {
   if (v === undefined) return '';
   if (typeof v === 'string') return v;
@@ -285,12 +285,12 @@ const hasAnyDelta = computed(
   () => protagonistTags.value.length || itemTags.value.length || npcTags.value.length || sceneTags.value.length || planTags.value.length || varTags.value.length || !!d.value?.location,
 );
 
-/* ============ 就地编辑 ============ */
-// 当前正在编辑的单元:'text' | 'time' | 'loc' | tag.key(如 'item:add:0');null=无
+/* ============ Chỉnh sửa tại chỗ ============ */
+// Đơn vị hiện đang chỉnh sửa: 'text' | 'time' | 'loc' | tag.key (như 'item:add:0'); null=không có
 const editKey = ref<string | null>(null);
-// 单元编辑草稿(按需填,不同单元用不同字段)。
-// npc 字段独立(title/outfit/condition/npcDesc/personality/npcLoc),不再拿 desc 兼作 title——
-// 之前角色编辑只暴露名字+身份,着装/状态/外貌/性格/位置能看不能改,故补齐。
+// Bản nháp chỉnh sửa đơn vị (điền theo nhu cầu, các đơn vị khác nhau dùng các trường khác nhau).
+// Các trường npc độc lập (title/outfit/condition/npcDesc/personality/npcLoc), không lấy desc kiêm nhiệm title nữa ——
+// trước đây chỉnh sửa nhân vật chỉ phơi bày Tên + Thân phận, còn Trang phục / Trạng thái / Ngoại hình / Tính cách / Vị trí nhìn được mà không sửa được, nên bổ sung đầy đủ.
 const edit = reactive<{
   text: string; timeStart: string; timeEnd: string; location: string;
   name: string; qty: string; desc: string; content: string;
@@ -324,39 +324,39 @@ const edit = reactive<{
   varDelta: '',
 });
 
-// 叶子消失 / 番外时退出编辑
+// Khi lá biến mất / chuyển sang ngoại truyện thì thoát chỉnh sửa
 watch([omit, leaf], () => {
   if (editKey.value && (omit.value || !leaf.value)) editKey.value = null;
 });
 
-// 触屏判定:移动端进入编辑不自动聚焦——自动 focus 会立刻弹出输入法,挡住界面。
-// 让用户主动点输入框才弹,更舒服(与主界面摘要弹窗同款取舍)。
+// Phán đoán màn hình cảm ứng: trên di động khi vào chỉnh sửa không tự động focus —— tự động focus sẽ bật ngay bộ gõ lên, che khuất giao diện.
+// Để người dùng chủ động nhấn vào ô nhập liệu mới bật lên sẽ thoải mái hơn (cùng sự đánh đổi với hộp thoại tóm tắt ở giao diện chính).
 const isTouch = typeof window !== 'undefined' && window.matchMedia?.('(hover: none)').matches;
 
-// 用函数 ref(而非字符串 ref):字符串 ref 出现在 v-for 内会被 Vue 收集成**数组**,
-// focusEl.value 变数组、没有 .focus() → 报「focus is not a function」。函数 ref 只在元素
-// 挂载时被调用一次,稳稳拿到单个元素。
+// Dùng hàm ref (thay vì chuỗi ref): chuỗi ref xuất hiện trong v-for sẽ bị Vue thu thập thành **mảng**,
+// focusEl.value biến thành mảng, không có .focus() → báo lỗi "focus is not a function". Hàm ref chỉ được gọi một lần khi phần tử
+// gắn kết, lấy chắc chắn một phần tử đơn lẻ.
 const focusEl = ref<HTMLInputElement | HTMLTextAreaElement | null>(null);
 function setFocus(el: unknown) {
   if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) focusEl.value = el;
 }
 function beginEdit(key: string) {
   if (omit.value || !leaf.value) return;
-  focusEl.value = null; // 清掉上一次编辑的(已卸载)输入框引用,避免 focus 到游离节点
+  focusEl.value = null; // Xóa bỏ tham chiếu ô nhập liệu (đã gỡ) của lần chỉnh sửa trước, tránh focus vào nút trôi nổi
   editKey.value = key;
   void nextTick(() => {
-    // 编辑区内所有 textarea 都要 autosize(字段用可换行显示的 textarea,进场先贴合内容高)
+    // Mọi textarea trong vùng chỉnh sửa đều phải autosize (các trường dùng textarea có thể xuống dòng hiển thị, khi mở ra phải khớp chiều cao nội dung trước)
     autosizeAll();
     if (!isTouch) focusEl.value?.focus();
   });
 }
-// textarea 自适应高度:进入编辑时若仍用固定行数,长内容会瞬间缩短、抽屉回弹(看到「摘要区缩起来」)。
-// 让编辑框贴合内容高度,与只读态视觉连续,消除跳动。
+// Tự động điều chỉnh chiều cao textarea: khi vào chỉnh sửa nếu vẫn dùng số dòng cố định, nội dung dài sẽ lập tức co ngắn lại, ngăn kéo bật ngược (thấy "vùng tóm tắt co rút lại").
+// Để khung chỉnh sửa khớp sát chiều cao nội dung, liên tục về mặt thị giác với trạng thái chỉ đọc, triệt tiêu hiện tượng nhảy giật.
 function autosize(el: HTMLTextAreaElement) {
   el.style.height = 'auto';
   el.style.height = `${el.scrollHeight}px`;
 }
-// 对 focusEl 所在编辑卡内的全部 textarea 逐一 autosize(多字段编辑时不止一个)
+// Thực hiện autosize lần lượt cho toàn bộ textarea trong thẻ chỉnh sửa nơi focusEl tọa lạc (khi chỉnh sửa nhiều trường sẽ có nhiều hơn một cái)
 function autosizeAll() {
   const root = focusEl.value?.closest('.bbs-fp-editform, .bbs-fp-texteditor');
   root?.querySelectorAll('textarea').forEach(t => autosize(t as HTMLTextAreaElement));
@@ -365,8 +365,8 @@ function autosizeAll() {
 function onTextInput(e: Event) {
   autosize(e.target as HTMLTextAreaElement);
 }
-// 字段 textarea:输入时 autosize;回车不换行(拦截 Enter,保持「单行语义、多行显示」)。
-// Shift+Enter 也拦——这些是短字段,不需要真正的换行。
+// Textarea của trường: khi nhập thì autosize; nhấn Enter không xuống dòng (chặn Enter, giữ "ngữ nghĩa một dòng, hiển thị nhiều dòng").
+// Shift+Enter cũng chặn —— đây là các trường ngắn, không cần xuống dòng thực sự.
 function onFieldKeydown(e: KeyboardEvent) {
   if (e.key === 'Enter') e.preventDefault();
 }
@@ -374,7 +374,7 @@ function cancelEdit() {
   editKey.value = null;
 }
 
-/** 克隆当前 delta,交给 mutator 改,再整体重放写回。 */
+/** Nhân bản delta hiện tại, giao cho mutator sửa, rồi phát lại tổng thể để ghi về. */
 function commitDelta(mutate: (dd: StoredDelta) => void): void {
   const l = leaf.value;
   if (!l) return;
@@ -389,7 +389,7 @@ function commitDelta(mutate: (dd: StoredDelta) => void): void {
   editKey.value = null;
 }
 
-/* —— 正文 —— */
+/* —— Nội dung chính —— */
 function editText() {
   edit.text = leaf.value?.text ?? '';
   beginEdit('text');
@@ -401,7 +401,7 @@ function saveText() {
   editKey.value = null;
 }
 
-/* —— 时间 —— */
+/* —— Thời gian —— */
 function editTime() {
   edit.timeStart = leaf.value?.timeStart ?? '';
   edit.timeEnd = leaf.value?.timeEnd ?? '';
@@ -414,7 +414,7 @@ function saveTime() {
   editKey.value = null;
 }
 
-/* —— 地点 —— */
+/* —— Địa điểm —— */
 function editLoc() {
   edit.location = d.value?.location ?? '';
   beginEdit('loc');
@@ -427,9 +427,9 @@ function saveLoc() {
   });
 }
 
-// 当前正在编辑的角色 tag,本轮实际存在的字段(供模板按需渲染)。
-// 关键:update delta 只含本轮改动的字段——若把全部字段都渲染成空框,用户会误以为「这角色没有这些数据」,
-// 其实只是本轮没改。故只渲染 delta 里已存在(!== undefined)的字段;新增(add)则给全字段以便补全。
+// Thẻ nhân vật hiện đang được chỉnh sửa, các trường thực tế tồn tại trong lượt này (cung cấp cho template kết xuất theo nhu cầu).
+// Điểm mấu chốt: update delta chỉ chứa các trường biến đổi trong lượt này —— nếu kết xuất toàn bộ các trường thành ô trống, người dùng sẽ tưởng nhầm "nhân vật này không có những dữ liệu đó",
+// thực ra chỉ là lượt này không sửa. Do đó chỉ kết xuất các trường đã tồn tại (!== undefined) trong delta; còn thêm mới (add) thì đưa ra toàn bộ các trường để tiện điền đủ.
 const editingNpcDelta = computed(() => {
   const key = editKey.value;
   if (!key?.startsWith('npc:')) return undefined;
@@ -438,7 +438,7 @@ const editingNpcDelta = computed(() => {
 });
 const npcEditFields = computed(() => {
   const npc = editingNpcDelta.value;
-  // 带旧片段补丁的条目也露出状态栏:填全文即可覆盖该补丁
+  // Mục có kèm bản vá phân mảnh cũ cũng lộ ra cột Trạng thái: điền toàn văn là sẽ ghi đè bản vá đó
   return npc ? NPC_FIELDS.filter(f => editKey.value?.startsWith('npc:add:') || npc[f.key] !== undefined
     || (f.key === 'condition' && !!npc.conditionPatch)) : [];
 });
@@ -447,12 +447,12 @@ const npcAffinityEditFields = computed(() => {
   return npc ? NPC_AFFINITY_FIELDS.filter(f => editKey.value?.startsWith('npc:add:') || npc[f.key] !== undefined) : [];
 });
 
-/* —— 物品 / 角色 / 计划 就地改字段 —— */
+/* —— Sửa trường tại chỗ cho Vật phẩm / Nhân vật / Kế hoạch —— */
 function editTag(tag: Tag) {
   const dd = d.value;
   if (!dd) return;
-  // 清空所有草稿字段:不可编辑的标签(scene / plan 的 resolve/reopen/remove)不会填任何字段,
-  // 若不清空会残留上一次编辑的值(如刚编辑过物品,再点悬念「达成」就显示旧物品名)——这是串数据 bug 的根因。
+  // Xóa sạch mọi trường nháp: các nhãn không thể chỉnh sửa (resolve/reopen/remove của scene / plan) sẽ không điền bất kỳ trường nào,
+  // nếu không xóa sạch sẽ còn sót lại giá trị của lần chỉnh sửa trước (như vừa sửa vật phẩm xong, nhấn tiếp vào "Hoàn thành" của nghi vấn sẽ hiển thị tên vật phẩm cũ) —— đây là nguyên nhân gốc của bug lẫn dữ liệu.
   edit.name = '';
   edit.qty = '';
   edit.desc = '';
@@ -525,7 +525,7 @@ function saveTag(tag: Tag) {
         const x = arr?.[tag.idx];
         if (x) {
           x.name = edit.name.trim();
-          // String() 兜底:type="number" 的 v-model 会把值转成 number,直接 .trim() 会抛错(number 无 trim)。
+          // Dự phòng String(): v-model của type="number" sẽ chuyển giá trị thành number, gọi .trim() trực tiếp sẽ ném lỗi (number không có trim).
           const qtyStr = String(edit.qty).trim();
           const q = Number(qtyStr);
           if (qtyStr && Number.isFinite(q)) x.qty = q;
@@ -542,26 +542,26 @@ function saveTag(tag: Tag) {
         const x = arr?.[tag.idx];
         if (x) {
           x.name = edit.name.trim();
-          // 各档案/即时字段走注册表:有值即写、留空即删该键(空字段不落进 delta)。
-          // 本轮未渲染的字段其草稿已被 editTag 清空 → 会 delete,但它本就不在 delta,无副作用。
+          // Các trường hồ sơ / tức thời đi theo bảng đăng ký: có giá trị thì ghi, để trống thì xóa khóa đó (trường rỗng không rơi vào delta).
+          // Các trường không kết xuất trong lượt này có bản nháp đã bị editTag xóa sạch → sẽ delete, nhưng vốn dĩ nó không có trong delta nên không có tác dụng phụ.
           const rec = x as unknown as Record<string, unknown>;
           const prevAge = x.age;
           for (const f of NPC_FIELDS) {
             const t = (edit[f.draft] as string).trim();
-            // 好感说明的空字符串是显式清空;省略才是保留上一层,不能混用。
+            // Chuỗi rỗng của ghi chú hảo cảm là xóa trống tường minh; lược bỏ mới là giữ nguyên tầng trước, không được trộn lẫn.
             if (t || (f.key === 'affinityNote' && x.affinityNote !== undefined)) rec[f.key] = t;
             else delete rec[f.key];
           }
-          // 手写了状态全文,旧存档的片段补丁随之作废(重放时全文优先,这里顺手清掉免得误导)
+          // Đã viết tay toàn văn trạng thái thì bản vá phân mảnh của bản lưu cũ cũng hủy bỏ theo (khi phát lại toàn văn được ưu tiên, ở đây tiện tay xóa luôn khỏi gây hiểu lầm)
           if (x.condition !== undefined) delete x.conditionPatch;
           for (const { key } of NPC_AFFINITY_FIELDS) {
-            // update 未提供的一侧必须继续省略,不能因编辑另一侧而写成未知。
+            // Phía không được cung cấp trong update bắt buộc phải tiếp tục lược bỏ, không được vì chỉnh sửa phía bên kia mà ghi thành chưa rõ.
             if (x[key] !== undefined || (tag.bucket === 'add' && edit[key] !== '')) {
               x[key] = affinityLevelFromInput(edit[key]);
             }
           }
-          // 年龄被改动时清掉 delta 里可能残留的旧锚点(手动编辑写入的 ageTime),
-          // 让重放按本叶子时间盖新锚点;没改则保留原锚点不动。
+          // Khi tuổi bị thay đổi thì xóa bỏ mốc cũ có thể còn sót trong delta (ageTime do chỉnh sửa thủ công ghi vào),
+          // để khi phát lại sẽ đè mốc mới theo thời gian của lá này; nếu không sửa thì giữ nguyên mốc gốc.
           if (x.age !== prevAge) delete rec.ageTime;
         }
       }
@@ -572,7 +572,7 @@ function saveTag(tag: Tag) {
       const op = dd.varOps?.[tag.idx];
       if (op) {
         op.path = edit.varPath.trim();
-        // 按命令类型写回对应字段(只改本类型有的字段,避免残留无关字段)
+        // Ghi lại trường tương ứng theo kiểu lệnh (chỉ sửa trường mà kiểu này có, tránh sót lại trường không liên quan)
         if (op.op === 'add') {
           const n = Number(String(edit.varDelta).trim());
           op.delta = Number.isFinite(n) ? n : 0;
@@ -582,7 +582,7 @@ function saveTag(tag: Tag) {
         }
         if (op.op === 'assign' || op.op === 'remove') {
           const k = edit.varKey.trim();
-          if (k) op.key = k; // 纯数字键作数组下标由重放侧 Number() 兜底,存字符串即可
+          if (k) op.key = k; // Khóa thuần chữ số làm chỉ số mảng do phía phát lại dùng Number() dự phòng, lưu dạng chuỗi là được
           else delete op.key;
         }
       }
@@ -590,7 +590,7 @@ function saveTag(tag: Tag) {
   });
 }
 
-/** 删除某条变动(从对应桶按序号剔除)。 */
+/** Xóa một biến động nào đó (loại bỏ khỏi thùng tương ứng theo số thứ tự). */
 function deleteTag(tag: Tag) {
   const [cat, bucket] = tag.key.split(':');
   commitDelta(dd => {
@@ -599,7 +599,7 @@ function deleteTag(tag: Tag) {
       return;
     }
     if (cat === 'var') {
-      if (Array.isArray(dd.varOps)) dd.varOps.splice(tag.idx, 1); // varOps 是扁平数组,直接按序号删
+      if (Array.isArray(dd.varOps)) dd.varOps.splice(tag.idx, 1); // varOps là mảng phẳng, xóa trực tiếp theo số thứ tự
       return;
     }
     const group = (dd as Record<string, Record<string, unknown[]>>)[cat === 'item' ? 'items' : cat === 'npc' ? 'npcs' : cat === 'scene' ? 'scenes' : 'plans'];
@@ -608,8 +608,8 @@ function deleteTag(tag: Tag) {
   });
 }
 
-/* —— 整楼操作 —— */
-// 删除摘要走行内两步确认(面板嵌在 #chat 滚动容器 + 每楼独立 shadow,行内比 Teleport 弹窗更稳、更贴合紧凑面板)
+/* —— Thao tác toàn tầng —— */
+// Xóa tóm tắt đi theo xác nhận hai bước nội tuyến (bảng nhúng trong vùng chứa cuộn #chat + mỗi tầng có shadow độc lập, nội tuyến ổn định hơn và hợp với bảng nhỏ gọn hơn là hộp thoại Teleport)
 const confirmingDelete = ref(false);
 function askDelete() {
   if (busy.value) return;
@@ -629,7 +629,7 @@ async function removeLeaf() {
     busy.value = false;
   }
 }
-// 收起抽屉 / 切换番外时,复位删除确认态;摘要失效时关闭重摘确认。
+// Khi thu gọn ngăn kéo / chuyển đổi ngoại truyện, đặt lại trạng thái xác nhận xóa; khi tóm tắt mất hiệu lực thì đóng xác nhận tóm tắt lại.
 watch([expanded, omit, leaf], () => {
   if (!expanded.value || omit.value || !leaf.value) confirmingDelete.value = false;
   if (omit.value || !valid.value) regenerateConfirmOpen.value = false;
@@ -661,7 +661,7 @@ async function generateMissingSummary() {
     return;
   }
   if (leafValid(getContext()?.chat?.[props.floor])) {
-    toast(`楼层 #${props.floor} 摘要已生成`, 'success');
+    toast(`Đã tạo tóm tắt cho tầng #${props.floor}`, 'success');
   }
 }
 
@@ -670,27 +670,27 @@ async function confirmRegenerate() {
   const ok = await regenerateFloor(props.floor);
   regenerateConfirmOpen.value = false;
   if (ok) {
-    toast(`楼层 #${props.floor} 摘要已重新生成`, 'success');
+    toast(`Đã tạo lại tóm tắt cho tầng #${props.floor}`, 'success');
     return;
   }
-  toast(engineState.lastError || `楼层 #${props.floor} 重新摘要失败`, 'error');
+  toast(engineState.lastError || `Tóm tắt lại tầng #${props.floor} thất bại`, 'error');
 }
 
-// 分组渲染表(模板里循环用,减少重复)。icon 复用导航同款描边图标,给每个类目一个可辨识的视觉锚点。
+// Bảng kết xuất phân nhóm (dùng vòng lặp trong template để giảm lặp lại). icon tái sử dụng biểu tượng nét viền cùng kiểu với thanh điều hướng, cho mỗi danh mục một điểm neo thị giác dễ nhận diện.
 const groups = computed(() => [
-  { title: '主角', icon: 'characters', tags: protagonistTags.value },
-  { title: '物品', icon: 'items', tags: itemTags.value },
-  { title: '角色', icon: 'npcs', tags: npcTags.value },
-  { title: '场景', icon: 'scenes', tags: sceneTags.value },
-  { title: '悬念簿', icon: 'plans', tags: planTags.value },
-  { title: '变量', icon: 'vars', tags: varTags.value },
+  { title: 'Nhân vật chính', icon: 'characters', tags: protagonistTags.value },
+  { title: 'Vật phẩm', icon: 'items', tags: itemTags.value },
+  { title: 'Nhân vật', icon: 'npcs', tags: npcTags.value },
+  { title: 'Khung cảnh', icon: 'scenes', tags: sceneTags.value },
+  { title: 'Sổ nghi vấn', icon: 'plans', tags: planTags.value },
+  { title: 'Biến số', icon: 'vars', tags: varTags.value },
 ]);
 </script>
 
 <template>
   <div class="bbs-root bbs-fp" :data-theme="ui.theme">
     <article class="bbs-summary-card bbs-fp-card" :class="{ 'is-omit': omit, 'is-expanded': expanded }">
-      <!-- 卡片头 = 锚点:两行。首行「楼号 + 时间」,次行摘要预览 -->
+      <!-- Đầu thẻ = điểm neo: hai dòng. Dòng đầu "Số tầng + Thời gian", dòng thứ hai xem trước tóm tắt -->
       <header class="bbs-fp-head" @click="expanded = !expanded">
         <span class="bbs-fp-head-main">
           <span class="bbs-fp-head-top">
@@ -703,7 +703,7 @@ const groups = computed(() => [
           class="bbs-fp-omitbtn"
           :class="{ 'is-active': omit }"
           type="button"
-          :title="omit ? '取消番外(恢复参与记忆)' : '标为番外(此楼不参与摘要/总结/注入)'"
+          :title="omit ? 'Bỏ ngoại truyện (khôi phục tham gia trí nhớ)' : 'Đánh dấu là ngoại truyện (tầng này không tham gia tóm tắt / đại tóm tắt / tiêm)'"
           :disabled="busy || engineState.running"
           @click.stop="toggleOmit"
         >
@@ -722,59 +722,59 @@ const groups = computed(() => [
         </button>
       </header>
 
-      <!-- 卡片体 = 抽屉(grid 高度过渡) -->
+      <!-- Thân thẻ = ngăn kéo (chuyển tiếp chiều cao grid) -->
       <div class="bbs-fp-drawer" :class="{ 'is-open': expanded }">
         <div class="bbs-fp-drawer-inner">
           <div class="bbs-fp-drawer-body">
-            <p v-if="omit" class="bbs-fp-note">此楼已标为番外,以下数据不参与记忆;取消番外即恢复。</p>
+            <p v-if="omit" class="bbs-fp-note">Tầng này đã được đánh dấu là ngoại truyện, dữ liệu dưới đây không tham gia vào trí nhớ; bỏ ngoại truyện sẽ khôi phục.</p>
 
             <template v-if="leaf">
-              <!-- 时间 / 地点 chips(可点编辑) -->
+              <!-- Các chip Thời gian / Địa điểm (có thể nhấn để chỉnh sửa) -->
               <div class="bbs-fp-chips">
-                <!-- 时间 -->
+                <!-- Thời gian -->
                 <div v-if="editKey === 'time'" class="bbs-fp-editform">
                   <label class="bbs-fp-nrow">
-                    <span class="bbs-fp-nlabel">起始</span>
-                    <textarea :ref="setFocus" v-model="edit.timeStart" rows="1" class="bbs-input bbs-fp-nfield" placeholder="如 1988/9/29 21:00" @input="onTextInput" @keydown="onFieldKeydown"></textarea>
+                    <span class="bbs-fp-nlabel">Bắt đầu</span>
+                    <textarea :ref="setFocus" v-model="edit.timeStart" rows="1" class="bbs-input bbs-fp-nfield" placeholder="VD: 1988/9/29 21:00" @input="onTextInput" @keydown="onFieldKeydown"></textarea>
                   </label>
                   <label class="bbs-fp-nrow">
-                    <span class="bbs-fp-nlabel">结束</span>
-                    <textarea v-model="edit.timeEnd" rows="1" class="bbs-input bbs-fp-nfield" placeholder="留空=同起始" @input="onTextInput" @keydown="onFieldKeydown"></textarea>
+                    <span class="bbs-fp-nlabel">Kết thúc</span>
+                    <textarea v-model="edit.timeEnd" rows="1" class="bbs-input bbs-fp-nfield" placeholder="Để trống = giống bắt đầu" @input="onTextInput" @keydown="onFieldKeydown"></textarea>
                   </label>
                   <div class="bbs-fp-editfoot">
-                    <button class="bbs-btn bbs-btn-sm" type="button" @click="cancelEdit">取消</button>
-                    <button class="bbs-btn bbs-btn-sm bbs-btn-primary" type="button" @click="saveTime">保存</button>
+                    <button class="bbs-btn bbs-btn-sm" type="button" @click="cancelEdit">Hủy</button>
+                    <button class="bbs-btn bbs-btn-sm bbs-btn-primary" type="button" @click="saveTime">Lưu</button>
                   </div>
                 </div>
                 <button v-else-if="!omit" class="bbs-fp-chip is-btn" type="button" @click="editTime">
-                  🕑 {{ timeLabel || '设置时间' }}
+                  🕑 {{ timeLabel || 'Thiết lập thời gian' }}
                 </button>
                 <span v-else-if="timeLabel" class="bbs-fp-chip">🕑 {{ timeLabel }}</span>
 
-                <!-- 地点 -->
+                <!-- Địa điểm -->
                 <div v-if="editKey === 'loc'" class="bbs-fp-editform">
                   <label class="bbs-fp-nrow">
-                    <span class="bbs-fp-nlabel">地点</span>
-                    <textarea :ref="setFocus" v-model="edit.location" rows="1" class="bbs-input bbs-fp-nfield" placeholder="当前地点" @input="onTextInput" @keydown="onFieldKeydown"></textarea>
+                    <span class="bbs-fp-nlabel">Địa điểm</span>
+                    <textarea :ref="setFocus" v-model="edit.location" rows="1" class="bbs-input bbs-fp-nfield" placeholder="Địa điểm hiện tại" @input="onTextInput" @keydown="onFieldKeydown"></textarea>
                   </label>
                   <div class="bbs-fp-editfoot">
-                    <button class="bbs-btn bbs-btn-sm" type="button" @click="cancelEdit">取消</button>
-                    <button class="bbs-btn bbs-btn-sm bbs-btn-primary" type="button" @click="saveLoc">保存</button>
+                    <button class="bbs-btn bbs-btn-sm" type="button" @click="cancelEdit">Hủy</button>
+                    <button class="bbs-btn bbs-btn-sm bbs-btn-primary" type="button" @click="saveLoc">Lưu</button>
                   </div>
                 </div>
                 <button v-else-if="!omit" class="bbs-fp-chip is-btn" type="button" @click="editLoc">
-                  📍 {{ d?.location || '设置地点' }}
+                  📍 {{ d?.location || 'Thiết lập địa điểm' }}
                 </button>
                 <span v-else-if="d?.location" class="bbs-fp-chip">📍 {{ d.location }}</span>
               </div>
 
-              <!-- 摘要正文(可点编辑) -->
+              <!-- Nội dung chính tóm tắt (có thể nhấn để chỉnh sửa) -->
               <template v-if="editKey === 'text'">
                 <div class="bbs-fp-texteditor">
                   <textarea :ref="setFocus" v-model="edit.text" class="bbs-input bbs-fp-textarea" rows="3" @input="onTextInput"></textarea>
                   <div class="bbs-fp-editrow-actions">
-                    <button class="bbs-btn" type="button" @click="cancelEdit">取消</button>
-                    <button class="bbs-btn bbs-btn-primary" type="button" @click="saveText">保存</button>
+                    <button class="bbs-btn" type="button" @click="cancelEdit">Hủy</button>
+                    <button class="bbs-btn bbs-btn-primary" type="button" @click="saveText">Lưu</button>
                   </div>
                 </div>
               </template>
@@ -782,41 +782,41 @@ const groups = computed(() => [
                 v-else
                 class="bbs-summary-text bbs-fp-text"
                 :class="{ 'is-muted': !leaf.text, 'is-btn': !omit }"
-                :title="omit ? '' : '点击编辑摘要正文'"
+                :title="omit ? '' : 'Nhấn để chỉnh sửa nội dung tóm tắt'"
                 @click="!omit && editText()"
               >
-                {{ leaf.text || '(无摘要正文,点此补写)' }}
+                {{ leaf.text || '(Không có nội dung tóm tắt, nhấn vào đây để viết bổ sung)' }}
               </p>
 
-              <!-- 变动分组:每类目一张小卡(图标标题 + 标签流);点标签就地编辑(可编辑类)或展开删除 -->
+              <!-- Phân nhóm biến động: mỗi danh mục một thẻ nhỏ (tiêu đề biểu tượng + luồng thẻ); nhấn vào thẻ để chỉnh sửa tại chỗ (loại sửa được) hoặc mở rộng xóa -->
               <div v-if="hasAnyDelta" class="bbs-fp-groups">
                 <template v-for="g in groups" :key="g.title">
                 <section v-if="g.tags.length" class="bbs-fp-group">
                   <span class="bbs-fp-gtitle"><Icon :name="g.icon" class="bbs-fp-gicon" />{{ g.title }}</span>
                   <div class="bbs-fp-flow">
                     <template v-for="tag in g.tags" :key="tag.key">
-                      <!-- 就地编辑该标签:统一表单式(带字段标签 + 底部规整按钮)。可编辑类给字段行;
-                           不可编辑类(scene、plan 的 达成/重启/删除)只读回显 + 删除/取消。 -->
+                      <!-- Chỉnh sửa tại chỗ nhãn đó: kiểu biểu mẫu thống nhất (kèm nhãn trường + nút bấm ngay ngắn ở đáy). Loại sửa được thì đưa ra dòng trường;
+                           loại không sửa được (scene, Hoàn thành/Mở lại/Xóa của plan) thì hiển thị lại chỉ đọc + Xóa/Hủy. -->
                       <div v-if="editKey === tag.key" class="bbs-fp-editform">
                         <template v-if="tag.editable && tag.key.startsWith('item:') && tag.bucket !== 'remove'">
                           <label class="bbs-fp-nrow">
-                            <span class="bbs-fp-nlabel">名称</span>
-                            <textarea :ref="setFocus" v-model="edit.name" rows="1" class="bbs-input bbs-fp-nfield" placeholder="名称" @input="onTextInput" @keydown="onFieldKeydown"></textarea>
+                            <span class="bbs-fp-nlabel">Tên</span>
+                            <textarea :ref="setFocus" v-model="edit.name" rows="1" class="bbs-input bbs-fp-nfield" placeholder="Tên" @input="onTextInput" @keydown="onFieldKeydown"></textarea>
                           </label>
                           <label class="bbs-fp-nrow">
-                            <span class="bbs-fp-nlabel">数量</span>
-                            <input v-model="edit.qty" class="bbs-input bbs-fp-nfield bbs-fp-nfield-num" type="number" placeholder="留空=不计数" />
+                            <span class="bbs-fp-nlabel">Số lượng</span>
+                            <input v-model="edit.qty" class="bbs-input bbs-fp-nfield bbs-fp-nfield-num" type="number" placeholder="Để trống = không đếm" />
                           </label>
                           <label class="bbs-fp-nrow">
-                            <span class="bbs-fp-nlabel">描述</span>
-                            <textarea v-model="edit.desc" rows="1" class="bbs-input bbs-fp-nfield" placeholder="可选" @input="onTextInput" @keydown="onFieldKeydown"></textarea>
+                            <span class="bbs-fp-nlabel">Mô tả</span>
+                            <textarea v-model="edit.desc" rows="1" class="bbs-input bbs-fp-nfield" placeholder="Tùy chọn" @input="onTextInput" @keydown="onFieldKeydown"></textarea>
                           </label>
                         </template>
                         <template v-else-if="tag.editable && tag.key.startsWith('npc:') && tag.bucket !== 'remove'">
-                          <!-- 名称恒有(匹配键);其余只渲染本轮实际改动过的字段,不误导「无此数据」 -->
+                          <!-- Tên luôn có (khóa khớp); phần còn lại chỉ kết xuất các trường thực tế có biến đổi trong lượt này, không gây hiểu lầm là "không có dữ liệu này" -->
                           <label class="bbs-fp-nrow">
-                            <span class="bbs-fp-nlabel">名称</span>
-                            <textarea :ref="setFocus" v-model="edit.name" rows="1" class="bbs-input bbs-fp-nfield" placeholder="名称" @input="onTextInput" @keydown="onFieldKeydown"></textarea>
+                            <span class="bbs-fp-nlabel">Tên</span>
+                            <textarea :ref="setFocus" v-model="edit.name" rows="1" class="bbs-input bbs-fp-nfield" placeholder="Tên" @input="onTextInput" @keydown="onFieldKeydown"></textarea>
                           </label>
                           <div v-for="f in npcAffinityEditFields" :key="f.key" class="bbs-fp-nrow">
                             <span class="bbs-fp-nlabel">{{ f.label }}</span>
@@ -829,52 +829,52 @@ const groups = computed(() => [
                         </template>
                         <template v-else-if="tag.editable && tag.key.startsWith('plan:add:')">
                           <label class="bbs-fp-nrow">
-                            <span class="bbs-fp-nlabel">内容</span>
-                            <textarea :ref="setFocus" v-model="edit.content" rows="1" class="bbs-input bbs-fp-nfield" placeholder="内容" @input="onTextInput" @keydown="onFieldKeydown"></textarea>
+                            <span class="bbs-fp-nlabel">Nội dung</span>
+                            <textarea :ref="setFocus" v-model="edit.content" rows="1" class="bbs-input bbs-fp-nfield" placeholder="Nội dung" @input="onTextInput" @keydown="onFieldKeydown"></textarea>
                           </label>
                         </template>
                         <template v-else-if="tag.key.startsWith('var:')">
-                          <!-- 变量命令:按类型显示字段。路径恒有;set/assign 有「值」;add 有「增量」;assign/remove 有「键」 -->
+                          <!-- Lệnh biến số: hiển thị trường theo kiểu. Đường dẫn luôn có; set/assign có "Giá trị"; add có "Lượng tăng"; assign/remove có "Khóa" -->
                           <label class="bbs-fp-nrow">
-                            <span class="bbs-fp-nlabel">路径</span>
-                            <textarea :ref="setFocus" v-model="edit.varPath" rows="1" class="bbs-input bbs-fp-nfield" placeholder="如 好感度 或 势力.魔法议会.声望" @input="onTextInput" @keydown="onFieldKeydown"></textarea>
+                            <span class="bbs-fp-nlabel">Đường dẫn</span>
+                            <textarea :ref="setFocus" v-model="edit.varPath" rows="1" class="bbs-input bbs-fp-nfield" placeholder="VD: Hảo cảm hoặc Thế lực.Hội đồng phép thuật.Danh vọng" @input="onTextInput" @keydown="onFieldKeydown"></textarea>
                           </label>
                           <label v-if="editingVarOp?.op === 'assign' || editingVarOp?.op === 'remove'" class="bbs-fp-nrow">
-                            <span class="bbs-fp-nlabel">键</span>
-                            <textarea v-model="edit.varKey" rows="1" class="bbs-input bbs-fp-nfield" placeholder="对象键 / 数组下标" @input="onTextInput" @keydown="onFieldKeydown"></textarea>
+                            <span class="bbs-fp-nlabel">Khóa</span>
+                            <textarea v-model="edit.varKey" rows="1" class="bbs-input bbs-fp-nfield" placeholder="Khóa đối tượng / Chỉ số mảng" @input="onTextInput" @keydown="onFieldKeydown"></textarea>
                           </label>
                           <label v-if="editingVarOp?.op === 'add'" class="bbs-fp-nrow">
-                            <span class="bbs-fp-nlabel">增量</span>
-                            <input v-model="edit.varDelta" class="bbs-input bbs-fp-nfield bbs-fp-nfield-num" type="number" placeholder="可负,如 -10" />
+                            <span class="bbs-fp-nlabel">Lượng tăng</span>
+                            <input v-model="edit.varDelta" class="bbs-input bbs-fp-nfield bbs-fp-nfield-num" type="number" placeholder="Có thể âm, VD: -10" />
                           </label>
                           <label v-if="editingVarOp?.op === 'set' || editingVarOp?.op === 'assign'" class="bbs-fp-nrow">
-                            <span class="bbs-fp-nlabel">值</span>
-                            <textarea v-model="edit.varValue" rows="1" class="bbs-input bbs-fp-nfield" placeholder="文本直接写;数字/true/JSON 按原样" @input="onTextInput" @keydown="onFieldKeydown"></textarea>
+                            <span class="bbs-fp-nlabel">Giá trị</span>
+                            <textarea v-model="edit.varValue" rows="1" class="bbs-input bbs-fp-nfield" placeholder="Văn bản viết trực tiếp; số/true/JSON giữ nguyên mẫu" @input="onTextInput" @keydown="onFieldKeydown"></textarea>
                           </label>
                         </template>
                         <template v-else-if="tag.editable && tag.bucket === 'remove'">
                           <label class="bbs-fp-nrow">
-                            <span class="bbs-fp-nlabel">名称</span>
-                            <textarea :ref="setFocus" v-model="edit.name" rows="1" class="bbs-input bbs-fp-nfield" placeholder="名称" @input="onTextInput" @keydown="onFieldKeydown"></textarea>
+                            <span class="bbs-fp-nlabel">Tên</span>
+                            <textarea :ref="setFocus" v-model="edit.name" rows="1" class="bbs-input bbs-fp-nfield" placeholder="Tên" @input="onTextInput" @keydown="onFieldKeydown"></textarea>
                           </label>
                         </template>
-                        <!-- 不可编辑标签:只读回显要删除的内容(带副文本,如变量的值/增量) -->
+                        <!-- Nhãn không thể chỉnh sửa: hiển thị lại chỉ đọc nội dung sắp xóa (kèm văn bản phụ, như giá trị/lượng tăng của biến số) -->
                         <p v-else class="bbs-fp-editreadonly">{{ tag.sub ? `${tag.text} · ${tag.sub}` : tag.text }}</p>
                         <div class="bbs-fp-editfoot">
-                          <button class="bbs-fp-editdel" type="button" title="删除此条" @click="deleteTag(tag)"><Icon name="trash" />删除</button>
+                          <button class="bbs-fp-editdel" type="button" title="Xóa mục này" @click="deleteTag(tag)"><Icon name="trash" />Xóa</button>
                           <span class="bbs-fp-editfoot-spacer"></span>
-                          <button class="bbs-btn bbs-btn-sm" type="button" @click="cancelEdit">取消</button>
-                          <button v-if="tag.editable" class="bbs-btn bbs-btn-sm bbs-btn-primary" type="button" @click="saveTag(tag)">保存</button>
+                          <button class="bbs-btn bbs-btn-sm" type="button" @click="cancelEdit">Hủy</button>
+                          <button v-if="tag.editable" class="bbs-btn bbs-btn-sm bbs-btn-primary" type="button" @click="saveTag(tag)">Lưu</button>
                         </div>
                       </div>
-                      <!-- 标签只读态:徽标钉左上 + 主文本一行 + 副文本(细节)另起淡色一行 -->
+                      <!-- Trạng thái chỉ đọc của nhãn: huy hiệu ghim góc trên bên trái + văn bản chính một dòng + văn bản phụ (chi tiết) xuống dòng màu nhạt riêng -->
                       <button
                         v-else
                         class="bbs-fp-tagline is-btn"
                         :class="'op-' + tag.op"
                         type="button"
                         :disabled="omit"
-                        :title="omit ? '' : '点击编辑'"
+                        :title="omit ? '' : 'Nhấn để chỉnh sửa'"
                         @click="editTag(tag)"
                       >
                         <span class="bbs-fp-op">{{ opLabel[tag.op] }}</span>
@@ -890,19 +890,19 @@ const groups = computed(() => [
               </div>
             </template>
 
-            <p v-else class="bbs-summary-text bbs-fp-text is-muted">此楼尚无摘要。</p>
+            <p v-else class="bbs-summary-text bbs-fp-text is-muted">Tầng này chưa có tóm tắt.</p>
 
-            <!-- 页脚:删除整楼摘要(行内两步确认,防误触) -->
+            <!-- Chân trang: xóa tóm tắt toàn tầng (xác nhận hai bước nội tuyến, chống chạm nhầm) -->
             <div v-if="leaf && !omit" class="bbs-fp-footer">
               <template v-if="confirmingDelete">
-                <span class="bbs-fp-confirm-text">删除此楼摘要?</span>
-                <button class="bbs-fp-confirm-cancel" type="button" :disabled="busy" @click="cancelDelete">取消</button>
+                <span class="bbs-fp-confirm-text">Xóa tóm tắt tầng này?</span>
+                <button class="bbs-fp-confirm-cancel" type="button" :disabled="busy" @click="cancelDelete">Hủy</button>
                 <button class="bbs-fp-confirm-ok" type="button" :disabled="busy" @click="removeLeaf">
-                  <Icon name="trash" />删除
+                  <Icon name="trash" />Xóa
                 </button>
               </template>
-              <button v-else class="bbs-fp-delleaf" type="button" title="删除此楼摘要" :disabled="busy" @click="askDelete">
-                <Icon name="trash" />删除摘要
+              <button v-else class="bbs-fp-delleaf" type="button" title="Xóa tóm tắt tầng này" :disabled="busy" @click="askDelete">
+                <Icon name="trash" />Xóa tóm tắt
               </button>
             </div>
           </div>
@@ -912,15 +912,15 @@ const groups = computed(() => [
 
     <ConfirmDialog
       v-model:open="regenerateConfirmOpen"
-      :title="`重新摘要楼层 #${floor}`"
-      confirmText="重新生成"
+      :title="`Tóm tắt lại tầng #${floor}`"
+      confirmText="Tạo lại"
       confirmIcon="search"
       :busy="summarizingHere"
-      busyText="生成中…"
+      busyText="Đang tạo…"
       @confirm="confirmRegenerate"
     >
-      当前摘要将被新结果替换,该楼带来的时间、物品、角色、计划等记忆会重新计算。
-      如果该楼已被上层总结收纳,包含它的上层总结将失效并被移除。继续?
+      Tóm tắt hiện tại sẽ được thay thế bằng kết quả mới, các ký ức về thời gian, vật phẩm, nhân vật, kế hoạch... do tầng này mang lại sẽ được tính toán lại.
+      Nếu tầng này đã được đại tóm tắt tầng trên thu nạp, đại tóm tắt tầng trên chứa nó sẽ mất hiệu lực và bị gỡ bỏ. Tiếp tục?
     </ConfirmDialog>
   </div>
 </template>
@@ -929,10 +929,10 @@ const groups = computed(() => [
 .bbs-fp {
   margin: 6px 0 2px;
 }
-/* 外层卡用 --bbs-bg(页面底色),与主界面「页面底 → surface 卡片 → surface-2 次级块」的
-   层次一致:楼层面板即一块「迷你页面」,内部的类目小卡才是抬起的 surface。
-   (默认继承自 .bbs-summary-card 的 surface,这里覆盖成 bg。)
-   收起态更紧凑:收窄内边距,楼号行本就矮,大留白会显空。展开态恢复常规 padding。 */
+/* Thẻ tầng ngoài dùng --bbs-bg (màu nền trang), đồng nhất với phân tầng "nền trang → thẻ surface → khối thứ cấp surface-2"
+   của giao diện chính: bảng tầng tức là một "trang thu nhỏ", các thẻ nhỏ danh mục bên trong mới là surface nổi lên.
+   (Mặc định kế thừa surface từ .bbs-summary-card, ở đây ghi đè thành bg.)
+   Trạng thái thu gọn nhỏ gọn hơn: thu hẹp lề trong, dòng số tầng vốn đã thấp, khoảng trắng lớn sẽ trông trống trải. Trạng thái mở rộng khôi phục padding thông thường. */
 .bbs-fp-card {
   background: var(--bbs-bg);
   padding: 9px 12px;
@@ -945,7 +945,7 @@ const groups = computed(() => [
   border-left: 3px solid var(--bbs-ink-muted);
 }
 
-/* 卡片头:左侧两行主区(楼号+时间 / 预览)+ 右侧番外键、单楼摘要键 */
+/* Đầu thẻ: vùng chính hai dòng bên trái (số tầng + thời gian / xem trước) + nút ngoại truyện, nút tóm tắt tầng đơn bên phải */
 .bbs-fp-head {
   display: flex;
   align-items: center;
@@ -960,7 +960,7 @@ const groups = computed(() => [
   flex-direction: column;
   gap: 3px;
 }
-/* 首行:楼号 + 时间 */
+/* Dòng đầu: số tầng + thời gian */
 .bbs-fp-head-top {
   display: flex;
   align-items: center;
@@ -976,7 +976,7 @@ const groups = computed(() => [
   color: var(--bbs-ink-muted);
   font-variant-numeric: tabular-nums;
 }
-/* 楼号做成药丸,与主界面摘要卡的 #楼层 标签同款——面板一眼就与主界面同源 */
+/* Số tầng làm thành viên nang, cùng kiểu với nhãn #tầng của thẻ tóm tắt giao diện chính —— nhìn thoáng qua là thấy bảng cùng nguồn với giao diện chính */
 .bbs-fp-floor {
   flex: 0 0 auto;
   box-sizing: border-box;
@@ -994,7 +994,7 @@ const groups = computed(() => [
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
 }
-/* 待摘/番外:退成中性描边,不抢强调色 */
+/* Chờ tóm tắt / ngoại truyện: lùi về viền trung tính, không tranh giành màu nhấn */
 .bbs-fp-floor.is-pending,
 .bbs-fp-floor.is-omit {
   color: var(--bbs-ink-muted);
@@ -1062,7 +1062,7 @@ const groups = computed(() => [
   margin-bottom: 12px;
 }
 
-/* 抽屉 */
+/* Ngăn kéo */
 .bbs-fp-drawer {
   display: grid;
   grid-template-rows: 0fr;
@@ -1096,7 +1096,7 @@ const groups = computed(() => [
   font-size: 12px;
 }
 
-/* 时间/地点 chips */
+/* Các chip Thời gian / Địa điểm */
 .bbs-fp-chips {
   display: flex;
   flex-wrap: wrap;
@@ -1123,8 +1123,8 @@ const groups = computed(() => [
   border-color: var(--bbs-accent);
 }
 
-/* 正文:只读块与编辑 textarea 共用同一盒模型(消除切换跳动)。
-   关键——两者 font-size / line-height / padding / border 必须完全一致,只差背景/可编辑。 */
+/* Nội dung chính: khối chỉ đọc và textarea chỉnh sửa dùng chung một mô hình hộp (triệt tiêu nhảy giật khi chuyển đổi).
+   Điểm mấu chốt —— font-size / line-height / padding / border của cả hai bắt buộc phải hoàn toàn đồng nhất, chỉ khác nền / khả năng chỉnh sửa. */
 .bbs-fp-text,
 .bbs-fp-textarea {
   box-sizing: border-box;
@@ -1142,7 +1142,7 @@ const groups = computed(() => [
   white-space: pre-wrap;
   word-break: break-word;
 }
-/* 只读态:抬起面(surface)像一枚静置的字段浮在 bg 外层卡上,悬停点亮强调边提示「可编辑」 */
+/* Trạng thái chỉ đọc: bề mặt nổi (surface) giống một trường tĩnh nổi trên thẻ ngoài bg, khi di chuột sẽ bật sáng viền nhấn gợi ý "có thể chỉnh sửa" */
 .bbs-fp-text {
   background: var(--bbs-surface);
 }
@@ -1158,8 +1158,8 @@ const groups = computed(() => [
   border-color: var(--bbs-accent);
 }
 
-/* 变动分组:整体不再是平铺行,而是若干张「卡中卡」——每类目一张淡底描边小卡,
-   顶部图标标题定调,下方标签流。层次感与主界面卡片语言一致。 */
+/* Phân nhóm biến động: tổng thể không còn là dòng trải phẳng, mà là một số "thẻ trong thẻ" —— mỗi danh mục một thẻ nhỏ viền nền nhạt,
+   tiêu đề biểu tượng ở đỉnh định hình tông chung, bên dưới là luồng nhãn. Cảm giác phân tầng đồng nhất với ngôn ngữ thẻ của giao diện chính. */
 .bbs-fp-groups {
   display: flex;
   flex-direction: column;
@@ -1167,7 +1167,7 @@ const groups = computed(() => [
   padding-top: 12px;
   border-top: 1px dashed var(--bbs-line);
 }
-/* 类目小卡:抬起面(surface),浮在 bg 外层卡之上——对齐主界面 .bbs-plan 卡片 */
+/* Thẻ nhỏ danh mục: bề mặt nổi (surface), nổi trên thẻ ngoài bg —— căn chỉnh với thẻ .bbs-plan của giao diện chính */
 .bbs-fp-group {
   display: flex;
   flex-direction: column;
@@ -1177,7 +1177,7 @@ const groups = computed(() => [
   border-radius: var(--bbs-radius-sm);
   background: var(--bbs-surface);
 }
-/* 类目标题:描边图标 + 名称,图标着强调色作视觉锚点,一眼分区 */
+/* Tiêu đề danh mục: biểu tượng nét viền + tên, biểu tượng mang màu nhấn làm điểm neo thị giác, nhìn thoáng qua là phân vùng được */
 .bbs-fp-gtitle {
   display: inline-flex;
   align-items: center;
@@ -1192,17 +1192,17 @@ const groups = computed(() => [
   color: var(--bbs-accent);
   font-size: 15px;
 }
-/* 变动条纵向堆叠(每条独占一行):它们承载的是可长可短的内容,横向 chip 流会把长条撑成
-   丑陋的多行泡泡。改为账册式条目——一行一条、左对齐、内容自然换行。 */
+/* Các thanh biến động xếp chồng dọc (mỗi thanh chiếm riêng một dòng): chúng chứa nội dung có thể dài hoặc ngắn, luồng chip ngang sẽ kéo giãn các thanh dài thành
+   bong bóng nhiều dòng xấu xí. Đổi thành mục kiểu sổ cái —— mỗi dòng một mục, căn trái, nội dung xuống dòng tự nhiên. */
 .bbs-fp-flow {
   display: flex;
   flex-direction: column;
   gap: 6px;
   min-width: 0;
 }
-/* 变动条(只读=按钮,可点编辑):徽标钉左上,右侧主/副文本左对齐。
-   坐落在 surface 类目卡上,故自身用次级面(surface-2),层次沉一档;
-   小圆角(非药丸),像账册上的一行条目;色彩只落在左侧徽标,条目本体素净。 */
+/* Thanh biến động (chỉ đọc = nút bấm, nhấn để chỉnh sửa): huy hiệu ghim góc trên bên trái, văn bản chính/phụ bên phải căn trái.
+   Tọa lạc trên thẻ danh mục surface, nên bản thân dùng bề mặt thứ cấp (surface-2), phân tầng chìm xuống một nấc;
+   bo góc nhỏ (không phải viên nang), giống một dòng mục trên sổ cái; màu sắc chỉ rơi vào huy hiệu bên trái, bản thân mục thanh nhã. */
 .bbs-fp-tagline {
   display: flex;
   align-items: flex-start;
@@ -1229,8 +1229,8 @@ const groups = computed(() => [
 .bbs-fp-tagline:disabled {
   cursor: default;
 }
-/* op 徽标:小圆角色块,颜色即语义(新增=强调、移除=危险、达成/重启=琥珀、更新/迁移=中性)。
-   中性态在 surface-2 条上用 surface 提亮一档;顶部对齐首行,margin-top 微调与主文本基线齐平。 */
+/* Huy hiệu op: khối màu bo góc nhỏ, màu sắc chính là ngữ nghĩa (Thêm mới = nhấn mạnh, Gỡ bỏ = nguy hiểm, Hoàn thành/Mở lại = hổ phách, Cập nhật/Di dời = trung tính).
+   Trạng thái trung tính trên thanh surface-2 dùng surface làm sáng lên một nấc; đỉnh căn chỉnh dòng đầu, margin-top tinh chỉnh ngang bằng với đường cơ sở văn bản chính. */
 .bbs-fp-op {
   flex: 0 0 auto;
   margin-top: 1px;
@@ -1257,7 +1257,7 @@ const groups = computed(() => [
   color: var(--bbs-warning);
   background: var(--bbs-warning-soft);
 }
-/* 主/副文本:纵向堆叠,主文本正常色、副文本淡色小字 */
+/* Văn bản chính/phụ: xếp chồng dọc, văn bản chính màu bình thường, văn bản phụ chữ nhỏ màu nhạt */
 .bbs-fp-tagbody {
   flex: 1 1 auto;
   min-width: 0;
@@ -1278,9 +1278,9 @@ const groups = computed(() => [
   word-break: break-word;
 }
 
-/* ===== 统一就地编辑表单 =====
-   时间/地点/物品/角色/悬念的编辑全走这套:淡底描边卡片,内含「字段行(标签+输入)」
-   纵向排列,底部一条规整的删除/取消/保存。观感对齐主界面弹窗,不再是挤成一行的小框。 */
+/* ===== Biểu mẫu chỉnh sửa tại chỗ thống nhất =====
+   Chỉnh sửa Thời gian / Địa điểm / Vật phẩm / Nhân vật / Nghi vấn đều đi theo bộ này: thẻ viền nền nhạt, bên trong chứa "dòng trường (nhãn + ô nhập)"
+   xếp dọc, dưới đáy là một thanh Xóa / Hủy / Lưu ngay ngắn. Cảm giác nhìn căn chỉnh với hộp thoại giao diện chính, không còn là khung nhỏ chen chúc vào một dòng. */
 .bbs-fp-editform {
   width: 100%;
   display: flex;
@@ -1291,8 +1291,8 @@ const groups = computed(() => [
   border: 1px solid var(--bbs-accent);
   background: var(--bbs-surface);
 }
-/* 字段行:左侧固定宽标签 + 右侧撑满输入框,规整对齐 */
-/* 字段行:标签顶端对齐(输入框可能多行,标签仍贴首行) */
+/* Dòng trường: nhãn chiều rộng cố định bên trái + ô nhập căng đầy bên phải, căn chỉnh ngay ngắn */
+/* Dòng trường: đỉnh nhãn căn chỉnh (ô nhập có thể nhiều dòng, nhãn vẫn bám dòng đầu) */
 .bbs-fp-nrow {
   display: flex;
   align-items: flex-start;
@@ -1301,13 +1301,13 @@ const groups = computed(() => [
 .bbs-fp-nlabel {
   flex: 0 0 auto;
   width: 40px;
-  padding-top: 6px; /* 与字段首行文字基线对齐 */
+  padding-top: 6px; /* Căn chỉnh với đường cơ sở chữ dòng đầu của trường */
   font-size: 12px;
   color: var(--bbs-ink-soft);
 }
-/* 字段输入:改用 textarea 以「单行输入、多行显示」——内容长时自动换行、随内容长高,
-   完整可见;回车被 onFieldKeydown 拦截,输入语义仍是单行。
-   底用 surface-2:输入框在 surface 表单卡上要沉一档,对齐主界面输入框惯例。 */
+/* Ô nhập trường: đổi sang dùng textarea để "nhập một dòng, hiển thị nhiều dòng" —— khi nội dung dài tự động xuống dòng, cao lên theo nội dung,
+   nhìn thấy trọn vẹn; phím Enter bị onFieldKeydown chặn, ngữ nghĩa nhập vẫn là một dòng.
+   Nền dùng surface-2: ô nhập trên thẻ biểu mẫu surface phải chìm xuống một nấc, căn chỉnh theo thông lệ ô nhập của giao diện chính. */
 .bbs-fp-nfield {
   flex: 1 1 auto;
   min-width: 0;
@@ -1321,18 +1321,18 @@ const groups = computed(() => [
   white-space: pre-wrap;
   word-break: break-word;
 }
-/* 数量仍是普通 number input,单行即可,不需要换行长高 */
+/* Số lượng vẫn là input number thông thường, một dòng là đủ, không cần xuống dòng tăng chiều cao */
 .bbs-fp-nfield-num {
   resize: none;
 }
-/* 不可编辑标签删除态:只读回显要删除的内容 */
+/* Trạng thái xóa nhãn không thể chỉnh sửa: hiển thị lại chỉ đọc nội dung sắp xóa */
 .bbs-fp-editreadonly {
   margin: 0;
   font-size: 12.5px;
   color: var(--bbs-ink-soft);
   word-break: break-word;
 }
-/* 底部操作条:删除靠左(低调,hover 显红),取消/保存靠右成组 */
+/* Thanh thao tác đáy: Xóa dạt sang trái (trầm lắng, hover hiện đỏ), Hủy/Lưu dạt sang phải thành nhóm */
 .bbs-fp-editfoot {
   display: flex;
   align-items: center;
@@ -1366,14 +1366,14 @@ const groups = computed(() => [
   background: var(--bbs-danger-soft);
 }
 
-/* 正文编辑器:textarea 盒模型已与只读块统一(见上「正文」块),这里只加可拉伸 + 去掉底距(编辑器容器管间距) */
+/* Trình chỉnh sửa nội dung chính: mô hình hộp textarea đã thống nhất với khối chỉ đọc (xem khối "Nội dung chính" ở trên), ở đây chỉ thêm cho phép kéo giãn + bỏ lề dưới (vùng chứa trình chỉnh sửa quản lý khoảng cách) */
 .bbs-fp-texteditor {
   margin-bottom: 10px;
 }
 .bbs-fp-textarea {
   resize: vertical;
   margin: 0;
-  /* autosize 用 JS 按 scrollHeight 设高;隐藏滚动条避免拉高瞬间闪现,给个下限防空文本过扁 */
+  /* autosize dùng JS đặt chiều cao theo scrollHeight; ẩn thanh cuộn tránh nhấp nháy khoảnh khắc kéo cao, đặt một giới hạn dưới tránh văn bản rỗng quá dẹt */
   min-height: 64px;
   overflow: hidden;
 }
@@ -1384,7 +1384,7 @@ const groups = computed(() => [
   margin-top: 6px;
 }
 
-/* 页脚 */
+/* Chân trang */
 .bbs-fp-footer {
   display: flex;
   align-items: center;
@@ -1393,7 +1393,7 @@ const groups = computed(() => [
   padding-top: 10px;
   border-top: 1px solid var(--bbs-line);
 }
-/* 删除入口:平时只是一枚安静的图标+字,靠右不抢眼;hover 才浮现危险色 */
+/* Lối vào xóa: bình thường chỉ là một biểu tượng + chữ tĩnh lặng, dạt sang phải không gây chú ý; hover mới hiện màu nguy hiểm */
 .bbs-fp-delleaf {
   margin-left: auto;
   display: inline-flex;
@@ -1418,7 +1418,7 @@ const groups = computed(() => [
   opacity: 0.55;
   cursor: default;
 }
-/* 两步确认:提示文字 + 取消/删除并排,删除键用危险色实心,确认动作明确 */
+/* Xác nhận hai bước: chữ nhắc nhở + Hủy/Xóa xếp cạnh nhau, nút Xóa dùng màu nguy hiểm đặc ruột, hành động xác nhận rõ ràng */
 .bbs-fp-confirm-text {
   flex: 1 1 auto;
   min-width: 0;

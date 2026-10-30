@@ -8,36 +8,36 @@ import type { BaibaiMemory, LeafExtra, MemSummary, StoredDelta, VarTemplate, Var
 import { createEmptyMemory, MEMORY_KEY, MEMORY_VERSION, normalizeTemplate } from './types';
 
 /**
- * 响应式记忆镜像。
- * 真源:① 压缩节点森林 = chat_metadata[MEMORY_KEY].summaries;② 叶子 = chat 各消息 extra.bbs_leaf。
- * state / items / plans 是从 chat 重放出的派生缓存,供 Vue 渲染。
+ * Bản sao phản ứng (reactive) của bộ nhớ.
+ * Nguồn chân lý: ① Rừng nút nén = chat_metadata[MEMORY_KEY].summaries; ② Lá = extra.bbs_leaf của từng tin nhắn trong chat.
+ * state / items / plans là bộ nhớ đệm dẫn xuất được phát lại từ chat, phục vụ cho Vue kết xuất.
  */
 export const memory = reactive<BaibaiMemory>(createEmptyMemory());
 
 /**
- * 给页面读的派生元信息(chat 非 reactive,UI 必须经此 reactive 通道):
- *  - hasLeaf:是否有任一有效叶子(无则禁用手动添加)。
- *  - leaves:供 summary 页展示的叶子列表(含陈旧标记)。
+ * Siêu thông tin dẫn xuất cho trang giao diện đọc (chat không phải reactive, UI bắt buộc phải đi qua kênh reactive này):
+ *  - hasLeaf: có bất kỳ lá hợp lệ nào hay không (không có thì vô hiệu hóa thêm thủ công).
+ *  - leaves: danh sách lá phục vụ trang summary hiển thị (kèm nhãn lỗi thời).
  */
 export interface LeafView {
   id: string;
   text: string;
   timeStart?: string;
   timeEnd?: string;
-  timeLabel?: string; // 旧数据回退
+  timeLabel?: string; // Dự phòng cho dữ liệu cũ
   createdAt: number;
   msgIndex: number;
-  active: boolean; // 所在消息已隐藏(is_system)
-  stale: boolean; // 正文已变、尚未重摘
+  active: boolean; // Tin nhắn chứa nó đã ẩn (is_system)
+  stale: boolean; // Chính văn đã đổi, chưa tóm tắt lại
 }
 export const derivedMeta = reactive<{ hasLeaf: boolean; leaves: LeafView[]; pendingFloors: number[]; latestStoryTime: string; rev: number }>({
   hasLeaf: false,
   leaves: [],
   pendingFloors: [],
-  // 故事内最新时间:从正文标签实时读(不依赖是否已摘),供摘要页展示与相对时间参照
+  // Thời gian mới nhất trong truyện: đọc thời gian thực từ thẻ chính văn (không phụ thuộc đã tóm tắt hay chưa), phục vụ hiển thị trang tóm tắt và tham chiếu thời gian tương đối
   latestStoryTime: '',
-  // 递增版本号:每次 recomputeDerived 都 +1。chat 非 reactive,楼内面板等外部视图读它即可
-  // 追踪「派生已重算」——无论重算由 ST 事件、主界面摘要、还是楼内编辑触发,都能统一刷新。
+  // Số phiên bản tăng dần: mỗi lần recomputeDerived đều +1. chat không phải reactive, các khung nhìn bên ngoài như bảng trong tầng chỉ cần đọc nó là có thể
+  // theo dõi "dữ liệu dẫn xuất đã tính lại" —— bất kể việc tính lại do sự kiện ST, tóm tắt trên giao diện chính hay chỉnh sửa trong tầng kích hoạt, đều làm mới thống nhất.
   rev: 0,
 });
 
@@ -51,18 +51,18 @@ function optText(v: unknown): string | undefined {
   return scalarText(v) || undefined;
 }
 
-/** 重放 chat 得到 state/items/plans,原地写回;并刷新 derivedMeta */
+/** Phát lại chat thu được state/items/plans, ghi đè tại chỗ; đồng thời làm mới derivedMeta */
 export function recomputeDerived(): void {
   const ctx = getContext();
-  // 欢迎页(未进入任何聊天)getCurrentChatId 为空,但 chat 里可能残留上次的 #0,
-  // 不属于任何聊天的楼层不该被判为「未摘要」,故此时视作无 chat。
+  // Trang chào mừng (chưa vào bất kỳ cuộc trò chuyện nào) getCurrentChatId trống, nhưng trong chat có thể còn sót lại #0 của lần trước,
+  // tầng không thuộc về bất kỳ cuộc trò chuyện nào không nên bị phán đoán là "chưa tóm tắt", nên lúc này coi như không có chat.
   const chat = ctx?.getCurrentChatId?.() ? ctx.chat ?? null : null;
   const d = deriveMemory(chat);
   memory.state.time = d.state.time;
   memory.state.location = d.state.location;
   memory.state.locationPath = d.state.locationPath;
   memory.state.sceneFocus = d.state.sceneFocus;
-  // 年龄(age+ageTime 锚点对)也在 protagonist 上,漏拷会让 UI/注入永远读不到主角年龄
+  // Tuổi tác (cặp mốc neo age+ageTime) cũng nằm trên protagonist, chép sót sẽ khiến UI/tiêm không bao giờ đọc được tuổi nhân vật chính
   for (const key of ['gender', 'age', 'ageTime', 'identity', 'appearance', 'outfit', 'condition'] as const) {
     memory.protagonist[key] = d.protagonist[key];
   }
@@ -73,16 +73,16 @@ export function recomputeDerived(): void {
   memory.itemLog.splice(0, memory.itemLog.length, ...d.itemLog);
   memory.lifeDetails.splice(0, memory.lifeDetails.length, ...d.lifeDetails);
   memory.knowledge.splice(0, memory.knowledge.length, ...d.knowledge);
-  // vars 是 JSON 对象:清空后按派生结果重填(不换 reactive 引用,保持页面响应式绑定)
+  // vars là đối tượng JSON: xóa trống rồi điền lại theo kết quả dẫn xuất (không đổi tham chiếu reactive, giữ ràng buộc phản ứng của trang)
   for (const k of Object.keys(memory.vars)) delete memory.vars[k];
   Object.assign(memory.vars, d.vars);
 
-  // derivedMeta:扫 chat 收集叶子(含陈旧)
+  // derivedMeta: quét chat thu thập lá (gồm cả lá lỗi thời)
   const leaves: LeafView[] = [];
   if (chat) {
     for (let i = 0; i < chat.length; i++) {
       const m = chat[i];
-      if (m?.extra?.bbs_omit) continue; // 番外楼:不进摘要页叶子列表
+      if (m?.extra?.bbs_omit) continue; // Tầng ngoại truyện: không đưa vào danh sách lá trang tóm tắt
       const leaf = getLeaf(m);
       if (!leaf) continue;
       const valid = leafValid(m);
@@ -102,16 +102,16 @@ export function recomputeDerived(): void {
   derivedMeta.leaves = leaves;
   derivedMeta.hasLeaf = leaves.some(l => !l.stale);
   derivedMeta.latestStoryTime = latestStoryTime(chat);
-  // 待摘要楼层(AI 楼且无有效叶子),供摘要页「未摘要楼层」列表逐楼补摘
+  // Tầng chờ tóm tắt (tầng AI và không có lá hợp lệ), phục vụ danh sách "Tầng chưa tóm tắt" ở trang tóm tắt để tóm tắt bù từng tầng
   derivedMeta.pendingFloors = chat ? pendingAiFloors(chat) : [];
-  derivedMeta.rev++; // 通知外部视图(楼内面板)派生已刷新
+  derivedMeta.rev++; // Thông báo cho khung nhìn bên ngoài (bảng trong tầng) rằng dữ liệu dẫn xuất đã làm mới
 }
 
-/* ============ 落盘:叶子在 chat 文件,森林在 metadata ============ */
+/* ============ Lưu đĩa: Lá ở file chat, Rừng ở metadata ============ */
 
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
-/** 防抖落盘叶子(写进 chat 文件)。合并连续多楼摘要为一次 saveChat。 */
+/** Chống rung (debounce) lưu lá xuống đĩa (ghi vào file chat). Gộp nhiều tầng tóm tắt liên tiếp thành một lần saveChat. */
 export function scheduleLeafFlush(): void {
   const ctx = getContext();
   if (!ctx?.saveChat) return;
@@ -122,7 +122,7 @@ export function scheduleLeafFlush(): void {
   }, 1500);
 }
 
-/** 立即落盘(切聊天/卸载前调用,避免丢未落盘叶子) */
+/** Lưu đĩa ngay lập tức (gọi trước khi chuyển cuộc trò chuyện / gỡ cài đặt, tránh mất lá chưa lưu xuống đĩa) */
 export function flushLeavesNow(): void {
   if (flushTimer) {
     clearTimeout(flushTimer);
@@ -133,8 +133,8 @@ export function flushLeavesNow(): void {
 }
 
 /**
- * 把森林(压缩节点)+ **仅 chat 层**变量模板写回 chat_metadata 并持久化。
- * 全局/角色层的模板不在这里(它们存 extension_settings,由 replaceVarsTemplate 落盘)。叶子也不在这里。
+ * Ghi rừng (nút nén) + khuôn mẫu biến **chỉ tầng chat** trở lại chat_metadata và lưu bền vững.
+ * Khuôn mẫu tầng toàn cục / nhân vật không nằm ở đây (chúng lưu ở extension_settings, do replaceVarsTemplate lưu đĩa). Lá cũng không nằm ở đây.
  */
 export function saveMemory() {
   const ctx = getContext();
@@ -148,15 +148,15 @@ export function saveMemory() {
   ctx.saveMetadataDebounced?.();
 }
 
-/* ============ 迁移 v2 → v3 ============ */
+/* ============ Di chuyển v2 → v3 ============ */
 
 /**
- * v2(叶子在森林、带 coveredIndices+delta)→ v3(叶子搬到消息 extra)。
- * 需 chat 上下文;无 chat 时返回 null(延后,下次 CHAT_CHANGED 重跑)。
- * 搬不动的叶子(索引越界/消息已删)其 delta 合并进一条兜底叶子挂到最后 AI 楼,保结构化 1:1。
+ * v2 (lá nằm trong rừng, mang coveredIndices+delta) → v3 (lá chuyển sang extra của tin nhắn).
+ * Cần ngữ cảnh chat; khi không có chat trả về null (hoãn lại, lần CHAT_CHANGED sau chạy lại).
+ * Các lá không chuyển được (vượt quá chỉ mục / tin nhắn đã xóa) sẽ gộp delta của chúng vào một lá dự phòng gắn vào tầng AI cuối cùng, bảo toàn cấu trúc hóa 1:1.
  */
 function migrateV2toV3(raw: Record<string, unknown>, chat: STMessage[] | null): BaibaiMemory | null {
-  if (!chat || chat.length === 0) return null; // 延后
+  if (!chat || chat.length === 0) return null; // Hoãn lại
 
   const out = createEmptyMemory();
   out.version = MEMORY_VERSION;
@@ -164,13 +164,13 @@ function migrateV2toV3(raw: Record<string, unknown>, chat: STMessage[] | null): 
 
   const orphanDeltas: StoredDelta[] = [];
 
-  // 1) 旧叶子(level0)→ 搬到对应 AI 楼的 extra(保留原 id)
+  // 1) Lá cũ (level0) → chuyển sang extra của tầng AI tương ứng (giữ nguyên id gốc)
   for (const s of oldSums) {
     if ((typeof s.level === 'number' ? s.level : 0) !== 0) continue;
     const cov = (Array.isArray(s.coveredIndices) ? s.coveredIndices : []) as number[];
     const delta = (s.delta ?? {}) as StoredDelta;
 
-    // 定位挂靠的 AI 楼:coveredIndices 里最后一个 isAiFloor;退而求其次取最后一个存在的
+    // Định vị tầng AI để gắn vào: isAiFloor cuối cùng trong coveredIndices; nếu không có thì lấy tầng tồn tại cuối cùng
     let target = -1;
     for (let k = cov.length - 1; k >= 0; k--) {
       if (isAiFloor(chat[cov[k]])) {
@@ -187,7 +187,7 @@ function migrateV2toV3(raw: Record<string, unknown>, chat: STMessage[] | null): 
       }
     }
     if (target < 0 || !chat[target] || chat[target].extra?.bbs_leaf) {
-      orphanDeltas.push(delta); // 搬不动/目标已占用 → 兜底
+      orphanDeltas.push(delta); // Không chuyển được / mục tiêu đã bị chiếm → đưa vào dự phòng
       continue;
     }
     const leaf: LeafExtra = {
@@ -201,7 +201,7 @@ function migrateV2toV3(raw: Record<string, unknown>, chat: STMessage[] | null): 
     chat[target].extra = { ...(chat[target].extra ?? {}), bbs_leaf: leaf };
   }
 
-  // 1b) 兜底叶子:把搬不动的 delta 合并挂到最后一条 AI 楼
+  // 1b) Lá dự phòng: gộp các delta không chuyển được gắn vào tầng AI cuối cùng
   if (orphanDeltas.length) {
     let last = -1;
     for (let i = chat.length - 1; i >= 0; i--) {
@@ -217,7 +217,7 @@ function migrateV2toV3(raw: Record<string, unknown>, chat: STMessage[] | null): 
         ...(chat[last].extra ?? {}),
         bbs_leaf: {
           id: `leaf_migrate_${Date.now().toString(36)}`,
-          text: '(迁移:历史结构化状态)',
+          text: '(Di chuyển: Trạng thái có cấu trúc lịch sử)',
           delta: merged,
           createdAt: Date.now(),
           v: 1,
@@ -226,7 +226,7 @@ function migrateV2toV3(raw: Record<string, unknown>, chat: STMessage[] | null): 
     }
   }
 
-  // 2) 压缩节点(level≥1)原样保留进森林
+  // 2) Nút nén (level≥1) giữ nguyên đưa vào rừng
   for (const s of oldSums) {
     if ((typeof s.level === 'number' ? s.level : 0) < 1) continue;
     out.summaries.push({
@@ -242,7 +242,7 @@ function migrateV2toV3(raw: Record<string, unknown>, chat: STMessage[] | null): 
   return out;
 }
 
-/** 迁移辅助:把 delta b 合并进 a(用于兜底叶子,简单拼接 add/op 数组,resolve 用稳定 id) */
+/** Hỗ trợ di chuyển: gộp delta b vào a (dùng cho lá dự phòng, nối đơn giản mảng add/op, resolve dùng id ổn định) */
 function mergeStoredDelta(a: StoredDelta, b: StoredDelta): void {
   if (b.time) a.time = b.time;
   if (b.location) a.location = b.location;
@@ -270,7 +270,7 @@ function mergeStoredDelta(a: StoredDelta, b: StoredDelta): void {
   }
 }
 
-/* ============ 载入 / 保存 ============ */
+/* ============ Tải / Lưu ============ */
 
 function cleanSummaryNode(s: MemSummary, idx: number): MemSummary {
   return {
@@ -301,7 +301,7 @@ function assignForest(target: BaibaiMemory, summaries: MemSummary[], varTemplate
   target.varTemplates = varTemplates;
 }
 
-/** 读三层变量模板(chat 来自传入的 chatMetadata 原始值;global/char 来自 settings)。 */
+/** Đọc khuôn mẫu biến ba tầng (chat đến từ giá trị thô chatMetadata truyền vào; global/char đến từ settings). */
 function loadVarTemplates(rawChatTemplate: unknown): Record<VarTier, VarTemplate> {
   const key = currentCharKey();
   return {
@@ -311,13 +311,13 @@ function loadVarTemplates(rawChatTemplate: unknown): Record<VarTier, VarTemplate
   };
 }
 
-/** 从当前聊天载入森林 + 三层变量模板 + 重算派生(必要时迁移) */
+/** Tải rừng + khuôn mẫu biến ba tầng + tính lại dữ liệu dẫn xuất từ cuộc trò chuyện hiện tại (di chuyển nếu cần) */
 export function loadMemory() {
   const ctx = getContext();
   const meta = ctx?.chatMetadata as Record<string, unknown> | undefined;
   const raw = meta?.[MEMORY_KEY] as Record<string, unknown> | undefined;
   const chat = ctx?.chat ?? null;
-  // 变量模板与 summary 迁移正交:chat 层从 metadata 直读,再取全局/角色层(缺失=空模板)
+  // Khuôn mẫu biến trực giao với việc di chuyển summary: tầng chat đọc thẳng từ metadata, rồi lấy thêm tầng toàn cục / nhân vật (thiếu = khuôn mẫu rỗng)
   const varTemplates = loadVarTemplates(raw?.varsTemplate);
 
   if (raw && typeof raw === 'object') {
@@ -328,11 +328,11 @@ export function loadMemory() {
       const migrated = migrateV2toV3(raw, chat);
       if (migrated) {
         assignForest(memory, migrated.summaries, varTemplates);
-        // 先把叶子落盘(saveChat)成功,再升 version 写 metadata,保证可重入
+        // Lưu lá xuống đĩa (saveChat) thành công trước, rồi mới nâng version ghi metadata, đảm bảo có thể vào lại (re-entrant)
         flushLeavesNow();
         saveMemory();
       } else {
-        // 延后迁移:暂用旧森林里的压缩节点(level≥1),叶子等下次 chat 就绪再搬
+        // Hoãn di chuyển: tạm dùng nút nén (level≥1) trong rừng cũ, lá đợi lần sau chat sẵn sàng rồi chuyển
         const comps = (Array.isArray(raw.summaries) ? raw.summaries : []).filter(
           (s: Record<string, unknown>) => (typeof s.level === 'number' ? s.level : 0) >= 1,
         ) as MemSummary[];
@@ -346,12 +346,12 @@ export function loadMemory() {
 }
 
 /**
- * 替换某一层的变量模板(供变量页编辑器保存):写回对应存储 → 更新内存 → 重算派生。
- *  - global → apiSettings.varsGlobalTemplate(跨设备同步);
- *  - char → apiSettings.varsTemplateByChar[avatar](无当前角色则忽略,UI 已禁用);
- *  - chat → chatMetadata(经 saveMemory)。
- * 模板变化只改「初始状态」,历史命令照旧重放(所以改初始值会影响整条聊天的当前值)。
- * 注:注入刷新由调用方(页面)负责 refreshInjection —— store 不引 inject 避免循环依赖。
+ * Thay thế khuôn mẫu biến của một tầng (phục vụ trình chỉnh sửa trang biến lưu lại): ghi về lưu trữ tương ứng → cập nhật bộ nhớ → tính lại dữ liệu dẫn xuất.
+ *  - global → apiSettings.varsGlobalTemplate (đồng bộ xuyên thiết bị);
+ *  - char → apiSettings.varsTemplateByChar[avatar] (không có nhân vật hiện tại thì bỏ qua, UI đã vô hiệu hóa);
+ *  - chat → chatMetadata (qua saveMemory).
+ * Thay đổi khuôn mẫu chỉ sửa "trạng thái ban đầu", các lệnh lịch sử vẫn phát lại như cũ (vì vậy sửa giá trị ban đầu sẽ ảnh hưởng giá trị hiện tại của cả cuộc trò chuyện).
+ * Lưu ý: việc làm mới tiêm do bên gọi (trang giao diện) phụ trách refreshInjection —— store không import inject để tránh phụ thuộc vòng.
  */
 export function replaceVarsTemplate(tier: VarTier, tpl: VarTemplate): void {
   const norm = normalizeTemplate(tpl);
@@ -362,15 +362,15 @@ export function replaceVarsTemplate(tier: VarTier, tpl: VarTemplate): void {
     const key = currentCharKey();
     if (key) {
       if (Object.keys(norm.json).length || norm.meaning.trim() || norm.rule.trim()) apiSettings.varsTemplateByChar[key] = norm;
-      else delete apiSettings.varsTemplateByChar[key]; // 清空则移除键,不留空壳
+      else delete apiSettings.varsTemplateByChar[key]; // Xóa trống thì gỡ bỏ khóa, không để lại vỏ rỗng
     }
   } else {
-    saveMemory(); // chat 层写 chatMetadata
+    saveMemory(); // tầng chat ghi vào chatMetadata
   }
   recomputeDerived();
 }
 
-/** 监听聊天切换:切走前 flush 未落盘叶子,切来后重载 */
+/** Lắng nghe chuyển đổi cuộc trò chuyện: trước khi chuyển đi thì flush các lá chưa lưu đĩa, sau khi chuyển đến thì tải lại */
 export function bindChatLifecycle() {
   const ctx = getContext();
   if (!ctx?.eventSource || !ctx?.eventTypes) return;
@@ -378,6 +378,6 @@ export function bindChatLifecycle() {
     flushLeavesNow();
     loadMemory();
   });
-  // 首次载入
+  // Tải lần đầu
   loadMemory();
 }

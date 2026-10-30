@@ -1,83 +1,83 @@
 /**
- * 柏宝书记忆数据模型 —— 混合架构:叶子在消息上,压缩节点在森林
+ * Mô hình dữ liệu bộ nhớ Bách Bảo Thư —— Kiến trúc lai: Lá nằm trên tin nhắn, Nút nén nằm trong rừng
  *
- * 存储位置:
- *  - **叶子摘要**:存在 chat 消息对象的 extra.bbs_leaf 上(LeafExtra)。随消息/swipe
- *    由 ST 自动跟随(per-swipe extra)、随 chat 文件持久化。删消息→叶子随之消失;
- *    翻页/regenerate→按 swipe 页码切换有效叶子;普通正文编辑不再自动废除摘要。
- *  - **压缩节点**(L1/L2…):存独立森林 chat_metadata.baibai_book.summaries(MemSummary,
- *    level≥1)。它是跨楼聚合、无单一消息可挂,用 childIds 引用下层(L1→叶子id、L2→L1id)。
+ * Vị trí lưu trữ:
+ *  - **Tóm tắt lá**: lưu trên extra.bbs_leaf của đối tượng tin nhắn chat (LeafExtra). Được ST tự động
+ *    mang theo cùng tin nhắn / swipe (per-swipe extra), lưu bền vững theo file chat. Xóa tin nhắn → lá biến mất theo;
+ *    lật trang / regenerate → chuyển đổi lá hợp lệ theo số trang swipe; chỉnh sửa chính văn thông thường không còn tự động hủy bỏ tóm tắt.
+ *  - **Nút nén** (L1/L2…): lưu ở rừng độc lập chat_metadata.baibai_book.summaries (MemSummary,
+ *    level≥1). Nó là tổng hợp xuyên tầng, không có tin nhắn đơn lẻ nào để gắn vào, dùng childIds tham chiếu tầng dưới (L1→id lá, L2→id L1).
  *
- * 核心:
- *  - state / items / plans 是**派生**:按楼层顺序扫 chat,重放每条有效叶子的 delta 算出,
- *    不持久化。删叶子/叶子陈旧 → 它的 delta 不再重放 → 派生自动回退。
- *  - 压缩节点只压**叙事文本**省注入 token,不带 delta、不影响结构化数据。
- *  - 编辑/删除一条已被压缩的叶子 → 删除包含它的整条祖先压缩链(见 apply.pruneBrokenComps)。
+ * Cốt lõi:
+ *  - state / items / plans là **dữ liệu dẫn xuất**: quét chat theo thứ tự tầng lầu, phát lại delta của từng lá hợp lệ để tính ra,
+ *    không lưu bền vững. Xóa lá / lá lỗi thời → delta của nó không còn được phát lại → dữ liệu dẫn xuất tự động lùi về.
+ *  - Nút nén chỉ nén **văn bản tự sự** để tiết kiệm token tiêm, không mang delta, không ảnh hưởng dữ liệu có cấu trúc.
+ *  - Chỉnh sửa / xóa một lá đã được nén → xóa toàn bộ chuỗi nén tổ tiên có chứa nó (xem apply.pruneBrokenComps).
  */
 
 export const MEMORY_KEY = 'baibai_book';
-/** 3 = 混合架构(叶子在消息 extra);2 = 叶子也在森林;1 = 独立 items/plans/state */
+/** 3 = Kiến trúc lai (lá nằm ở extra của tin nhắn); 2 = Lá cũng nằm trong rừng; 1 = items/plans/state độc lập */
 export const MEMORY_VERSION = 3;
 
 /**
- * 物品(派生产物,不持久化)。
- * id 是**确定性**的:`item:${规范化名}`,故重放每次得到同一 id,手动 op 可稳定引用。
+ * Vật phẩm (sản phẩm dẫn xuất, không lưu bền vững).
+ * id có **tính tất định**: `item:${tên chuẩn hóa}`, nên mỗi lần phát lại đều thu được cùng một id, op thủ công có thể tham chiếu ổn định.
  */
 export interface MemItem {
   id: string;
-  /** 物品名(同时作为匹配键) */
+  /** Tên vật phẩm (đồng thời làm khóa khớp) */
   name: string;
-  /** 简述/备注 */
+  /** Mô tả ngắn / ghi chú */
   desc?: string;
-  /** 数量;省略表示不计数 */
+  /** Số lượng; lược bỏ biểu thị không đếm số lượng */
   qty?: number;
-  /** 是否随身(随角色移动);省略/true=随身,永远注入。false=存放某地,仅当前地点匹配才全量注入 */
+  /** Có mang theo người hay không (di chuyển theo nhân vật); lược bỏ/true = mang theo người, luôn được tiêm. false = cất ở nơi nào đó, chỉ khi khớp địa điểm hiện tại mới tiêm toàn bộ */
   carried?: boolean;
-  /** 非随身时的存放地点(故事内地名);carried=false 时用于与当前地点匹配 */
+  /** Địa điểm cất giữ khi không mang theo người (tên địa danh trong truyện); khi carried=false dùng để khớp với địa điểm hiện tại */
   location?: string;
   createdAt: number;
   updatedAt: number;
 }
 
 /**
- * 物品变动日志条目(派生产物,不持久化)。
- * 重放叶子 delta 时顺带产出:每条 add/update/remove 记一条,带「故事内时间」。
- * 用途:注入主对话 + 喂摘要副API,让模型知道「这笔账已结算」,避免连续两段剧情把同一次消耗扣两次。
+ * Mục nhật ký biến động vật phẩm (sản phẩm dẫn xuất, không lưu bền vững).
+ * Sản sinh kèm khi phát lại delta của lá: mỗi mục add/update/remove ghi một dòng, kèm "thời gian trong truyện".
+ * Công dụng: tiêm vào đối thoại chính + nạp cho API phụ tóm tắt, để mô hình biết "khoản này đã quyết toán", tránh việc hai đoạn cốt truyện liên tiếp trừ hai lần cho cùng một lần tiêu hao.
  */
 export interface ItemLogEntry {
-  /** 物品名 */
+  /** Tên vật phẩm */
   name: string;
-  /** add=获得/新增,update=数量或描述变更,remove=移除/消耗尽 */
+  /** add=nhận được/thêm mới, update=thay đổi số lượng hoặc mô tả, remove=gỡ bỏ/tiêu hao hết */
   kind: 'add' | 'update' | 'remove';
-  /** 变更前数量(仅在已知且有意义时);qty 不计数的物品省略 */
+  /** Số lượng trước khi đổi (chỉ khi đã biết và có ý nghĩa); vật phẩm không đếm qty thì lược bỏ */
   from?: number;
-  /** 变更后数量(remove 后为 0/省略) */
+  /** Số lượng sau khi đổi (sau remove là 0/lược bỏ) */
   to?: number;
-  /** 故事内时间(取产生该变动的叶子 timeEnd,缺则 timeStart);无则空串 */
+  /** Thời gian trong truyện (lấy timeEnd của lá tạo ra biến động đó, thiếu thì lấy timeStart); không có thì chuỗi rỗng */
   time: string;
 }
 
-/* ============ 自定义变量(MVU 式:一个 JSON 对象 + 路径命令) ============ */
+/* ============ Biến tùy chỉnh (Kiểu MVU: một đối tượng JSON + lệnh đường dẫn) ============ */
 
-/** JSON 值。自定义变量的「状态」就是一棵这样的树,AI 用路径命令自由增删改。 */
+/** Giá trị JSON. "Trạng thái" của biến tùy chỉnh chính là một cây như thế này, AI dùng lệnh đường dẫn tự do thêm xóa sửa. */
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [k: string]: JsonValue };
 
 /**
- * 变量的作用域层级。**只影响「初始模板存哪」,值永远每聊天独立**(从各聊天自己的叶子 varOps 重放):
- *  - global:所有角色所有聊天共享模板(存 extension_settings)。
- *  - char:当前角色的所有聊天共享模板(存 extension_settings,按角色 avatar 区分)。
- *  - chat:仅当前聊天(存 chatMetadata,默认档)。
- * 载入时三层模板深合并(chat > char > global)成初始状态;命令(delta)只存叶子(chat),故值天然每聊天独立。
+ * Cấp độ phạm vi của biến. **Chỉ ảnh hưởng "khuôn mẫu ban đầu lưu ở đâu", giá trị luôn độc lập cho mỗi cuộc trò chuyện** (phát lại từ varOps trong lá riêng của từng cuộc trò chuyện):
+ *  - global: mọi nhân vật mọi cuộc trò chuyện dùng chung khuôn mẫu (lưu ở extension_settings).
+ *  - char: mọi cuộc trò chuyện của nhân vật hiện tại dùng chung khuôn mẫu (lưu ở extension_settings, phân biệt theo avatar nhân vật).
+ *  - chat: chỉ cuộc trò chuyện hiện tại (lưu ở chatMetadata, mức mặc định).
+ * Khi tải sẽ gộp sâu khuôn mẫu ba tầng (chat > char > global) thành trạng thái ban đầu; lệnh (delta) chỉ lưu ở lá (chat), nên giá trị tự nhiên độc lập theo từng cuộc trò chuyện.
  */
 export type VarTier = 'global' | 'char' | 'chat';
 
 /**
- * 一层的变量「定义」= 初始结构模板 + 给 AI 的说明(拆两段)。三层各一份,载入时深合并成初始状态。
- *  - json:初始 JSON(根须是对象),用户预先搭好想追踪的结构(可留空对象,让 AI 从零建)。
- *  - meaning:各字段**是什么**(含义/取值范围)。主API(写正文)与副API(摘要)都会拿到——
- *    主API据此理解当前值,只读参考。
- *  - rule:**何时怎么改**、可否新建对象(相当于 MVU 的变化条件/命令约定)。**只发副API**——
- *    它含「如何增删改」的指令,主API看到会误以为要在正文里输出/复述变量,故对主API屏蔽。
+ * "Định nghĩa" biến của một tầng = khuôn mẫu cấu trúc ban đầu + hướng dẫn cho AI (tách làm hai đoạn). Ba tầng mỗi tầng một bản, khi tải sẽ gộp sâu thành trạng thái ban đầu.
+ *  - json: JSON ban đầu (gốc phải là đối tượng), người dùng dựng sẵn cấu trúc muốn theo dõi (có thể để đối tượng rỗng, cho AI xây từ đầu).
+ *  - meaning: các trường **là cái gì** (ý nghĩa / phạm vi giá trị). Cả API chính (viết chính văn) lẫn API phụ (tóm tắt) đều nhận được ——
+ *    API chính dựa vào đó hiểu giá trị hiện tại, chỉ đọc tham khảo.
+ *  - rule: **khi nào sửa thế nào**, có được tạo đối tượng mới không (tương đương điều kiện biến đổi / quy ước lệnh của MVU). **Chỉ gửi cho API phụ** ——
+ *    nó chứa chỉ thị "cách thêm xóa sửa", API chính nhìn thấy sẽ hiểu lầm là phải xuất / thuật lại biến số trong chính văn, nên chắn khỏi API chính.
  */
 export interface VarTemplate {
   json: Record<string, JsonValue>;
@@ -86,25 +86,25 @@ export interface VarTemplate {
 }
 
 /**
- * 路径命令(AI 与手动共用;固化进叶子 delta.varOps,按楼层重放)。仿 MVU 的 set/assign/remove/add:
- *  - set:把 path 处的值设为 value(自动创建中间层)。path='' 表示整棵根。
- *  - assign:往 path 处的对象/数组插入。给 key 则 obj[key]=value(数组则该下标);不给 key 则数组 push value。
- *  - remove:删除。给 key 删对象键 / 数组下标 / 数组里等于 key 的元素;不给 key 删 path 本身。
- *  - add:把 path 处的数字加上 delta(负数即减)。
+ * Lệnh đường dẫn (AI và thủ công dùng chung; cố định vào delta.varOps của lá, phát lại theo tầng lầu). Mô phỏng set/assign/remove/add của MVU:
+ *  - set: đặt giá trị tại path thành value (tự động tạo tầng trung gian). path='' biểu thị toàn bộ gốc.
+ *  - assign: chèn vào đối tượng / mảng tại path. Đưa key thì obj[key]=value (mảng thì là chỉ mục đó); không đưa key thì mảng push value.
+ *  - remove: xóa. Đưa key thì xóa khóa đối tượng / chỉ mục mảng / phần tử trong mảng bằng với key; không đưa key thì xóa bản thân path.
+ *  - add: cộng thêm delta vào con số tại path (số âm tức là trừ).
  */
 export interface VarOp {
   op: 'set' | 'assign' | 'remove' | 'add';
-  /** 点/括号寻址,如 "势力.魔法议会.声望" 或 "队伍[0].hp";'' = 根 */
+  /** Định vị bằng dấu chấm / ngoặc vuông, như "Thế lực.Hội đồng Phép thuật.Danh vọng" hoặc "Đội hình[0].hp"; '' = gốc */
   path: string;
-  /** assign/remove 用:对象键或数组下标(或数组里要删的值) */
+  /** Dùng cho assign/remove: khóa đối tượng hoặc chỉ mục mảng (hoặc giá trị cần xóa trong mảng) */
   key?: string | number;
-  /** set/assign 用:要写入的值 */
+  /** Dùng cho set/assign: giá trị cần ghi vào */
   value?: JsonValue;
-  /** add 用:数字增量 */
+  /** Dùng cho add: lượng tăng thêm bằng số */
   delta?: number;
 }
 
-/** 把任意来源规整成一份变量模板(json 须对象;json 允许传字符串,尝试解析)。纯函数,供 settings/store 共用。 */
+/** Chuẩn hóa nguồn bất kỳ thành một bản khuôn mẫu biến (json phải là đối tượng; json cho phép truyền chuỗi, thử phân tích). Hàm thuần, dùng chung cho settings/store. */
 export function normalizeTemplate(raw: unknown): VarTemplate {
   let json: Record<string, JsonValue> = {};
   let meaning = '';
@@ -117,318 +117,318 @@ export function normalizeTemplate(raw: unknown): VarTemplate {
       try {
         const p = JSON.parse(o.json);
         if (p && typeof p === 'object' && !Array.isArray(p)) json = p;
-      } catch { /* 非法 JSON → 空对象 */ }
+      } catch { /* JSON không hợp lệ → đối tượng rỗng */ }
     }
     if (typeof o.meaning === 'string') meaning = o.meaning;
     if (typeof o.rule === 'string') rule = o.rule;
-    // 兼容:外部分享的旧格式只有单一 guide 时,并入 rule(含义可留空,不影响使用)。
+    // Tương thích: khi định dạng cũ chia sẻ từ bên ngoài chỉ có một guide đơn lẻ, gộp vào rule (ý nghĩa có thể để trống, không ảnh hưởng sử dụng).
     if (!meaning && !rule && typeof o.guide === 'string') rule = o.guide;
   }
   return { json, meaning, rule };
 }
 
 /**
- * 场景 / 地点(派生产物,不持久化)。
- * 纯地理层级:地点 ∈ 上级区域,用确定性 id 串成嵌套树(删/陈旧叶子→delta 不重放→树自动回退)。
- * id 确定性:`scene:${规范化路径,'/'分隔}`,故同一路径每次重放得同一 id、手动 op 可稳定引用。
- * 改某级名字 = 换 id(用 remove 旧 + add 新表达,见 apply.renameScene)。
+ * Bối cảnh / Địa điểm (sản phẩm dẫn xuất, không lưu bền vững).
+ * Cấp bậc địa lý thuần túy: địa điểm ∈ khu vực cấp trên, dùng id tất định nối thành cây lồng nhau (xóa / lá lỗi thời → delta không phát lại → cây tự động lùi về).
+ * id tất định: `scene:${đường dẫn chuẩn hóa, phân cách bằng '/'}`, nên cùng một đường dẫn mỗi lần phát lại đều ra cùng id, op thủ công có thể tham chiếu ổn định.
+ * Đổi tên một cấp = đổi id (biểu đạt bằng remove cũ + add mới, xem apply.renameScene).
  */
 export interface MemScene {
   id: string;
-  /** 本级地名(路径最后一段原文) */
+  /** Tên địa danh cấp này (nguyên văn đoạn cuối cùng của đường dẫn) */
   name: string;
-  /** 完整路径原文(由粗到细,如 ["王都","城西区","归雁客栈"]),用于展示与匹配 */
+  /** Nguyên văn đường dẫn đầy đủ (từ lớn đến nhỏ, như ["Vương Đô","Khu Thành Tây","Khách điếm Quy Nhạn"]), dùng để hiển thị và khớp */
   path: string[];
-  /** 父节点 id;根节点为空串 */
+  /** ID nút cha; nút gốc là chuỗi rỗng */
   parentId: string;
-  /** 地点描述(简短客观) */
+  /** Mô tả địa điểm (ngắn gọn khách quan) */
   desc?: string;
   createdAt: number;
   updatedAt: number;
 }
 
-/** 五档定性标记,不是可累加的分数。 */
+/** Nhãn định tính 5 mức, không phải điểm số cộng dồn. */
 export type NpcAffinityLevel = -2 | -1 | 0 | 1 | 2;
 
-/** 对主角的内心好感与外在态度估计。省略=保持;null=明确恢复未知,与中性(0)不同。 */
+/** Ước lượng hảo cảm nội tâm và thái độ bên ngoài đối với nhân vật chính. Lược bỏ = giữ nguyên; null = khôi phục rõ ràng về chưa rõ, khác với trung lập (0). */
 export interface NpcAffinity {
-  /** 真实好恶/亲近倾向,不是爱情、信任或服从度。 */
+  /** Khuynh hướng yêu ghét / gần gũi thực sự, không phải tình yêu, sự tin tưởng hay mức độ phục tùng. */
   affinityInner?: NpcAffinityLevel | null;
-  /** 相对稳定的对外态度,不是本轮语气或心情。 */
+  /** Thái độ đối ngoại tương đối ổn định, không phải giọng điệu hay tâm trạng trong lượt này. */
   affinityOuter?: NpcAffinityLevel | null;
-  /** 一句依据/表现/矛盾说明;同档默认沿用,空字符串=明确清空。 */
+  /** Một câu giải thích căn cứ / biểu hiện / mâu thuẫn; cùng mức mặc định kế thừa, chuỗi rỗng = xóa trống rõ ràng. */
   affinityNote?: string;
 }
 
 /**
- * NPC 相对主角当前场景的在场地分档(判定逻辑见 apply.classifyNpcPresence 单一权威)。
- * 摘要名册的在场标记、主对话注入分档、NPC 页分组共用同一套词汇。
+ * Phân mức có mặt của NPC so với bối cảnh hiện tại của nhân vật chính (logic phán đoán xem apply.classifyNpcPresence là thẩm quyền duy nhất).
+ * Nhãn có mặt trong danh sách tóm tắt, phân mức tiêm đối thoại chính, phân nhóm trang NPC dùng chung cùng một bộ từ vựng.
  */
 export type NpcPresence = 'present' | 'nearby' | 'absent';
 
 /**
- * NPC / 角色(派生产物,不持久化)。
- * 与物品(MemItem)同构:确定性 id `npc:${规范化名}`,重放幂等、手动 op 可稳定引用。
- * 省 token 机制类比物品的 carried/location:
- *  - follow=true 随行(同伴跟主角移动),永远在场全量注入;
- *  - follow≠true 定点,仅当 location 落在当前地点或其祖先链才全量注入,否则只发名+身份。
- * ⚠️ follow 默认 false(多数 NPC 定点),与物品 carried 默认随身相反。
+ * NPC / Nhân vật (sản phẩm dẫn xuất, không lưu bền vững).
+ * Đồng cấu với vật phẩm (MemItem): id tất định `npc:${tên chuẩn hóa}`, phát lại bất biến, op thủ công có thể tham chiếu ổn định.
+ * Cơ chế tiết kiệm token tương tự carried/location của vật phẩm:
+ *  - follow=true đi cùng (đồng hành di chuyển theo nhân vật chính), luôn có mặt và tiêm toàn bộ;
+ *  - follow≠true cố định, chỉ khi location nằm ở địa điểm hiện tại hoặc chuỗi tổ tiên của nó mới tiêm toàn bộ, nếu không chỉ gửi tên + thân phận.
+ * ⚠️ follow mặc định là false (đa số NPC ở cố định), ngược với vật phẩm carried mặc định là mang theo người.
  *
- * 字段分两层:
- *  - **档案层**(title/desc/personality):「他是谁/长什么样」,高门槛、几乎不变,记一次。
- *  - **即时层**(outfit/condition):「他现在怎么样」,覆盖型、换就盖、不沉淀历史,鼓励跟剧情刷新。
- *    即时层之所以不违反「只记长期重要信息」铁律,正因它压根不进历史——和当前时间/地点同性质。
- * important=true 的「主要角色」:永远全量注入(跳过在场判定),界面/注入弱化档案、突出即时状态面板。
+ * Các trường chia làm hai tầng:
+ *  - **Tầng hồ sơ** (title/desc/personality): "người đó là ai / trông thế nào", ngưỡng cao, hầu như không đổi, ghi một lần.
+ *  - **Tầng tức thời** (outfit/condition): "người đó hiện giờ ra sao", kiểu ghi đè, đổi là đè, không lắng đọng lịch sử, khuyến khích làm mới theo cốt truyện.
+ *    Sở dĩ tầng tức thời không vi phạm quy tắc thép "chỉ ghi thông tin quan trọng dài hạn" chính là vì nó hoàn toàn không đi vào lịch sử —— cùng tính chất với thời gian / địa điểm hiện tại.
+ * "Nhân vật chính yếu" có important=true: luôn luôn tiêm toàn bộ (bỏ qua phán đoán có mặt), giao diện / phần tiêm làm nhẹ hồ sơ, làm nổi bật bảng trạng thái tức thời.
  */
 export interface MemNpc extends NpcAffinity {
   id: string;
-  /** 名字(同时作为匹配键) */
+  /** Tên (đồng thời làm khóa khớp) */
   name: string;
-  /** 性别(档案层;短值,如「男」「女」。不受在场判定影响,所有分档都注入,防 AI 搞错性别) */
+  /** Giới tính (tầng hồ sơ; giá trị ngắn, như "Nam", "Nữ". Không bị ảnh hưởng bởi phán đoán có mặt, mọi mức đều tiêm, chống AI nhầm giới tính) */
   gender?: string;
   /**
-   * 年龄原文(记录时的值,如「25」「二十出头」)。**不随时间自动改写存储**:
-   * 配套 ageTime 锚点,注入/展示时由 ageDisplay 按当前故事时间推算(时间跳跃自动长岁),
-   * AI 忘不忘更新都不影响正确性。正文再次明确年龄(过生日/纠正)时覆盖,锚点随之刷新。
+   * Nguyên văn tuổi tác (giá trị lúc ghi, như "25", "ngoài hai mươi"). **Không tự động viết lại lưu trữ theo thời gian**:
+   * đi kèm mốc neo ageTime, khi tiêm / hiển thị sẽ do ageDisplay suy tính theo thời gian câu chuyện hiện tại (thời gian nhảy vọt tự động tăng tuổi),
+   * AI có quên cập nhật hay không cũng không ảnh hưởng tính chính xác. Khi chính văn nêu rõ lại tuổi tác (qua sinh nhật / đính chính) thì ghi đè, mốc neo làm mới theo.
    */
   age?: string;
-  /** 年龄锚点:记录 age 时的故事内时间。AI 不填——重放时系统自动盖上该叶子的 timeEnd */
+  /** Mốc neo tuổi tác: thời gian trong truyện lúc ghi age. AI không điền —— khi phát lại hệ thống tự động đóng dấu timeEnd của lá đó */
   ageTime?: string;
-  /** 与主角的关系(覆盖型;引导格式「称谓[,持续立场]」,立场可无,称谓在开头供不在场档截取) */
+  /** Quan hệ với nhân vật chính (kiểu ghi đè; định dạng hướng dẫn "Danh xưng[, lập trường kéo dài]", lập trường có thể không có, danh xưng ở đầu để mức vắng mặt cắt lấy) */
   relation?: string;
-  /** 与其他角色的重要关系(档案层,高门槛;如「阿黛尔之父;与镇长有旧怨」) */
+  /** Quan hệ quan trọng với các nhân vật khác (tầng hồ sơ, ngưỡng cao; như "Cha của Adele; có thù cũ với trấn trưởng") */
   ties?: string;
-  /** 身份/职业一句话(不在场时唯一保留的信息) */
+  /** Một câu thân phận / nghề nghiệp (thông tin duy nhất giữ lại khi vắng mặt) */
   title?: string;
-  /** 固定外貌:发色/身材/疤痕等长期不变的体貌(档案层,高门槛,几乎不更新) */
+  /** Ngoại hình cố định: màu tóc / vóc dáng / vết sẹo v.v. diện mạo dài hạn không đổi (tầng hồ sơ, ngưỡng cao, hầu như không cập nhật) */
   desc?: string;
-  /** 简单性格 */
+  /** Tính cách đơn giản */
   personality?: string;
-  /** 当前着装(即时层,覆盖型;换装/弄脏弄破即刷新,门槛远低于 desc) */
+  /** Trang phục hiện tại (tầng tức thời, kiểu ghi đè; thay đồ / làm bẩn làm rách là làm mới ngay, ngưỡng thấp hơn desc rất nhiều) */
   outfit?: string;
-  /** 当前状态/健康(即时层,覆盖型;受伤/疲惫/中毒等,无异常时空) */
+  /** Trạng thái / sức khỏe hiện tại (tầng tức thời, kiểu ghi đè; bị thương / mệt mỏi / trúng độc v.v., khi không có gì bất thường thì để trống) */
   condition?: string;
-  /** 是否「主要角色」:剧情核心主演,永远全量注入,只追踪即时状态、不追档案 */
+  /** Có phải "Nhân vật chính yếu" hay không: diễn viên chính cốt lõi của cốt truyện, luôn tiêm toàn bộ, chỉ theo dõi trạng thái tức thời, không theo dõi hồ sơ */
   important?: boolean;
-  /** 是否随行(随主角移动);省略/false=定点(按 location 匹配),true=同伴,永远在场 */
+  /** Có đi cùng hay không (di chuyển theo nhân vật chính); lược bỏ/false = cố định (khớp theo location), true = đồng hành, luôn có mặt */
   follow?: boolean;
-  /** 定点时的所在地(故事内地名);follow≠true 时用于与当前地点匹配。空=所在不明(离场且去向未明) */
+  /** Nơi ở khi cố định (tên địa danh trong truyện); khi follow≠true dùng để khớp với địa điểm hiện tại. Trống = không rõ nơi ở (đã rời hiện trường và chưa rõ đi đâu) */
   location?: string;
   createdAt: number;
   updatedAt: number;
 }
 
 /**
- * 用户操控的主角当前档案(派生产物,不持久化)。
- * 只记录剧情中明确出现、会影响后续续写的客观事实;不从行为推断性格或内心。
- * 地点与物品已有独立状态,不在这里重复。
+ * Hồ sơ hiện tại của nhân vật chính do người dùng điều khiển (sản phẩm dẫn xuất, không lưu bền vững).
+ * Chỉ ghi lại các sự thật khách quan xuất hiện rõ ràng trong cốt truyện và sẽ ảnh hưởng việc viết tiếp về sau; không suy đoán tính cách hay nội tâm từ hành vi.
+ * Địa điểm và vật phẩm đã có trạng thái độc lập, không lặp lại tại đây.
  */
 export interface MemProtagonist {
-  /** 性别/性别表现(正文明确时记录) */
+  /** Giới tính / biểu hiện giới tính (ghi khi chính văn nêu rõ) */
   gender?: string;
-  /** 年龄原文(与 NPC 同机制:配 ageTime 锚点,展示/注入时按当前故事时间推算) */
+  /** Nguyên văn tuổi tác (cùng cơ chế với NPC: kèm mốc neo ageTime, khi hiển thị / tiêm sẽ suy tính theo thời gian câu chuyện hiện tại) */
   age?: string;
-  /** 年龄锚点:记录 age 时的故事内时间,重放时系统自动盖 */
+  /** Mốc neo tuổi tác: thời gian trong truyện lúc ghi age, khi phát lại hệ thống tự động đóng dấu */
   ageTime?: string;
-  /** 当前身份、职业、种族或公开地位 */
+  /** Thân phận, nghề nghiệp, chủng tộc hoặc địa vị công khai hiện tại */
   identity?: string;
-  /** 当前稳定外貌/身体特征;永久变身、伤疤等变化后覆盖 */
+  /** Ngoại hình / đặc điểm cơ thể ổn định hiện tại; sau khi biến hình vĩnh viễn, có sẹo v.v. thì ghi đè */
   appearance?: string;
-  /** 当前着装(覆盖型) */
+  /** Trang phục hiện tại (kiểu ghi đè) */
   outfit?: string;
-  /** 当前身体状态/健康(覆盖型;恢复正常后清空) */
+  /** Trạng thái cơ thể / sức khỏe hiện tại (kiểu ghi đè; sau khi hồi phục bình thường thì xóa trống) */
   condition?: string;
 }
 
 /**
- * 计划/悬念的「了结方式」。区分三种截然不同的收场,避免统一「已完成」误导主模型:
- *  - done      = 计划真去做成/兑现了、悬念真揭晓了(结果已明确);
- *  - cancelled = 没做成而是被取消/撤回/放弃/作废/不再需要(如对方收回要求、当场被化解退让);
- *  - failed    = 尝试过但失败,或悬念以坏结局收场。
+ * "Cách thức khép lại" của kế hoạch / nghi vấn. Phân biệt ba kiểu kết thúc hoàn toàn khác nhau, tránh dùng chung chữ "đã hoàn thành" làm mô hình chính hiểu lầm:
+ *  - done      = kế hoạch thực sự đã làm xong / thực hiện được, nghi vấn thực sự đã sáng tỏ (kết quả đã rõ ràng);
+ *  - cancelled = chưa làm thành mà bị hủy bỏ / rút lại / từ bỏ / vô hiệu hóa / không cần nữa (như đối phương rút lại yêu cầu, được hóa giải nhượng bộ ngay tại chỗ);
+ *  - failed    = đã thử nhưng thất bại, hoặc nghi vấn khép lại bằng kết cục xấu.
  */
 export type PlanOutcome = 'done' | 'cancelled' | 'failed';
 
 /**
- * 一条「了结」指令。id:在 SummaryDelta 里是运行期短序号(p1/p2);在 StoredDelta 里是稳定 plan id。
- * outcome/reason 携带「怎么了结、为什么」,注入时展示给主模型,消除「已完成却还反复提」的困惑。
+ * Một chỉ thị "khép lại". id: trong SummaryDelta là số thứ tự ngắn lúc chạy (p1/p2); trong StoredDelta là id plan ổn định.
+ * outcome/reason mang thông tin "khép lại thế nào, tại sao", khi tiêm sẽ hiển thị cho mô hình chính, xóa bỏ sự bối rối "đã hoàn thành mà vẫn nhắc đi nhắc lại".
  */
 export interface PlanResolveEntry {
   id: string;
   outcome?: PlanOutcome;
-  /** 一句话了结原因(为什么下架 / 如何收场) */
+  /** Một câu nguyên nhân khép lại (tại sao gỡ xuống / kết thúc như thế nào) */
   reason?: string;
 }
-/** 兼容:历史数据/降级时元素可能是裸字符串(= 无 outcome/原因),故 resolve 元素两态皆可。 */
+/** Tương thích: khi dữ liệu lịch sử / hạ cấp phần tử có thể là chuỗi trần (= không có outcome/nguyên nhân), nên phần tử resolve có thể ở cả hai dạng. */
 export type PlanResolveItem = string | PlanResolveEntry;
 
 /**
- * 计划改期/暂缓:同一未了结事项的新安排。
- * id 在 SummaryDelta 里是短序号(p1/p2),在 StoredDelta 里已翻译为稳定 plan id。
- * 只整体更新 content / targetTime;不可与同一编号的 resolve 同时出现。
+ * Dời lịch / tạm hoãn kế hoạch: sắp xếp mới cho cùng một việc chưa khép lại.
+ * id trong SummaryDelta là số thứ tự ngắn (p1/p2), trong StoredDelta đã được dịch thành id plan ổn định.
+ * Chỉ cập nhật tổng thể content / targetTime; không được xuất hiện đồng thời với resolve của cùng một mã số.
  */
 export interface PlanUpdateItem {
   id: string;
   content?: string;
-  /** 新期限;空字符串=撤销旧期限且新期未定(清除 targetTime) */
+  /** Thời hạn mới; chuỗi rỗng = hủy bỏ thời hạn cũ và thời hạn mới chưa định (xóa targetTime) */
   targetTime?: string;
 }
 
 /**
- * 计划 / 悬念(派生产物,不持久化)。
- * id 确定性:`plan:${产生它的叶子id}#${在该叶子 add 数组里的序号}`。
+ * Kế hoạch / Nghi vấn (sản phẩm dẫn xuất, không lưu bền vững).
+ * id tất định: `plan:${id lá tạo ra nó}#${số thứ tự trong mảng add tại lá đó}`.
  */
 export interface MemPlan {
   id: string;
-  /** plan=计划/目标,suspense=悬念/未解之谜 */
+  /** plan=kế hoạch/mục tiêu, suspense=nghi vấn/bí ẩn chưa lời giải */
   kind: 'plan' | 'suspense';
   content: string;
-  /** open=进行中,resolved=已了结 */
+  /** open=đang tiến hành, resolved=đã khép lại */
   status: 'open' | 'resolved';
   createdAt: number;
   resolvedAt?: number;
-  /** 了结方式(仅 status=resolved 时有);区分「真做了(done)」与「取消/作废(cancelled)」「失败(failed)」 */
+  /** Cách thức khép lại (chỉ có khi status=resolved); phân biệt "đã làm thật (done)" với "hủy bỏ/vô hiệu (cancelled)", "thất bại (failed)" */
   outcome?: PlanOutcome;
-  /** 一句话了结原因(为什么下架/如何收场);注入给主模型,防「已完成却还提」 */
+  /** Một câu nguyên nhân khép lại (tại sao gỡ xuống / kết thúc thế nào); tiêm cho mô hình chính, chống việc "đã hoàn thành mà vẫn nhắc" */
   resolvedReason?: string;
-  /** 故事内「创建时间」(AI 直接输出的字符串,如 1988/9/29);与 createdAt(真实毫秒)无关 */
+  /** "Thời gian tạo" trong truyện (chuỗi do AI xuất trực tiếp, như 1988/9/29); không liên quan tới createdAt (mili-giây thực tế) */
   createdTime?: string;
-  /** 故事内「目标时间」(AI 直接输出,允许模糊值如「以后有机会」或留空) */
+  /** "Thời gian mục tiêu" trong truyện (AI xuất trực tiếp, cho phép giá trị mơ hồ như "sau này có cơ hội" hoặc để trống) */
   targetTime?: string;
 }
 
 /**
- * 叶子摘要,存在 chat 消息对象的 extra.bbs_leaf 上(不进森林)。
- * 随 swipe_info 自动跟随、随 chat 文件持久化。**重放的唯一来源**。
+ * Tóm tắt lá, lưu trên extra.bbs_leaf của đối tượng tin nhắn chat (không đưa vào rừng).
+ * Tự động đi theo swipe_info, lưu bền vững theo file chat. **Nguồn duy nhất của việc phát lại**.
  */
 export interface LeafExtra {
-  /** 稳定叶子 id(写入即固定),压缩节点 childIds 引用它 */
+  /** ID lá ổn định (vừa ghi vào là cố định), childIds của nút nén tham chiếu nó */
   id: string;
-  /** 摘要正文 */
+  /** Chính văn tóm tắt */
   text: string;
-  /** 结构化增量 */
+  /** Lượng tăng thêm có cấu trúc */
   delta: StoredDelta;
-  /** 故事内起始时间(来自正文 <bbs_start> 标签;无标签时由 AI 补) */
+  /** Thời gian bắt đầu trong truyện (đến từ thẻ <bbs_start> trong chính văn; khi không có thẻ thì do AI bù) */
   timeStart?: string;
-  /** 故事内结束时间(来自正文 <bbs_end> 标签;无标签时由 AI 补) */
+  /** Thời gian kết thúc trong truyện (đến từ thẻ <bbs_end> trong chính văn; khi không có thẻ thì do AI bù) */
   timeEnd?: string;
-  /** 旧字段:生成时的故事内时间快照(单值/合并串)。新数据用 timeStart/timeEnd;保留它做旧数据回退展示 */
+  /** Trường cũ: ảnh chụp thời gian trong truyện lúc tạo (giá trị đơn / chuỗi gộp). Dữ liệu mới dùng timeStart/timeEnd; giữ lại nó để hiển thị dự phòng cho dữ liệu cũ */
   timeLabel?: string;
-  /** 生成时刻(UI 展示与 tie-break;真实重放顺序以楼层物理顺序为准) */
+  /** Thời khắc tạo (hiển thị UI và phá thế hòa; thứ tự phát lại thực tế lấy thứ tự vật lý của tầng lầu làm chuẩn) */
   createdAt: number;
   /**
-   * 生成本叶子时所在的 swipe 页码(= 当时 message.swipe_id)。
-   * 用于判定叶子归属:ST 生成新 swipe 时会 structuredClone 旧 extra(含 bbs_leaf),
-   * 把上一页的叶子复制进新页;靠「叶子记录的页码 ≠ 当前 swipe_id」识别这种串页并失效。
-   * 缺省(旧数据/迁移)按第一页(0)处理。
+   * Số trang swipe lúc tạo lá này (= message.swipe_id lúc đó).
+   * Dùng để phán đoán quyền sở hữu lá: khi ST tạo swipe mới sẽ structuredClone extra cũ (gồm cả bbs_leaf),
+   * chép lá của trang trước sang trang mới; dựa vào "số trang lá ghi nhận ≠ swipe_id hiện tại" để nhận diện việc nhảy trang này và vô hiệu hóa.
+   * Mặc định (dữ liệu cũ / di chuyển) xử lý như trang đầu tiên (0).
    */
   swipe?: number;
-  /** 旧字段:hash(清洗后的 mes)。已废弃(叶子有效性改为楼层/结构匹配,不再比对正文);仅旧数据残留 */
+  /** Trường cũ: hash (mes sau khi làm sạch). Đã bỏ (tính hợp lệ của lá đổi sang khớp tầng lầu / cấu trúc, không còn đối chiếu chính văn); chỉ còn sót ở dữ liệu cũ */
   srcHash?: string;
   /**
-   * 种子叶子标记:carryover(带数据建新对话)挂在 #0 的那条叶子,其 text 是旧对话「合并总结」的散文。
-   * 它只服务于状态重放(deriveMemory 读 delta)与历史摘要注入(被 sum_carry_ 的 L2 收纳),
-   * **不该进向量库**——否则召回会命中一整段总结(而旧对话的单条摘要已由 bundle 快照覆盖召回)。
-   * collectLeaves 据此跳过它。
+   * Cờ lá hạt giống: lá gắn ở #0 khi carryover (tạo cuộc trò chuyện mới kèm dữ liệu), text của nó là văn xuôi "tổng kết gộp" của cuộc trò chuyện cũ.
+   * Nó chỉ phục vụ việc phát lại trạng thái (deriveMemory đọc delta) và tiêm tóm tắt lịch sử (được L2 của sum_carry_ thu nạp),
+   * **không nên đưa vào kho vector** —— nếu không khi truy xuất sẽ trúng cả một đoạn tổng kết dài (trong khi tóm tắt đơn lẻ của cuộc trò chuyện cũ đã được ảnh chụp bundle bao phủ truy xuất).
+   * collectLeaves dựa vào đây để bỏ qua nó.
    */
   seed?: boolean;
-  /** 叶子结构版本 */
+  /** Phiên bản cấu trúc lá */
   v: 1;
 }
 
 /**
- * 压缩节点(森林节点,level ≥ 1)。扁平数组 + childIds 表达森林:
- * 不被任何节点 childIds 引用的节点即「根」。
- * childIds:L1 引用叶子 id(在消息 extra 上);L2+ 引用下层压缩节点 id(在本数组里)。
+ * Nút nén (nút rừng, level ≥ 1). Mảng phẳng + childIds biểu đạt rừng:
+ * Nút không bị bất kỳ childIds của nút nào tham chiếu chính là "gốc".
+ * childIds: L1 tham chiếu id lá (trên extra của tin nhắn); L2+ tham chiếu id nút nén tầng dưới (trong mảng này).
  */
 export interface MemSummary {
   id: string;
-  /** 摘要正文 */
+  /** Chính văn tóm tắt */
   text: string;
-  /** 压缩层级:1=L1,2=L2…(叶子 level 0 已迁到消息 extra) */
+  /** Cấp độ nén: 1=L1, 2=L2… (lá level 0 đã chuyển sang extra của tin nhắn) */
   level: number;
   createdAt: number;
-  /** 是否自动生成(false=手动/迁移) */
+  /** Có phải tự động tạo hay không (false = thủ công / di chuyển) */
   auto: boolean;
-  /** 故事内起始时间(覆盖范围内第一条叶子的起始) */
+  /** Thời gian bắt đầu trong truyện (bắt đầu của lá đầu tiên trong phạm vi bao phủ) */
   timeStart?: string;
-  /** 故事内结束时间(覆盖范围内最后一条叶子的结束) */
+  /** Thời gian kết thúc trong truyện (kết thúc của lá cuối cùng trong phạm vi bao phủ) */
   timeEnd?: string;
-  /** 旧字段:生成时的当前时间快照。新数据用 timeStart/timeEnd;保留它做旧数据回退展示 */
+  /** Trường cũ: ảnh chụp thời gian hiện tại lúc tạo. Dữ liệu mới dùng timeStart/timeEnd; giữ lại để hiển thị dự phòng cho dữ liệu cũ */
   timeLabel?: string;
-  /** 直接收纳的下层节点 id(L1→叶子id,L2+→下层压缩节点id);导入历史作为原子节点时为空。 */
+  /** ID các nút tầng dưới được thu nạp trực tiếp (L1→id lá, L2+→id nút nén tầng dưới); khi lịch sử nhập vào làm nút nguyên tử thì để trống. */
   childIds: string[];
-  /** 从插件外部导入的原子历史节点。它没有逐楼叶子,由下面的楼层范围直接代表旧剧情。 */
+  /** Nút lịch sử nguyên tử được nhập từ bên ngoài plugin. Nó không có lá từng tầng, do phạm vi tầng lầu dưới đây trực tiếp đại diện cho cốt truyện cũ. */
   imported?: boolean;
-  /** 导入历史覆盖的起始楼层(当前第一版固定为 0,保留字段供以后扩展分段导入)。 */
+  /** Tầng lầu bắt đầu được lịch sử nhập vào bao phủ (bản đầu tiên hiện tại cố định là 0, giữ trường để sau này mở rộng nhập phân đoạn). */
   importedFloorStart?: number;
-  /** 导入历史覆盖的截止楼层(含)。范围内楼层不再重复补摘。 */
+  /** Tầng lầu kết thúc (bao gồm cả tầng đó) được lịch sử nhập vào bao phủ. Các tầng trong phạm vi không tóm tắt bù lặp lại nữa. */
   importedFloorEnd?: number;
 }
 
-/** 覆盖型当前状态 */
+/** Trạng thái hiện tại kiểu ghi đè */
 export interface MemState {
-  /** 故事内当前时间 */
+  /** Thời gian hiện tại trong truyện */
   time: string;
-  /** 当前地点(自由字符串,可任意细:如「杭州市滨江区某老小区-302室屋内」) */
+  /** Địa điểm hiện tại (chuỗi tự do, có thể chi tiết tùy ý: như "Trong phòng 302 - Khu chung cư cũ nọ quận Tân Giang thành phố Hàng Châu") */
   location: string;
   /**
-   * 当前所在的「已记录场景节点」完整路径(由粗到细,如 ["杭州市","滨江区某老小区","302室屋内"])。
-   * 由 AI 在改 location 时顺带给出,作权威定位连接 —— 解决 location 自由串与场景树的粒度错配。
-   * 可比 location 粗(只指到上级);缺省/找不到时,定位退回按 location 的收紧模糊匹配。
+   * Đường dẫn đầy đủ của "nút bối cảnh đã ghi nhận" nơi đang ở hiện tại (từ lớn đến nhỏ, như ["Thành phố Hàng Châu","Khu chung cư cũ nọ quận Tân Giang","Trong phòng 302"]).
+   * Do AI tiện tay đưa ra khi sửa location, làm kết nối định vị có thẩm quyền —— giải quyết sự lệch độ mịn giữa chuỗi tự do location và cây bối cảnh.
+   * Có thể thô hơn location (chỉ trỏ tới cấp trên); khi mặc định / không tìm thấy, việc định vị lùi về khớp mờ thu hẹp theo location.
    */
   locationPath?: string[];
-  /** 互动局势卡:当前场面快照。null=无;覆盖语义(整卡替换,不是补丁) */
+  /** Thẻ cục diện tương tác: ảnh chụp cảnh tượng hiện tại. null = không có; ngữ nghĩa ghi đè (thay thế cả thẻ, không phải bản vá) */
   sceneFocus: SceneFocus | null;
 }
 
 /**
- * 互动局势卡:「眼下正在发生什么」的一张小快照,服务陪伴卡与剧情卡双口径。
- * 三种 delta 语义:省略字段=不更新;null=明确清空;对象=整卡覆盖。
- * updatedTime 由代码在重放时盖故事内时间,不由 AI 输出。
+ * Thẻ cục diện tương tác: một ảnh chụp nhỏ về "những gì đang diễn ra ngay trước mắt", phục vụ cả hai tiêu chuẩn thẻ bầu bạn và thẻ cốt truyện.
+ * Ba ngữ nghĩa delta: lược bỏ trường = không cập nhật; null = xóa trống rõ ràng; đối tượng = ghi đè cả thẻ.
+ * updatedTime do mã nguồn đóng dấu thời gian trong truyện khi phát lại, không do AI xuất ra.
  */
 export interface SceneFocus {
-  /** 当前局面一句话(陪伴卡写互动氛围,剧情卡写处境) */
+  /** Một câu cục diện hiện tại (thẻ bầu bạn viết bầu không khí tương tác, thẻ cốt truyện viết hoàn cảnh) */
   situation: string;
-  /** 当前在场参与者 */
+  /** Những người tham gia đang có mặt hiện tại */
   participants: string[];
-  /** @deprecated 已废弃(与 situation 重叠,不再提示 AI 输出);仅为兼容旧数据保留,有值时仍注入/展示 */
+  /** @deprecated Đã bỏ (trùng lặp với situation, không còn nhắc AI xuất ra); chỉ giữ lại để tương thích dữ liệu cũ, khi có giá trị vẫn tiêm / hiển thị */
   currentFocus?: string;
-  /** 互动张力(高门槛,仅明确且持续的社交张力;可选) */
+  /** Sức căng tương tác (ngưỡng cao, chỉ sức căng xã hội rõ ràng và kéo dài; tùy chọn) */
   tension?: string;
-  /** 即将发生之事(仅正文明确预告/约定/已启动等待结果;禁预测;可选) */
+  /** Việc sắp xảy ra (chỉ những việc chính văn báo trước / hẹn ước rõ ràng / đã khởi động đang chờ kết quả; cấm dự đoán; tùy chọn) */
   pendingBeat?: string;
-  /** 本快照对应的故事内时间(代码盖章) */
+  /** Thời gian trong truyện tương ứng với ảnh chụp này (mã nguồn đóng dấu) */
   updatedTime?: string;
 }
 
 /**
- * 生活小档案一条:主角或主要角色的偏好/习惯/近期个人状态。
- * 铁律:归属明确,只记本人明说过/正文明确揭示的,禁止从单次行为推断。
- * 三投放层(注入选择,不动真源):pinned 置顶常驻(≤5) / active 时效内相关才注入 / archive 沉降仅关键词触发。
+ * Một mục hồ sơ nhỏ đời sống: sở thích / thói quen / trạng thái cá nhân gần đây của nhân vật chính hoặc nhân vật chính yếu.
+ * Quy tắc thép: quy thuộc rõ ràng, chỉ ghi những điều chính miệng người đó nói / chính văn bộc lộ rõ ràng, cấm suy đoán từ hành vi đơn lẻ.
+ * Ba tầng phân phối (lựa chọn khi tiêm, không đụng nguồn chân lý): pinned ghim đầu thường trú (≤5) / active còn thời hiệu và liên quan mới tiêm / archive lắng đọng chỉ kích hoạt bằng từ khóa.
  */
 export interface MemLifeDetail {
-  /** 稳定 id:detail:${leafId}#${add序号}(重放幂等、手动 op 可稳定引用) */
+  /** ID ổn định: detail:${leafId}#${số thứ tự add} (phát lại bất biến, op thủ công có thể tham chiếu ổn định) */
   id: string;
-  /** 所属人物:user 为主角,其他值为 NPC 名册中的名字;旧数据省略视为 user。 */
+  /** Nhân vật sở hữu: user là nhân vật chính, giá trị khác là tên trong danh sách NPC; dữ liệu cũ lược bỏ thì coi là user. */
   subject?: string;
-  /** 细节正文一句话(主语由 subject 单独表示) */
+  /** Một câu chính văn chi tiết (chủ ngữ do subject biểu thị riêng) */
   text: string;
-  /** 主题标签(1-3 个,触发匹配用,如「饮食」「作息」) */
+  /** Nhãn chủ đề (1-3 cái, dùng để khớp kích hoạt, như "ăn uống", "giờ giấc sinh hoạt") */
   topics: string[];
-  /** 关键词锚点(原文可检索词,如「香菜」「项目」) */
+  /** Mốc neo từ khóa (từ có thể tìm kiếm trong nguyên văn, như "rau mùi", "dự án") */
   anchors: string[];
-  /** 投放层:pinned 手动置顶 / active 默认 / archive 已沉降 */
+  /** Tầng phân phối: pinned ghim đầu thủ công / active mặc định / archive đã lắng đọng */
   tier: 'pinned' | 'active' | 'archive';
-  /** 时效:故事内到期时间(空=长期稳定) */
+  /** Thời hiệu: thời gian hết hạn trong truyện (trống = ổn định dài hạn) */
   until?: string;
-  /** 记录时的故事内时间 */
+  /** Thời gian trong truyện lúc ghi */
   createdTime?: string;
   createdAt: number;
 }
 
-/** AI 侧新增生活细节(tier 由代码定为 active,置顶仅手动) */
+/** Phía AI thêm mới chi tiết đời sống (tier do mã nguồn định là active, ghim đầu chỉ làm thủ công) */
 export interface LifeDetailAdd {
-  /** user 为主角,其他值为角色名;旧格式省略仍按主角处理。 */
+  /** user là nhân vật chính, giá trị khác là tên nhân vật; định dạng cũ lược bỏ vẫn xử lý như nhân vật chính. */
   subject?: string;
   text: string;
   topics?: string[];
@@ -436,10 +436,10 @@ export interface LifeDetailAdd {
   until?: string;
 }
 
-/** AI 侧更新生活细节(id 可为短序号 d1/d2,finalize 时翻成稳定 id) */
+/** Phía AI cập nhật chi tiết đời sống (id có thể là số thứ tự ngắn d1/d2, khi finalize sẽ dịch thành id ổn định) */
 export interface LifeDetailUpdate {
   id: string;
-  /** 省略保持归属;明确纠正人物时才填,user 表示改回主角。 */
+  /** Lược bỏ để giữ nguyên quy thuộc; chỉ điền khi đính chính rõ ràng nhân vật, user biểu thị đổi về nhân vật chính. */
   subject?: string;
   text?: string;
   topics?: string[];
@@ -448,23 +448,23 @@ export interface LifeDetailUpdate {
 }
 
 /**
- * 了解清单一条:某角色目前知道/以为的一件主角的事(防人设全知:没记的私事默认不知道)。
- * 记的是角色的认知而非真相,把握程度写进句子(认定…/怀疑…/听说…/主角自称…),被骗就照记被骗后的认知。
+ * Một mục danh sách hiểu biết: một việc về nhân vật chính mà một nhân vật hiện biết / tưởng là vậy (chống thiết lập nhân vật toàn tri: chuyện riêng tư chưa ghi mặc định không biết).
+ * Thứ ghi lại là nhận thức của nhân vật chứ không phải chân tướng, mức độ nắm bắt viết vào câu (khẳng định…/nghi ngờ…/nghe nói…/nhân vật chính tự xưng…), bị lừa thì cứ ghi nhận thức sau khi bị lừa.
  */
 export interface MemKnowledge {
-  /** 稳定 id:know:${leafId}#${操作序号}(重放幂等、手动 op 可稳定引用) */
+  /** ID ổn định: know:${leafId}#${số thứ tự thao tác} (phát lại bất biến, op thủ công có thể tham chiếu ổn định) */
   id: string;
-  /** 知情的角色名(NPC 名册中的名字;只记角色→主角) */
+  /** Tên nhân vật biết chuyện (tên trong danh sách NPC; chỉ ghi nhân vật → nhân vật chính) */
   subject: string;
   text: string;
-  /** 记录时的故事内时间 */
+  /** Thời gian trong truyện lúc ghi */
   createdTime?: string;
   createdAt: number;
 }
 
 /**
- * 了解清单的存储操作:有序日志,按数组顺序重放。
- * 不学生活小档案的 add→update→remove 分桶——手动「删了再加回」按分桶顺序会被吞掉。
+ * Thao tác lưu trữ của danh sách hiểu biết: nhật ký có thứ tự, phát lại theo thứ tự mảng.
+ * Không học theo kiểu chia nhóm add→update→remove của hồ sơ nhỏ đời sống —— thao tác thủ công "xóa rồi thêm lại" nếu theo thứ tự chia nhóm sẽ bị nuốt mất.
  */
 export type KnowledgeOp =
   | { op: 'add'; subject: string; text: string }
@@ -472,35 +472,35 @@ export type KnowledgeOp =
   | { op: 'remove'; id: string };
 
 /**
- * 顶层记忆对象。
- * **只有 version + summaries 是真源并持久化**;state / items / plans 是从 summaries
- * 重放算出的派生缓存(供页面响应式读取,saveMemory 不写它们)。
+ * Đối tượng bộ nhớ tầng cao nhất.
+ * **Chỉ có version + summaries là nguồn chân lý và được lưu bền vững**; state / items / plans là bộ nhớ đệm dẫn xuất
+ * tính ra từ việc phát lại summaries (phục vụ trang giao diện đọc phản ứng, saveMemory không ghi chúng).
  */
 export interface BaibaiMemory {
   version: number;
-  /** 派生缓存:重放叶子 delta 得到 */
+  /** Bộ nhớ đệm dẫn xuất: phát lại delta của lá mà thành */
   state: MemState;
-  /** 派生缓存:用户操控主角的当前客观档案 */
+  /** Bộ nhớ đệm dẫn xuất: hồ sơ khách quan hiện tại của nhân vật chính do người dùng điều khiển */
   protagonist: MemProtagonist;
-  /** 派生缓存 */
+  /** Bộ nhớ đệm dẫn xuất */
   items: MemItem[];
-  /** 派生缓存 */
+  /** Bộ nhớ đệm dẫn xuất */
   plans: MemPlan[];
-  /** 派生缓存:走过的地点(地理嵌套树,从叶子 delta 重放) */
+  /** Bộ nhớ đệm dẫn xuất: các địa điểm đã đi qua (cây lồng ghép địa lý, phát lại từ delta của lá) */
   scenes: MemScene[];
-  /** 派生缓存:登场过的 NPC(从叶子 delta 重放) */
+  /** Bộ nhớ đệm dẫn xuất: các NPC đã xuất hiện (phát lại từ delta của lá) */
   npcs: MemNpc[];
-  /** 派生缓存:近期物品变动日志(重放时产出,只留最近若干条) */
+  /** Bộ nhớ đệm dẫn xuất: nhật ký biến động vật phẩm gần đây (sản sinh khi phát lại, chỉ giữ lại một số mục gần nhất) */
   itemLog: ItemLogEntry[];
-  /** 派生缓存:主角及角色生活小档案(从叶子 delta 重放) */
+  /** Bộ nhớ đệm dẫn xuất: hồ sơ nhỏ đời sống của nhân vật chính và các nhân vật (phát lại từ delta của lá) */
   lifeDetails: MemLifeDetail[];
-  /** 派生缓存:各角色对主角的了解清单(从叶子 delta 重放) */
+  /** Bộ nhớ đệm dẫn xuất: danh sách hiểu biết của các nhân vật về nhân vật chính (phát lại từ delta của lá) */
   knowledge: MemKnowledge[];
-  /** 真源镜像:三层变量定义模板(global/char 来自 settings,chat 来自 chatMetadata) */
+  /** Bản sao nguồn chân lý: khuôn mẫu định nghĩa biến ba tầng (global/char đến từ settings, chat đến từ chatMetadata) */
   varTemplates: Record<VarTier, VarTemplate>;
-  /** 派生缓存:变量当前状态(从合并模板起、fold 各叶子 varOps 得到的 JSON 树) */
+  /** Bộ nhớ đệm dẫn xuất: trạng thái hiện tại của biến (cây JSON thu được từ khuôn mẫu gộp, gấp từng varOps của các lá) */
   vars: Record<string, JsonValue>;
-  /** 真源:叶子摘要森林 */
+  /** Nguồn chân lý: rừng tóm tắt */
   summaries: MemSummary[];
 }
 
@@ -522,84 +522,84 @@ export function createEmptyMemory(): BaibaiMemory {
   };
 }
 
-/* ============ AI 返回的增量 JSON 结构 ============ */
+/* ============ Cấu trúc JSON lượng tăng thêm do AI trả về ============ */
 
-/** 物品指令里单个物品的形状 */
+/** Hình dạng một vật phẩm đơn lẻ trong chỉ thị vật phẩm */
 export interface ItemDelta {
   name: string;
   desc?: string;
   qty?: number;
-  /** 是否随身(角色带在身上)。省略=随身;明确放在某地点的物品填 false */
+  /** Có mang theo người hay không (nhân vật mang trên người). Lược bỏ = mang theo người; vật phẩm đặt rõ ràng ở địa điểm nào đó điền false */
   carried?: boolean;
-  /** 非随身时的存放地点(故事内地名) */
+  /** Địa điểm cất giữ khi không mang theo người (tên địa danh trong truyện) */
   location?: string;
 }
 
-/** NPC 指令里单个角色的形状(AI / 手动共用) */
+/** Hình dạng một nhân vật đơn lẻ trong chỉ thị NPC (AI / thủ công dùng chung) */
 export interface NpcDelta extends NpcAffinity {
   name: string;
-  /** 性别(档案层,短值;所有分档都注入) */
+  /** Giới tính (tầng hồ sơ, giá trị ngắn; mọi mức đều tiêm) */
   gender?: string;
-  /** 年龄原文(首次明确/被纠正时才写;锚点 ageTime 由重放自动盖,AI 不填) */
+  /** Nguyên văn tuổi tác (chỉ viết khi lần đầu nêu rõ / được đính chính; mốc neo ageTime do phát lại tự động đóng dấu, AI không điền) */
   age?: string;
-  /** 年龄锚点(仅手动 op / carryover 种子会带;AI 输出里没有这个字段) */
+  /** Mốc neo tuổi tác (chỉ op thủ công / hạt giống carryover mới mang theo; trong đầu ra AI không có trường này) */
   ageTime?: string;
-  /** 与主角的关系(覆盖型;称谓在开头) */
+  /** Quan hệ với nhân vật chính (kiểu ghi đè; danh xưng ở đầu) */
   relation?: string;
-  /** 与其他角色的重要关系(档案层,高门槛) */
+  /** Quan hệ quan trọng với các nhân vật khác (tầng hồ sơ, ngưỡng cao) */
   ties?: string;
-  /** 身份/职业一句话 */
+  /** Một câu thân phận / nghề nghiệp */
   title?: string;
-  /** 固定外貌:长期不变的体貌(档案层) */
+  /** Ngoại hình cố định: diện mạo dài hạn không đổi (tầng hồ sơ) */
   desc?: string;
-  /** 简单性格 */
+  /** Tính cách đơn giản */
   personality?: string;
-  /** 当前着装(即时层,覆盖型) */
+  /** Trang phục hiện tại (tầng tức thời, kiểu ghi đè) */
   outfit?: string;
-  /** 当前状态/健康(即时层,覆盖型) */
+  /** Trạng thái / sức khỏe hiện tại (tầng tức thời, kiểu ghi đè) */
   condition?: string;
-  /** 旧存档的伤情局部补丁(v0.17 编号协议,已停用):仅重放,新输出不再产生 */
+  /** Bản vá cục bộ thương tích của bản lưu cũ (giao thức đánh số v0.17, đã ngừng dùng): chỉ phát lại, đầu ra mới không còn tạo ra */
   conditionPatch?: ConditionPatch;
-  /** 是否「主要角色」(剧情核心主演,永远全量注入) */
+  /** Có phải "Nhân vật chính yếu" hay không (diễn viên chính cốt lõi của cốt truyện, luôn tiêm toàn bộ) */
   important?: boolean;
-  /** 是否随行(随主角移动)。省略=定点;明确随主角同行的同伴填 true */
+  /** Có đi cùng hay không (di chuyển theo nhân vật chính). Lược bỏ = cố định; đồng hành đi cùng rõ ràng với nhân vật chính điền true */
   follow?: boolean;
   /**
-   * 定点时的所在地(故事内地名)。空字符串=所在不明:角色已离开当前场景但去向未写明,
-   * 清掉旧地点、不再视为在场;之后说明去向时再填新地点。
+   * Nơi ở khi cố định (tên địa danh trong truyện). Chuỗi rỗng = không rõ nơi ở: nhân vật đã rời khỏi bối cảnh hiện tại nhưng chưa viết rõ đi đâu,
+   * xóa địa điểm cũ, không còn coi là có mặt; sau này khi nói rõ đi đâu thì điền địa điểm mới.
    */
   location?: string;
 }
 
 /**
- * 主角当前档案的覆盖补丁。
- * 字段省略=保持不变;空字符串=明确清空旧值(如伤势痊愈、脱下旧着装)。
+ * Bản vá ghi đè hồ sơ hiện tại của nhân vật chính.
+ * Lược bỏ trường = giữ nguyên không đổi; chuỗi rỗng = xóa trống rõ ràng giá trị cũ (như vết thương lành hẳn, cởi bỏ trang phục cũ).
  */
 export interface ProtagonistDelta {
   gender?: string;
-  /** 年龄原文(首次明确/纠正时才写;ageTime 锚点由重放自动盖) */
+  /** Nguyên văn tuổi tác (chỉ viết khi lần đầu nêu rõ / đính chính; mốc neo ageTime do phát lại tự động đóng dấu) */
   age?: string;
-  /** 年龄锚点(仅手动 op / carryover 会带) */
+  /** Mốc neo tuổi tác (chỉ op thủ công / carryover mới mang theo) */
   ageTime?: string;
   identity?: string;
   appearance?: string;
   outfit?: string;
-  /** 当前状态/健康(覆盖型) */
+  /** Trạng thái / sức khỏe hiện tại (kiểu ghi đè) */
   condition?: string;
-  /** 旧存档的伤情局部补丁(v0.17 编号协议,已停用):仅重放,新输出不再产生 */
+  /** Bản vá cục bộ thương tích của bản lưu cũ (giao thức đánh số v0.17, đã ngừng dùng): chỉ phát lại, đầu ra mới không còn tạo ra */
   conditionPatch?: ConditionPatch;
 }
 
 /**
- * 旧版伤情局部补丁的片段操作(仅重放旧存档)。
- * - replace 用 id(c1/c2…)定位旧片段,text 为空串表示清除该片段;
- * - add 追加新片段,不带 id;
- * 未列入 replace 的旧片段由程序原样保留。编号只在单次请求内有效。
+ * Thao tác phân đoạn của bản vá cục bộ thương tích bản cũ (chỉ phát lại bản lưu cũ).
+ * - replace dùng id (c1/c2…) định vị phân đoạn cũ, text là chuỗi rỗng biểu thị xóa phân đoạn đó;
+ * - add nối thêm phân đoạn mới, không mang id;
+ * Các phân đoạn cũ không nằm trong replace được chương trình giữ nguyên. Đánh số chỉ có hiệu lực trong một yêu cầu đơn lẻ.
  */
 export interface ConditionPatchOp {
   id?: string;
   text: string;
-  /** 本轮正文连续原文短引(仅校验,不存档) */
+  /** Trích dẫn ngắn nguyên văn liên tục trong chính văn lượt này (chỉ kiểm tra, không lưu trữ) */
   evidence?: string;
 }
 
@@ -608,20 +608,20 @@ export interface ConditionPatch {
   add?: ConditionPatchOp[];
 }
 
-/** 场景指令里单个地点的形状(AI / 手动共用) */
+/** Hình dạng một địa điểm đơn lẻ trong chỉ thị bối cảnh (AI / thủ công dùng chung) */
 export interface SceneDelta {
-  /** 完整地理路径,由粗到细(如 ["王都","城西区","归雁客栈"]) */
+  /** Đường dẫn địa lý đầy đủ, từ lớn đến nhỏ (như ["Vương Đô","Khu Thành Tây","Khách điếm Quy Nhạn"]) */
   path: string[];
-  /** 地点描述(add 可省:建点宽、描述严;update 给空串=清除描述,节点保留) */
+  /** Mô tả địa điểm (add có thể lược bỏ: tạo điểm rộng, mô tả nghiêm; update đưa chuỗi rỗng = xóa mô tả, giữ lại nút) */
   desc?: string;
 }
 
 /**
- * 重设父级指令:把已存在的 node(及其整棵子树)平移到 newPath。
- * 覆盖三种情形(都是同一操作):给顶级加父、在已有父子间插入中间节点、改换父级。
- *  - node:该节点**当前**的完整路径(由粗到细)。
- *  - newPath:它应在的**新**完整路径(末段通常与 node 末段同名)。
- *  - descs:newPath 上新建/需补描述的层级,键=该级地名,值=描述(可省,写不出不编)。
+ * Chỉ thị đặt lại cấp cha: dịch chuyển node đã tồn tại (cùng toàn bộ cây con của nó) sang newPath.
+ * Bao phủ ba tình huống (đều là cùng một thao tác): thêm cha cho cấp cao nhất, chèn nút trung gian vào giữa cha con đã có, đổi cấp cha.
+ *  - node: đường dẫn đầy đủ **hiện tại** của nút đó (từ lớn đến nhỏ).
+ *  - newPath: đường dẫn đầy đủ **mới** mà nó nên nằm ở đó (đoạn cuối thường cùng tên với đoạn cuối của node).
+ *  - descs: các cấp mới tạo / cần bù mô tả trên newPath, khóa = tên địa danh cấp đó, giá trị = mô tả (có thể lược bỏ, không viết ra được thì không bịa).
  */
 export interface SceneReparent {
   node: string[];
@@ -630,10 +630,10 @@ export interface SceneReparent {
 }
 
 /**
- * 手动场景操作的有序日志。
+ * Nhật ký có thứ tự của các thao tác bối cảnh thủ công.
  *
- * AI 摘要仍使用 scenes.add/update/reparent 的分桶协议；UI 后续编辑则写进 ops，
- * 避免多次操作合并到同一叶子后被固定的 add→update→reparent→remove 顺序打乱。
+ * Tóm tắt AI vẫn dùng giao thức chia nhóm scenes.add/update/reparent; còn chỉnh sửa UI về sau thì ghi vào ops,
+ * tránh việc nhiều thao tác gộp vào cùng một lá bị thứ tự cố định add→update→reparent→remove làm xáo trộn.
  */
 export type SceneOp =
   | { op: 'add'; path: string[]; desc?: string }
@@ -641,145 +641,145 @@ export type SceneOp =
   | { op: 'reparent'; node: string[]; newPath: string[]; descs?: Record<string, string> }
   | { op: 'remove'; path: string[] };
 
-/** AI 摘要返回的完整 JSON(协议保持不变:AI 只产 add/update/remove/resolve) */
+/** JSON hoàn chỉnh do tóm tắt AI trả về (giao thức giữ nguyên: AI chỉ sinh add/update/remove/resolve) */
 export interface SummaryDelta {
-  /** 本楼层叙事摘要正文 */
+  /** Chính văn tóm tắt tự sự của tầng lầu này */
   summary?: string;
-  /** 覆盖型:故事内当前时间(直接写新值)。仅在正文无时间标签、需 AI 兜底时使用 */
+  /** Kiểu ghi đè: thời gian hiện tại trong truyện (viết trực tiếp giá trị mới). Chỉ dùng khi chính văn không có thẻ thời gian, cần AI dự phòng */
   time?: string;
-  /** 本段起始时间(仅正文缺 <bbs_start> 标签时让 AI 补) */
+  /** Thời gian bắt đầu đoạn này (chỉ khi chính văn thiếu thẻ <bbs_start> mới để AI bù) */
   timeStart?: string;
-  /** 本段结束时间(仅正文缺 <bbs_end> 标签时让 AI 补) */
+  /** Thời gian kết thúc đoạn này (chỉ khi chính văn thiếu thẻ <bbs_end> mới để AI bù) */
   timeEnd?: string;
-  /** 覆盖型:当前地点(直接写新值) */
+  /** Kiểu ghi đè: địa điểm hiện tại (viết trực tiếp giá trị mới) */
   location?: string;
-  /** 覆盖型:当前所在的已记录场景节点完整路径(由粗到细);与 location 同时给,作权威定位 */
+  /** Kiểu ghi đè: đường dẫn đầy đủ của nút bối cảnh đã ghi nhận nơi đang ở hiện tại (từ lớn đến nhỏ); đưa đồng thời với location, làm định vị có thẩm quyền */
   locationPath?: string[];
-  /** 局势卡更新:省略=不动;null=明确清空;对象=整卡覆盖 */
+  /** Cập nhật thẻ cục diện: lược bỏ = giữ nguyên; null = xóa trống rõ ràng; đối tượng = ghi đè cả thẻ */
   sceneFocus?: SceneFocus | null;
-  /** 覆盖型:用户操控主角的当前客观档案变化 */
+  /** Kiểu ghi đè: thay đổi hồ sơ khách quan hiện tại của nhân vật chính do người dùng điều khiển */
   protagonist?: ProtagonistDelta;
-  /** 指令型:物品增删改 */
+  /** Kiểu chỉ thị: thêm xóa sửa vật phẩm */
   items?: {
     add?: ItemDelta[];
-    /** 按名字移除 */
+    /** Gỡ bỏ theo tên */
     remove?: string[];
-    /** 按名字更新数量/描述 */
+    /** Cập nhật số lượng / mô tả theo tên */
     update?: ItemDelta[];
   };
-  /** 指令型:场景/地点增改(逐级地理路径) */
+  /** Kiểu chỉ thị: thêm sửa bối cảnh / địa điểm (đường dẫn địa lý từng cấp) */
   scenes?: {
-    /** 新到达/新记录的地点;path 给完整地理路径,逐级 upsert */
+    /** Địa điểm mới đến / mới ghi nhận; path đưa đường dẫn địa lý đầy đủ, upsert từng cấp */
     add?: SceneDelta[];
-    /** 更新已有地点的描述 */
+    /** Cập nhật mô tả của địa điểm đã có */
     update?: SceneDelta[];
-    /** 重设父级:给已有节点加父 / 插入中间节点 / 换父(连子树平移) */
+    /** Đặt lại cấp cha: thêm cha cho nút đã có / chèn nút trung gian / đổi cha (dịch chuyển cả cây con) */
     reparent?: SceneReparent[];
   };
-  /** 指令型:NPC 增删改 */
+  /** Kiểu chỉ thị: thêm xóa sửa NPC */
   npcs?: {
-    /** 新登场/新记录的 NPC */
+    /** NPC mới xuất hiện / mới ghi nhận */
     add?: NpcDelta[];
-    /** 按名字更新已有 NPC(身份/描述/性格/随行/所在地) */
+    /** Cập nhật NPC đã có theo tên (thân phận/mô tả/tính cách/đi cùng/nơi ở) */
     update?: NpcDelta[];
-    /** 按名字移除(永久退场/死亡) */
+    /** Gỡ bỏ theo tên (rút lui vĩnh viễn / tử vong) */
     remove?: string[];
   };
-  /** 指令型:计划/悬念增删 */
+  /** Kiểu chỉ thị: thêm xóa kế hoạch / nghi vấn */
   plans?: {
-    /** createdTime/targetTime 由 AI 直接输出(故事内时间字符串);targetTime 允许模糊或省略 */
+    /** createdTime/targetTime do AI xuất trực tiếp (chuỗi thời gian trong truyện); targetTime cho phép mơ hồ hoặc lược bỏ */
     add?: { kind: 'plan' | 'suspense'; content: string; createdTime?: string; targetTime?: string }[];
-    /** 按提示词里展示的短 id(p1/p2…)了结,每项带 outcome/reason 说明怎么了结;裸字符串兼容旧格式 */
+    /** Khép lại theo id ngắn hiển thị trong prompt (p1/p2…), mỗi mục kèm outcome/reason giải thích khép lại thế nào; chuỗi trần tương thích định dạng cũ */
     resolve?: PlanResolveItem[];
-    /** 同一未了结事项改期/暂缓/改条件(短 id p1/p2…);同一编号每楼只做一次 update 或 resolve */
+    /** Cùng một việc chưa khép lại dời lịch / tạm hoãn / đổi điều kiện (id ngắn p1/p2…); cùng một mã số mỗi tầng chỉ làm một lần update hoặc resolve */
     update?: PlanUpdateItem[];
   };
-  /** 指令型:生活小档案增删改(可选;只记主角或主要角色归属明确、明说过/明文揭示的) */
+  /** Kiểu chỉ thị: thêm xóa sửa hồ sơ nhỏ đời sống (tùy chọn; chỉ ghi của nhân vật chính hoặc nhân vật chính yếu có quy thuộc rõ ràng, đã nói rõ / chính văn bộc lộ rõ) */
   lifeDetails?: {
     add?: LifeDetailAdd[];
     update?: LifeDetailUpdate[];
-    /** 沉降为仅关键词触发(短序号 d1/d2 或稳定 id) */
+    /** Lắng đọng thành chỉ kích hoạt bằng từ khóa (số thứ tự ngắn d1/d2 hoặc id ổn định) */
     archive?: string[];
-    /** 删除(短序号 d1/d2 或稳定 id) */
+    /** Xóa (số thứ tự ngắn d1/d2 hoặc id ổn định) */
     remove?: string[];
   };
-  /** 指令型:了解清单增删改(可选;只记角色亲耳听到/亲眼看到/听人说的主角的事) */
+  /** Kiểu chỉ thị: thêm xóa sửa danh sách hiểu biết (tùy chọn; chỉ ghi chuyện của nhân vật chính mà nhân vật tận tai nghe thấy / tận mắt nhìn thấy / nghe người khác kể) */
   knowledge?: {
     add?: { who: string; text: string }[];
-    /** 短序号 k1/k2 或稳定 id */
+    /** Số thứ tự ngắn k1/k2 hoặc id ổn định */
     update?: { id: string; text: string }[];
-    /** 短序号 k1/k2 或稳定 id */
+    /** Số thứ tự ngắn k1/k2 hoặc id ổn định */
     remove?: string[];
   };
   /**
-   * 指令型:自定义变量的路径命令数组(仿 MVU)。AI 看当前 JSON 状态 + 说明,产出本楼新事件对应的命令:
-   *  - { "op":"set", "path":"好感度", "value":60 }
-   *  - { "op":"add", "path":"好感度", "delta":5 }
-   *  - { "op":"assign", "path":"势力", "key":"魔法议会", "value":{ "立场":"中立", "声望":50 } }  // 新建对象
-   *  - { "op":"remove", "path":"势力", "key":"暗影会" }
+   * Kiểu chỉ thị: mảng lệnh đường dẫn của biến tùy chỉnh (mô phỏng MVU). AI xem trạng thái JSON hiện tại + hướng dẫn, sản sinh lệnh tương ứng với sự kiện mới ở tầng này:
+   *  - { "op":"set", "path":"Độ hảo cảm", "value":60 }
+   *  - { "op":"add", "path":"Độ hảo cảm", "delta":5 }
+   *  - { "op":"assign", "path":"Thế lực", "key":"Hội đồng Phép thuật", "value":{ "Lập trường":"Trung lập", "Danh vọng":50 } }  // Tạo đối tượng mới
+   *  - { "op":"remove", "path":"Thế lực", "key":"Hội Ám Ảnh" }
    */
   vars?: VarOp[];
 }
 
 /**
- * 固化进叶子的结构化增量。与 SummaryDelta 几乎一致,但两点不同:
- *  1. plans.resolve 存的是**稳定 plan id**(而非运行期短序号 p1/p2);
- *  2. 扩展了仅供「手动操作」用的内部 op:plans.remove / plans.reopen、items / scenes 沿用 remove。
- * AI 永远不产这些内部 op;它们只在 UI 手动改动时写入。
+ * Lượng tăng thêm có cấu trúc được cố định vào lá. Hầu như giống hệt SummaryDelta, nhưng khác hai điểm:
+ *  1. plans.resolve lưu **id plan ổn định** (chứ không phải số thứ tự ngắn lúc chạy p1/p2);
+ *  2. Mở rộng thêm các op nội bộ chỉ dành cho "thao tác thủ công": plans.remove / plans.reopen, items / scenes tiếp tục dùng remove.
+ * AI không bao giờ sinh ra các op nội bộ này; chúng chỉ được ghi vào khi chỉnh sửa thủ công trên UI.
  */
 export interface StoredDelta {
   time?: string;
   location?: string;
-  /** 覆盖型:当前所在的已记录场景节点完整路径(由粗到细);权威定位 */
+  /** Kiểu ghi đè: đường dẫn đầy đủ của nút bối cảnh đã ghi nhận nơi đang ở hiện tại (từ lớn đến nhỏ); định vị có thẩm quyền */
   locationPath?: string[];
-  /** 局势卡更新:省略=不动;null=明确清空;对象=整卡覆盖 */
+  /** Cập nhật thẻ cục diện: lược bỏ = giữ nguyên; null = xóa trống rõ ràng; đối tượng = ghi đè cả thẻ */
   sceneFocus?: SceneFocus | null;
-  /** 覆盖型:用户操控主角的当前客观档案变化 */
+  /** Kiểu ghi đè: thay đổi hồ sơ khách quan hiện tại của nhân vật chính do người dùng điều khiển */
   protagonist?: ProtagonistDelta;
   items?: {
     add?: ItemDelta[];
     update?: ItemDelta[];
-    /** 按物品名移除(规范化匹配) */
+    /** Gỡ bỏ theo tên vật phẩm (khớp chuẩn hóa) */
     remove?: string[];
   };
   scenes?: {
     add?: SceneDelta[];
     update?: SceneDelta[];
-    /** 重设父级(连子树平移);AI 与手动共用 */
+    /** Đặt lại cấp cha (dịch chuyển cả cây con); AI và thủ công dùng chung */
     reparent?: SceneReparent[];
-    /** 内部/手动:按完整路径移除(连带删其后代) */
+    /** Nội bộ / thủ công: gỡ bỏ theo đường dẫn đầy đủ (xóa kèm cả hậu duệ của nó) */
     remove?: string[][];
-    /** 内部/手动:严格按用户操作先后重放；旧的分桶字段继续兼容历史聊天。 */
+    /** Nội bộ / thủ công: phát lại nghiêm ngặt theo thứ tự trước sau của thao tác người dùng; các trường chia nhóm cũ tiếp tục tương thích với cuộc trò chuyện lịch sử. */
     ops?: SceneOp[];
   };
   npcs?: {
     add?: NpcDelta[];
     update?: NpcDelta[];
-    /** 按 NPC 名移除(规范化匹配) */
+    /** Gỡ bỏ theo tên NPC (khớp chuẩn hóa) */
     remove?: string[];
   };
   plans?: {
     add?: { kind: 'plan' | 'suspense'; content: string; createdTime?: string; targetTime?: string }[];
-    /** 了结:稳定 plan id(带 outcome/reason);裸字符串兼容旧数据 */
+    /** Khép lại: id plan ổn định (kèm outcome/reason); chuỗi trần tương thích dữ liệu cũ */
     resolve?: PlanResolveItem[];
-    /** 改期/暂缓:稳定 plan id + 新 content/targetTime */
+    /** Dời lịch / tạm hoãn: id plan ổn định + content/targetTime mới */
     update?: PlanUpdateItem[];
-    /** 内部/手动:删除 plan(稳定 id) */
+    /** Nội bộ / thủ công: xóa plan (id ổn định) */
     remove?: string[];
-    /** 内部/手动:重新开启已了结 plan(稳定 id) */
+    /** Nội bộ / thủ công: mở lại plan đã khép lại (id ổn định) */
     reopen?: string[];
   };
-  /** 自定义变量:本楼的路径命令序列(按顺序 fold 到 JSON 状态)。AI 与手动共用。 */
+  /** Biến tùy chỉnh: chuỗi lệnh đường dẫn của tầng này (gấp tuần tự vào trạng thái JSON). AI và thủ công dùng chung. */
   lifeDetails?: {
     add?: LifeDetailAdd[];
-    /** update 带 tier:手动置顶/恢复操作用(AI 不出 tier) */
+    /** update kèm tier: dùng cho thao tác ghim đầu / khôi phục thủ công (AI không xuất tier) */
     update?: (LifeDetailUpdate & { tier?: 'pinned' | 'active' | 'archive' })[];
-    /** 沉降为仅关键词触发(稳定 id) */
+    /** Lắng đọng thành chỉ kích hoạt bằng từ khóa (id ổn định) */
     archive?: string[];
-    /** 删除(稳定 id) */
+    /** Xóa (id ổn định) */
     remove?: string[];
   };
-  /** 了解清单:按顺序施加的操作日志(AI 与手动共用) */
+  /** Danh sách hiểu biết: nhật ký thao tác áp dụng theo thứ tự (AI và thủ công dùng chung) */
   knowledge?: KnowledgeOp[];
   varOps?: VarOp[];
 }

@@ -16,11 +16,11 @@ import { computed, nextTick, onMounted, onUnmounted, provide, ref } from 'vue';
 import SummaryNode from './SummaryNode.vue';
 import { SUMMARY_CTX, type SummaryRow } from './ctx';
 
-// 打开摘要页时强制重算一次派生:未摘要楼层等派生缓存只在特定事件刷新,
-// 边聊边攒的新 AI 楼可能没触发刷新,进页先对齐一次,避免列表漏楼。
+// Khi mở trang Tóm tắt thì ép tính lại dẫn xuất một lần: bộ nhớ đệm dẫn xuất như các tầng chưa tóm tắt chỉ làm mới ở sự kiện nhất định,
+// các tầng AI mới tích lũy trong lúc vừa trò chuyện có thể chưa kích hoạt làm mới, khi vào trang căn chỉnh một lần trước để tránh danh sách sót tầng.
 onMounted(() => recomputeDerived());
 
-// 切聊天:重置临时视图态(展开/搜索/选择),避免上个聊天的残留跨聊天带过来。
+// Chuyển trò chuyện: đặt lại trạng thái xem tạm thời (mở rộng / tìm kiếm / chọn), tránh để tàn dư của cuộc trò chuyện trước mang sang cuộc trò chuyện khác.
 const resetViewStates = () => {
   expanded.value = new Set();
   searchQuery.value = '';
@@ -40,42 +40,42 @@ onMounted(() => {
 });
 onUnmounted(() => offChatChanged?.());
 
-// 触屏判定:用于跳过弹窗自动聚焦(移动端自动聚焦会弹出输入法挡住界面)。
+// Phán đoán màn hình cảm ứng: dùng để bỏ qua tự động focus hộp thoại (trên di động tự động focus sẽ bật bộ gõ che khuất giao diện).
 const isTouch = typeof window !== 'undefined' && window.matchMedia?.('(hover: none)').matches;
 
-/* ============ 计划 / 悬念(顶部两区)============
- * 原先「悬念簿」把计划和悬念混在一栏;现拆成两个平级区,各自折叠、各自计数,
- * 语义更清晰(计划=角色的打算,悬念=未解的谜团),也和下方「摘要」并列成三区。 */
+/* ============ Kế hoạch / Nghi vấn (hai vùng ở đỉnh) ============
+ * Vốn dĩ "Sổ nghi vấn" trộn lẫn kế hoạch và nghi vấn vào một cột; nay tách thành hai vùng ngang cấp, mỗi vùng tự thu gọn, tự đếm số lượng,
+ * ngữ nghĩa rõ ràng hơn (Kế hoạch = dự định của nhân vật, Nghi vấn = bí ẩn chưa lời giải), đồng thời xếp ngang hàng với "Tóm tắt" bên dưới thành ba vùng. */
 const newKind = ref<'plan' | 'suspense'>('plan');
 const newContent = ref('');
-const newTargetTime = ref(''); // 手动添加计划时的可选目标时间(故事内时间)
-// 手动添加是低频操作:用弹窗承载,平时只露一个小「+」按钮,不占版面。
+const newTargetTime = ref(''); // Thời gian mục tiêu tùy chọn khi thêm kế hoạch thủ công (thời gian trong truyện)
+// Thêm thủ công là thao tác tần suất thấp: dùng hộp thoại đảm nhận, bình thường chỉ lộ một nút "+" nhỏ, không chiếm diện tích trang.
 const composerOpen = ref(false);
 const contentInput = ref<HTMLTextAreaElement | null>(null);
-// 从对应区的「+」进入:预选好类型省一步(弹窗内仍可切换)。
+// Đi vào từ nút "+" của vùng tương ứng: chọn sẵn loại giúp tiết kiệm một bước (trong hộp thoại vẫn có thể chuyển đổi).
 function openComposer(kind: 'plan' | 'suspense') {
   if (!hasLeaf.value) return;
   newKind.value = kind;
   newContent.value = '';
   newTargetTime.value = '';
   composerOpen.value = true;
-  // 仅在非触屏自动聚焦:移动端自动聚焦会立刻弹出输入法,挡住弹窗、体验差。
+  // Chỉ tự động focus khi không phải màn hình cảm ứng: trên di động tự động focus sẽ lập tức bật bộ gõ lên, che khuất hộp thoại, trải nghiệm kém.
   if (!isTouch) void nextTick(() => contentInput.value?.focus());
 }
 function closeComposer() {
   composerOpen.value = false;
 }
-// 计划/悬念只展示「进行中」。点删除即移除——不再有「了结/已了结」概念。
+// Kế hoạch / Nghi vấn chỉ hiển thị "Đang tiến hành". Nhấn xóa là gỡ bỏ —— không còn khái niệm "Kết thúc / Đã kết thúc".
 const openPlans = computed(() => memory.plans.filter(p => p.status === 'open'));
-// 按类型拆两栏:非 suspense 归计划(含旧数据 kind 缺省的情况),suspense 归悬念。
+// Tách thành hai cột theo loại: không phải suspense thì quy về Kế hoạch (bao gồm trường hợp dữ liệu cũ khuyết kind), suspense quy về Nghi vấn.
 const plansOnly = computed(() => openPlans.value.filter(p => p.kind !== 'suspense'));
 const suspenses = computed(() => openPlans.value.filter(p => p.kind === 'suspense'));
 const hasLeaf = computed(() => derivedMeta.hasLeaf);
 
-/* —— 折叠 ——
- * 两区各自攒多了都会把下方摘要顶远,故各自可折叠。标题行兼作折叠开关。
- * 折叠态是本机视图偏好(同 activePage 那类临时导航态),走 localStorage、不进 apiSettings——
- * 跨设备同步它没意义,且不该污染真·设置。 */
+/* —— Thu gọn ——
+ * Hai vùng khi tích lũy nhiều đều sẽ đẩy phần Tóm tắt bên dưới ra xa, nên mỗi vùng đều có thể thu gọn. Dòng tiêu đề kiêm nhiệm công tắc thu gọn.
+ * Trạng thái thu gọn là tùy chọn chế độ xem trên máy (cùng loại trạng thái điều hướng tạm thời như activePage), đi theo localStorage, không vào apiSettings ——
+ * đồng bộ đa thiết bị cho nó không có ý nghĩa, và không nên làm bẩn cài đặt thực sự. */
 const PLAN_COLLAPSE_KEY = 'bbs.ui.planCollapsed.v1';
 const SUSPENSE_COLLAPSE_KEY = 'bbs.ui.suspenseCollapsed.v1';
 function loadCollapsed(key: string): boolean {
@@ -89,7 +89,7 @@ function persistCollapsed(key: string, v: boolean) {
   try {
     localStorage.setItem(key, v ? '1' : '0');
   } catch {
-    /* localStorage 不可用时仅本次会话生效 */
+    /* Khi localStorage không khả dụng thì chỉ có hiệu lực trong phiên hiện tại */
   }
 }
 const plansCollapsed = ref(loadCollapsed(PLAN_COLLAPSE_KEY));
@@ -103,28 +103,28 @@ function toggleFold(kind: 'plan' | 'suspense') {
     persistCollapsed(SUSPENSE_COLLAPSE_KEY, suspenseCollapsed.value);
   }
 }
-// 无条目即无可折叠:不显示箭头,也强制展开(避免删空后卡在收拢的空态)
+// Không có mục nào tức là không có gì để thu gọn: không hiển thị mũi tên, đồng thời ép mở rộng (tránh sau khi xóa sạch bị kẹt ở trạng thái trống đang thu gọn)
 const plansFoldable = computed(() => plansOnly.value.length > 0);
 const plansShown = computed(() => !plansCollapsed.value || !plansFoldable.value);
 const suspenseFoldable = computed(() => suspenses.value.length > 0);
 const suspenseShown = computed(() => !suspenseCollapsed.value || !suspenseFoldable.value);
 
-// 两区渲染配置:结构同构、仅类型/文案/计数色不同,用配置驱动一套模板避免两处漂移。
+// Cấu hình kết xuất hai vùng: cấu trúc đồng dạng, chỉ khác loại / văn bản / màu bộ đếm, dùng cấu hình dẫn động một bộ template để tránh hai nơi lệch nhau.
 const foldGroups = computed(() => [
   {
-    kind: 'plan' as const, title: '计划', items: plansOnly.value,
+    kind: 'plan' as const, title: 'Kế hoạch', items: plansOnly.value,
     foldable: plansFoldable.value, shown: plansShown.value,
-    empty: '还没有计划。摘要时会自动记下角色的打算,也可在此手动添加。',
+    empty: 'Chưa có kế hoạch nào. Khi tóm tắt sẽ tự động ghi lại dự định của nhân vật, cũng có thể thêm thủ công tại đây.',
   },
   {
-    kind: 'suspense' as const, title: '悬念', items: suspenses.value,
+    kind: 'suspense' as const, title: 'Nghi vấn', items: suspenses.value,
     foldable: suspenseFoldable.value, shown: suspenseShown.value,
-    empty: '还没有悬念。故事里埋下的谜团、未解之事会记在这里。',
+    empty: 'Chưa có nghi vấn nào. Những bí ẩn, sự việc chưa lời giải được cài cắm trong truyện sẽ được ghi lại ở đây.',
   },
 ]);
 
-// 叶子 id → 创建楼层。计划 id 形如 `plan:${叶子id}#${序号}`,由此反查创建该计划/悬念
-// 时所在楼层(与摘要列表的 #楼层 同源)。手动添加的计划挂在最新叶子上,显示其楼层。
+// id lá → tầng tạo. id kế hoạch có dạng `plan:${id lá}#${số thứ tự}`, từ đó tra ngược ra tầng tại thời điểm tạo kế hoạch/nghi vấn đó
+// (cùng nguồn với #tầng của danh sách tóm tắt). Kế hoạch thêm thủ công gắn vào lá mới nhất, hiển thị tầng của lá đó.
 const leafFloor = computed(() => {
   const m = new Map<string, number>();
   for (const l of derivedMeta.leaves) m.set(l.id, l.msgIndex);
@@ -138,7 +138,7 @@ function planFloor(planId: string): number | undefined {
 function addPlan() {
   const content = newContent.value.trim();
   if (!content) return;
-  // 创建时间用当前已知故事时间(没有就留空);目标时间仅计划可填,用户填了才带上
+  // Thời gian tạo dùng thời gian trong truyện đã biết hiện tại (không có thì để trống); thời gian mục tiêu chỉ Kế hoạch mới điền được, người dùng có điền mới kèm theo
   const createdTime = memory.state.time?.trim() || undefined;
   const targetTime = newKind.value === 'plan' ? newTargetTime.value.trim() || undefined : undefined;
   if (!appendOpToLatestLeaf({ plans: { add: [{ kind: newKind.value, content, createdTime, targetTime }] } })) return;
@@ -150,7 +150,7 @@ function removePlan(id: string) {
   appendOpToLatestLeaf({ plans: { remove: [id] } });
 }
 
-/* —— 编辑计划/悬念(弹窗)—— */
+/* —— Chỉnh sửa Kế hoạch / Nghi vấn (hộp thoại) —— */
 const editingPlan = ref<{ id: string; kind: 'plan' | 'suspense'; content: string; createdTime: string; targetTime: string } | null>(null);
 function openPlanEdit(p: { id: string; kind: 'plan' | 'suspense'; content: string; createdTime?: string; targetTime?: string }) {
   editingPlan.value = {
@@ -170,23 +170,23 @@ function savePlanEdit() {
   editPlan(e.id, {
     content: e.content,
     createdTime: e.createdTime,
-    // 目标时间仅计划有意义;悬念保持空
+    // Thời gian mục tiêu chỉ có ý nghĩa với Kế hoạch; Nghi vấn giữ trống
     targetTime: e.kind === 'plan' ? e.targetTime : '',
   });
   refreshInjection();
   editingPlan.value = null;
 }
 
-/* —— 眼下局势卡(编辑弹窗)——
- * 覆盖型单对象:手动编辑=整卡替换;清空=写 null(场面落幕)。
- * 与手动计划同机制:追加到最新叶子的 delta,重放后生效。 */
+/* —— Thẻ cục diện trước mắt (hộp thoại chỉnh sửa) ——
+ * Đối tượng đơn kiểu ghi đè: chỉnh sửa thủ công = thay thế toàn bộ thẻ; xóa trống = ghi null (cảnh truyện khép lại).
+ * Cùng cơ chế với kế hoạch thủ công: nối thêm vào delta của lá mới nhất, sau khi phát lại sẽ có hiệu lực. */
 const focus = computed(() => memory.state.sceneFocus);
 const editingFocus = ref<{ situation: string; participants: string; tension: string; pendingBeat: string } | null>(null);
 function openFocusEdit() {
   const f = focus.value;
   editingFocus.value = {
     situation: f?.situation ?? '',
-    participants: (f?.participants ?? []).join('、'),
+    participants: (f?.participants ?? []).join(', '),
     tension: f?.tension ?? '',
     pendingBeat: f?.pendingBeat ?? '',
   };
@@ -210,11 +210,11 @@ function clearFocus() {
   refreshInjection();
 }
 
-/* ============ 未摘要楼层 ============
- * derivedMeta.pendingFloors = AI 楼且无有效叶子,由旧到新;此处倒序展示(新楼在前)。 */
+/* ============ Các tầng chưa tóm tắt ============
+ * derivedMeta.pendingFloors = tầng AI và chưa có lá hợp lệ, từ cũ đến mới; ở đây hiển thị ngược (tầng mới ở trước). */
 const pendingFloors = computed(() => [...derivedMeta.pendingFloors].sort((a, b) => b - a));
 const summarizingFloor = computed<number | null>(() => {
-  // derivedMeta.rev 让切聊天后的 computed 重新核对当前 chatId。
+  // derivedMeta.rev giúp computed sau khi chuyển trò chuyện đối chiếu lại chatId hiện tại.
   void derivedMeta.rev;
   const chatId = getContext()?.getCurrentChatId?.() ?? '';
   return floorBackfillState.running && floorBackfillState.chatId === chatId
@@ -223,15 +223,15 @@ const summarizingFloor = computed<number | null>(() => {
 });
 function summarizeOne(floor: number) {
   if (engineState.running || summarizingFloor.value !== null) return;
-  // 任务状态由 engine 的 floorBackfillState 维护;页面卸载/重开不会丢失。
+  // Trạng thái tác vụ do floorBackfillState của engine duy trì; khi trang bị gỡ / mở lại sẽ không bị mất.
   void summarizeFloor(floor);
 }
 
-/* ============ 批量补摘 ============
- * 把所有未摘楼层按内容量分块、逐块串行补摘:省 token(固定上下文按块分摊)+ 减请求数。
- * 先弹确认(显示待摘楼数),执行中显示进度 + 可取消(块边界生效)。
- * 运行状态读 engine 的 batchState 单例(非组件本地 ref):关掉柏宝书窗口再重开,
- * 进度条与取消按钮能恢复——因为任务在 engine 里继续跑,关窗不取消。 */
+/* ============ Tóm tắt bù hàng loạt ============
+ * Chia toàn bộ các tầng chưa tóm tắt thành từng khối theo dung lượng nội dung, tóm tắt bù tuần tự từng khối: tiết kiệm token (ngữ cảnh cố định được phân bổ theo khối) + giảm số lần gửi yêu cầu.
+ * Bật hộp thoại xác nhận trước (hiển thị số tầng chờ tóm tắt), trong khi thực thi hiển thị tiến độ + có thể hủy (có hiệu lực ở ranh giới khối).
+ * Trạng thái chạy đọc từ singleton batchState của engine (không phải ref cục bộ của component): đóng cửa sổ Bách Bảo Thư rồi mở lại,
+ * thanh tiến độ và nút hủy vẫn khôi phục được —— vì tác vụ vẫn tiếp tục chạy trong engine, đóng cửa sổ không làm hủy tác vụ. */
 const batchConfirmOpen = ref(false);
 
 function openBatchConfirm() {
@@ -241,26 +241,26 @@ function openBatchConfirm() {
 function runBatchBackfill() {
   batchConfirmOpen.value = false;
   if (engineState.running) return;
-  // 不 await:任务在 engine 里跑,状态走 batchState 单例;UI 只读它,不依赖本函数停留
+  // Không await: tác vụ chạy trong engine, trạng thái đi theo singleton batchState; UI chỉ đọc nó, không phụ thuộc việc hàm này dừng lại chờ
   void batchBackfill({
-    // 由旧到新补;pendingFloors 是倒序展示用,这里传升序更稳(引擎内部也会再过滤排序)
+    // Bù từ cũ đến mới; pendingFloors là thứ tự ngược để hiển thị, ở đây truyền thứ tự tăng dần ổn định hơn (bên trong engine cũng sẽ lọc và sắp xếp lại lần nữa)
     floors: [...derivedMeta.pendingFloors].sort((a, b) => a - b),
   });
 }
 
-/* ============ 立即总结 ============
- * 手动触发一次「检测是否达阈值 → 达到就总结(可连锁多层)」。结果用一句临时提示反馈。 */
+/* ============ Đại tóm tắt ngay ============
+ * Kích hoạt thủ công một lần "kiểm tra xem đã đạt ngưỡng chưa → đạt rồi thì đại tóm tắt (có thể dây chuyền nhiều tầng)". Kết quả phản hồi bằng một câu nhắc tạm thời. */
 const resummaryRunning = ref(false);
 const resummaryHint = ref('');
 let resummaryHintTimer: ReturnType<typeof setTimeout> | null = null;
 
-// 总结节奏:实际约每「保留最近 AI 消息数 + 每次总结 AI 消息数」楼总结一次——
-// 最近 keepRecent 条发全文不摘,更早的摘成叶子,叶子攒够 leafBatchThreshold 条压一次总结。
-// 阈值关闭(<2)时不显示节奏句。
+// Nhịp điệu đại tóm tắt: thực tế khoảng mỗi "Số tin nhắn AI giữ lại gần nhất + Số tin nhắn AI mỗi lần đại tóm tắt" tầng sẽ đại tóm tắt một lần ——
+// keepRecent tin gần nhất gửi toàn văn không tóm tắt, các tin cũ hơn tóm tắt thành lá, lá tích đủ leafBatchThreshold mục sẽ nén một lần đại tóm tắt.
+// Khi ngưỡng tắt (<2) thì không hiển thị câu nhịp điệu.
 const resummaryEvery = computed(() => (Math.max(0, apiSettings.keepRecent) + apiSettings.leafBatchThreshold + apiSettings.leafKeepRecent) * 2);
 const showCadence = computed(() => apiSettings.leafBatchThreshold >= 2);
 
-// 纯前端估算当前实际注入量。derivedMeta.rev 补上 chat/is_system 这类非 Vue 响应式数据的刷新信号。
+// Ước tính thuần giao diện lượng tiêm thực tế hiện tại. derivedMeta.rev bổ sung tín hiệu làm mới cho các dữ liệu không phải phản ứng Vue như chat/is_system.
 const injectionTokenEstimate = computed(() => {
   void derivedMeta.rev;
   const estimate = estimateInjectionTokenBreakdown();
@@ -276,15 +276,15 @@ async function doResummarize() {
   resummaryHint.value = '';
   try {
     const made = await resummarizeNow();
-    // 有报错优先显示错误(如未指派总结渠道);否则按生成条数给反馈
+    // Có báo lỗi thì ưu tiên hiển thị lỗi (như chưa chỉ định kênh đại tóm tắt); nếu không thì phản hồi theo số mục đã tạo
     if (engineState.lastError) {
       resummaryHint.value = '';
     } else if (made > 0) {
-      resummaryHint.value = `已生成 ${made} 条总结`;
+      resummaryHint.value = `Đã tạo ${made} bản đại tóm tắt`;
     } else {
-      // 未达阈值:补一句动态节奏,告诉用户大概每多少楼总结一次
-      const cadence = showCadence.value ? `,约每 ${resummaryEvery.value} 楼总结一次` : '';
-      resummaryHint.value = `当前没有达到总结阈值的摘要${cadence}`;
+      // Chưa đạt ngưỡng: bổ sung một câu nhịp điệu động, cho người dùng biết khoảng bao nhiêu tầng thì đại tóm tắt một lần
+      const cadence = showCadence.value ? `, khoảng mỗi ${resummaryEvery.value} tầng sẽ đại tóm tắt một lần` : '';
+      resummaryHint.value = `Hiện chưa có tóm tắt nào đạt ngưỡng đại tóm tắt${cadence}`;
     }
   } finally {
     resummaryRunning.value = false;
@@ -293,19 +293,19 @@ async function doResummarize() {
   }
 }
 
-/* ============ 摘要列表(下方)============ */
+/* ============ Danh sách tóm tắt (bên dưới) ============ */
 /**
- * 平铺展示行:搜索(全森林命中平铺)与选择(根 + 复选框)两视图用。
- * 默认视图(根 + 逐层展开)改由递归组件 SummaryNode 直接渲染,不经此结构。
+ * Dòng hiển thị trải phẳng: dùng cho hai chế độ xem Tìm kiếm (trúng toàn rừng trải phẳng) và Chọn (gốc + hộp kiểm).
+ * Chế độ xem mặc định (gốc + mở rộng từng tầng) chuyển sang do component đệ quy SummaryNode kết xuất trực tiếp, không đi qua cấu trúc này.
  */
 interface DisplayRow extends SummaryRow {
-  isChild: boolean; // 搜索命中的深层(已压缩)节点:只读,不给编辑/删除键
+  isChild: boolean; // Nút tầng sâu (đã bị nén) trúng tìm kiếm: chỉ đọc, không đưa ra nút chỉnh sửa / xóa
 }
 
 /**
- * 完整森林视图(byId):所有**有效**叶子(stale=false)+ 全部压缩节点。
- * ⚠️ 必须走 derivedMeta 而非直接扫 chat:chat 非 reactive,UI 要变更须经 derivedMeta。
- * 展开(取 comp 的 childIds)与搜索(遍历全部节点,含已压缩的深层)都从这里取。
+ * Khung nhìn rừng đầy đủ (byId): mọi lá **hợp lệ** (stale=false) + toàn bộ các nút nén.
+ * ⚠️ Bắt buộc phải đi qua derivedMeta thay vì quét trực tiếp chat: chat không phải reactive, UI muốn cập nhật phải qua derivedMeta.
+ * Mở rộng (lấy childIds của comp) và tìm kiếm (duyệt toàn bộ các nút, bao gồm cả tầng sâu đã bị nén) đều lấy từ đây.
  */
 const byId = computed<Map<string, ViewNode>>(() => {
   const m = new Map<string, ViewNode>();
@@ -332,7 +332,7 @@ const byId = computed<Map<string, ViewNode>>(() => {
   return m;
 });
 
-/** 递归解析某节点覆盖的叶子楼层集合(comp 取全部后代有效叶子;失效 child 取不到则跳过)。 */
+/** Phân giải đệ quy tập hợp các tầng lá mà một nút nào đó bao phủ (comp lấy toàn bộ lá hợp lệ hậu duệ; child mất hiệu lực không lấy được thì bỏ qua). */
 function nodeFloors(n: ViewNode, map: Map<string, ViewNode>): [number, number] {
   const acc: number[] = [];
   const seen = new Set<string>();
@@ -354,7 +354,7 @@ function nodeFloors(n: ViewNode, map: Map<string, ViewNode>): [number, number] {
   return acc.length ? [Math.min(...acc), Math.max(...acc)] : [-1, -1];
 }
 
-/** ViewNode → 展示行核心字段(供卡片渲染) */
+/** ViewNode → các trường cốt lõi của dòng hiển thị (dùng để kết xuất thẻ) */
 function toRow(n: ViewNode, map: Map<string, ViewNode>): SummaryRow {
   const [lo, hi] = nodeFloors(n, map);
   return {
@@ -374,27 +374,27 @@ function toRow(n: ViewNode, map: Map<string, ViewNode>): SummaryRow {
   };
 }
 
-/** 根节点(倒序:楼层越靠后越在上面),供默认视图与选择视图。 */
+/** Nút gốc (ngược thứ tự: tầng càng về sau càng nằm ở trên), dùng cho chế độ xem mặc định và chế độ xem chọn. */
 const rootNodes = computed<ViewNode[]>(() => {
   const map = byId.value;
   const referenced = new Set<string>();
   for (const s of memory.summaries) for (const c of s.childIds ?? []) referenced.add(c);
   const roots = [...map.values()].filter(n => !referenced.has(n.id));
-  // 含失效后代的压缩节点不完整 → selectViewNodes 自动降级,只拆受影响那条链(旁支完好的整条保留)
+  // Nút nén chứa hậu duệ mất hiệu lực sẽ không hoàn chỉnh → selectViewNodes tự động hạ cấp, chỉ tháo chuỗi bị ảnh hưởng đó (nhánh phụ nguyên vẹn giữ nguyên cả chuỗi)
   const chosen = selectViewNodes({ byId: map, roots }, () => true);
   return chosen.sort((a, b) => nodeFloors(b, map)[1] - nodeFloors(a, map)[1]);
 });
 
-/* ---- 视图态:展开 / 搜索 / 选择(三者互斥,均为临时 UI 态,不持久化) ---- */
-const expanded = ref<Set<string>>(new Set()); // 已展开的 comp id
+/* ---- Trạng thái chế độ xem: Mở rộng / Tìm kiếm / Chọn (ba trạng thái loại trừ lẫn nhau, đều là trạng thái UI tạm thời, không lưu bền vững) ---- */
+const expanded = ref<Set<string>>(new Set()); // Các id comp đã mở rộng
 const searchQuery = ref('');
-// 搜索框默认收起,点工具行放大镜才展开——平时不占版面。收起即清空搜索词。
+// Khung tìm kiếm mặc định thu gọn, nhấn vào kính lúp trên thanh công cụ mới mở rộng —— bình thường không chiếm diện tích. Thu gọn sẽ xóa sạch từ khóa tìm kiếm.
 const searchOpen = ref(false);
 const searchInput = ref<HTMLInputElement | null>(null);
 const selectMode = ref(false);
 const selectedIds = ref<Set<string>>(new Set());
 
-/* ---- 导入旧总结:第一版只接收粘贴文本 + 从 #0 起的覆盖截止楼层。 ---- */
+/* ---- Nhập đại tóm tắt cũ: phiên bản đầu chỉ nhận văn bản dán vào + tầng kết thúc bao phủ tính từ #0. ---- */
 const importHistoryOpen = ref(false);
 const importHistoryText = ref('');
 const importHistoryFloor = ref(0);
@@ -406,7 +406,7 @@ function closeImportHistory() {
 
 function openImportHistory() {
   if (memory.summaries.some(s => s.imported)) {
-    toast('当前聊天已有一条导入历史;请直接编辑或删除后重导', 'warning');
+    toast('Cuộc trò chuyện hiện tại đã có một lịch sử nhập; vui lòng chỉnh sửa trực tiếp hoặc xóa đi rồi nhập lại', 'warning');
     return;
   }
   const chat = getContext()?.chat ?? [];
@@ -415,7 +415,7 @@ function openImportHistory() {
     if (isAiFloor(chat[i])) { lastAi = i; break; }
   }
   if (lastAi < 0) {
-    toast('当前聊天没有可接管的 AI 剧情楼层', 'warning');
+    toast('Cuộc trò chuyện hiện tại không có tầng cốt truyện AI nào có thể tiếp quản', 'warning');
     return;
   }
   importHistoryText.value = '';
@@ -428,26 +428,26 @@ async function saveImportedHistory() {
   const text = importHistoryText.value.trim();
   const floor = Number(importHistoryFloor.value);
   if (!text) {
-    toast('请先粘贴旧总结正文', 'warning');
+    toast('Vui lòng dán nội dung đại tóm tắt cũ trước', 'warning');
     return;
   }
   if (!Number.isInteger(floor) || floor < 0 || floor > importHistoryMaxFloor.value) {
-    toast(`覆盖截止楼层应在 #0 - #${importHistoryMaxFloor.value} 之间`, 'warning');
+    toast(`Tầng kết thúc bao phủ phải nằm trong khoảng #0 - #${importHistoryMaxFloor.value}`, 'warning');
     return;
   }
   const chat = getContext()?.chat ?? [];
   if (!isAiFloor(chat[floor])) {
-    toast('覆盖截止楼层必须是一条 AI 剧情楼层,避免把尚未回应的用户消息一起隐藏', 'warning');
+    toast('Tầng kết thúc bao phủ bắt buộc phải là một tầng cốt truyện AI, tránh ẩn luôn cả tin nhắn người dùng chưa được phản hồi', 'warning');
     return;
   }
   if (memory.summaries.some(s => s.imported)) {
-    toast('当前聊天已有导入历史,没有重复导入', 'warning');
+    toast('Cuộc trò chuyện hiện tại đã có lịch sử nhập, không nhập trùng lặp', 'warning');
     return;
   }
-  // 不静默覆盖柏宝书已经做过的逐楼摘要:重叠时两套叙事会同时进入上下文,应由用户先处理边界。
+  // Không ghi đè im lặng các tóm tắt từng tầng mà Bách Bảo Thư đã thực hiện: khi chồng lấp hai bộ tự sự sẽ đồng thời đi vào ngữ cảnh, cần để người dùng xử lý ranh giới trước.
   const overlap = derivedMeta.leaves.some(l => !l.stale && l.msgIndex <= floor);
   if (overlap) {
-    toast('所选范围内已有柏宝书摘要;请缩小截止楼层,或先删除重叠摘要', 'warning');
+    toast('Trong phạm vi đã chọn đã có tóm tắt của Bách Bảo Thư; vui lòng thu hẹp tầng kết thúc, hoặc xóa các tóm tắt chồng lấp trước', 'warning');
     return;
   }
 
@@ -469,14 +469,14 @@ async function saveImportedHistory() {
   closeImportHistory();
   recomputeDerived();
   await syncHiddenNow(true);
-  toast(`已导入旧总结,接管 #0 - #${floor}`, 'success');
+  toast(`Đã nhập đại tóm tắt cũ, tiếp quản #0 - #${floor}`, 'success');
 }
 
 const searching = computed(() => searchQuery.value.trim().length > 0);
 
 function openSearch() {
   searchOpen.value = true;
-  // 非触屏自动聚焦;触屏不聚焦避免立刻弹输入法(与添加计划弹窗同款取舍)
+  // Không phải màn hình cảm ứng thì tự động focus; màn hình cảm ứng không focus để tránh bật ngay bộ gõ (cùng sự đánh đổi với hộp thoại thêm kế hoạch)
   if (!isTouch) void nextTick(() => searchInput.value?.focus());
 }
 function closeSearch() {
@@ -495,12 +495,12 @@ function toggleExpand(id: string) {
   expanded.value = next;
 }
 
-/** 搜索视图:遍历**全森林**(含已压缩深层节点),命中平铺、按楼层倒序。 */
+/** Chế độ xem tìm kiếm: duyệt **toàn bộ rừng** (bao gồm cả các nút tầng sâu đã nén), kết quả trúng trải phẳng, sắp xếp ngược theo tầng. */
 function buildSearchRows(): DisplayRow[] {
   const map = byId.value;
   const q = searchQuery.value.trim();
   const qLower = q.toLowerCase();
-  // 楼层查询:纯数字 / #数字 → 命中覆盖该楼的节点
+  // Truy vấn tầng: thuần chữ số / #chữ số → trúng nút bao phủ tầng đó
   const floorNum = /^#?\d+$/.test(q) ? Number(q.replace(/^#/, '')) : null;
   const rootIdSet = new Set(rootNodes.value.map(n => n.id));
 
@@ -515,22 +515,22 @@ function buildSearchRows(): DisplayRow[] {
       if (t && t.toLowerCase().includes(qLower)) hit = true;
     }
     if (!hit) continue;
-    // 命中的根行可编辑/删除;已被压缩的深层节点只读(展开语义一致,避免误删祖先链)
+    // Dòng gốc trúng có thể chỉnh sửa/xóa; nút tầng sâu đã bị nén chỉ đọc (đồng nhất ngữ nghĩa mở rộng, tránh xóa nhầm chuỗi tổ tiên)
     const isRoot = rootIdSet.has(n.id);
     rows.push({ ...base, isChild: !isRoot });
   }
   return rows.sort((a, b) => b.floorHi - a.floorHi);
 }
 
-/** 平铺视图行:搜索命中平铺 / 选择态的根;默认视图不走这里(由 SummaryNode 递归渲染)。 */
+/** Các dòng chế độ xem trải phẳng: kết quả tìm kiếm trải phẳng / gốc ở trạng thái chọn; chế độ xem mặc định không đi qua đây (do SummaryNode kết xuất đệ quy). */
 const visibleRows = computed<DisplayRow[]>(() => {
   if (searching.value) return buildSearchRows();
   const map = byId.value;
-  // 选择模式:仅根,倒序,带复选框
+  // Chế độ chọn: chỉ nút gốc, ngược thứ tự, kèm hộp kiểm
   return rootNodes.value.map(n => ({ ...toRow(n, map), isChild: false }));
 });
 
-/** 搜索命中文本切片:把 text 按命中词切成 [{t, hit}] 片段,模板用 span 渲染(不走 v-html,防 XSS)。 */
+/** Cắt lát văn bản trúng tìm kiếm: cắt text theo từ khóa trúng thành các đoạn [{t, hit}], template dùng span kết xuất (không đi qua v-html, chống XSS). */
 function highlightParts(text: string): Array<{ t: string; hit: boolean }> {
   const q = searchQuery.value.trim();
   if (!q || !searching.value) return [{ t: text, hit: false }];
@@ -548,11 +548,11 @@ function highlightParts(text: string): Array<{ t: string; hit: boolean }> {
   return parts.length ? parts : [{ t: text, hit: false }];
 }
 
-/* ---- 选择模式:进出、勾选、连续性约束、合并 ---- */
+/* ---- Chế độ chọn: vào/ra, tích chọn, ràng buộc tính liên tục, gộp ---- */
 function enterSelectMode() {
   selectMode.value = true;
   selectedIds.value = new Set();
-  expanded.value = new Set(); // 折叠所有展开,只操作根
+  expanded.value = new Set(); // Thu gọn toàn bộ các mục đang mở rộng, chỉ thao tác trên gốc
 }
 function exitSelectMode() {
   selectMode.value = false;
@@ -565,12 +565,12 @@ function toggleSelect(id: string) {
   selectedIds.value = next;
 }
 
-/** 根是否已全部勾选(驱动「全选 / 取消全选」文案) */
+/** Toàn bộ nút gốc đã được tích chọn hết hay chưa (dẫn động văn bản "Chọn tất cả / Bỏ chọn tất cả") */
 const allSelected = computed(() => {
   const roots = rootNodes.value;
   return roots.length > 0 && roots.every(n => selectedIds.value.has(n.id));
 });
-/** 全选 / 取消全选切换:全选时写入全部根 id;已全选则清空。 */
+/** Chuyển đổi Chọn tất cả / Bỏ chọn tất cả: khi chọn tất cả thì ghi toàn bộ id gốc; đã chọn tất cả rồi thì xóa sạch. */
 function toggleSelectAll() {
   if (allSelected.value) {
     selectedIds.value = new Set();
@@ -579,21 +579,21 @@ function toggleSelectAll() {
   }
 }
 
-/** 选中项在根序列(倒序)里的位置索引,升序排列 */
+/** Chỉ số vị trí của các mục đã chọn trong chuỗi gốc (ngược thứ tự), sắp xếp tăng dần */
 const selectedRootIndexes = computed<number[]>(() => {
   const roots = rootNodes.value;
   const idxs: number[] = [];
   roots.forEach((n, i) => { if (selectedIds.value.has(n.id)) idxs.push(i); });
   return idxs;
 });
-/** 是否可合并:选中 ≥2 且在根序列里连续(无跳选) */
+/** Có thể gộp hay không: đã chọn ≥2 và liên tiếp nhau trong chuỗi gốc (không chọn nhảy cóc) */
 const canMerge = computed(() => {
   const idxs = selectedRootIndexes.value;
   if (idxs.length < 2) return false;
   for (let i = 1; i < idxs.length; i++) if (idxs[i] !== idxs[i - 1] + 1) return false;
   return true;
 });
-/** 选中项覆盖的楼层范围与将生成的层级(供操作条展示) */
+/** Phạm vi tầng mà các mục đã chọn bao phủ và cấp độ sẽ tạo ra (dùng để hiển thị trên thanh thao tác) */
 const selectionSummary = computed(() => {
   const map = byId.value;
   const picked = rootNodes.value.filter(n => selectedIds.value.has(n.id));
@@ -622,7 +622,7 @@ function openMergeConfirm() {
 async function runMerge() {
   mergeConfirmOpen.value = false;
   if (!canMerge.value || merging.value) return;
-  // 按根序列升序(即楼层旧→新)传给引擎;引擎内部还会再排一次
+  // Truyền cho engine theo thứ tự tăng dần của chuỗi gốc (tức là tầng từ cũ → mới); bên trong engine vẫn sẽ sắp xếp lại một lần nữa
   const idxs = [...selectedRootIndexes.value].sort((a, b) => a - b);
   const ids = idxs.map(i => rootNodes.value[i].id);
   merging.value = true;
@@ -631,8 +631,8 @@ async function runMerge() {
     if (res.made > 0) {
       exitSelectMode();
     } else if (res.error) {
-      // 失败时保留选择。早退分支(未生效/正忙/不连续等)不走引擎的 try/catch,
-      // 不会写 engineState.lastError,故这里主动弹 toast,避免「无事发生、无报错」。
+      // Khi thất bại vẫn giữ nguyên lựa chọn. Nhánh thoát sớm (chưa có hiệu lực / đang bận / không liên tiếp...) không đi qua try/catch của engine,
+      // sẽ không ghi engineState.lastError, nên ở đây chủ động bật toast, tránh việc "không có chuyện gì xảy ra, không báo lỗi".
       toast(res.error, 'warning');
     }
   } finally {
@@ -640,7 +640,7 @@ async function runMerge() {
   }
 }
 
-/** 删除统计按整棵选中子树计算:选中总结时,其收纳的下层摘要也属于删除范围。 */
+/** Thống kê xóa được tính theo toàn bộ cây con đã chọn: khi chọn đại tóm tắt, các tóm tắt tầng dưới được nó thu nạp cũng thuộc phạm vi xóa. */
 const selectionDeleteSummary = computed(() => {
   const map = byId.value;
   const visited = new Set<string>();
@@ -674,7 +674,7 @@ function openDeleteConfirm() {
 async function runDeleteSelected() {
   deleteConfirmOpen.value = false;
   if (!selectionSummary.value.count || deleting.value) return;
-  // 先快照 id：删除第一棵子树后根序列会立即变化，不能再从响应式列表逐项读取。
+  // Chụp nhanh id trước: sau khi xóa cây con đầu tiên thì chuỗi gốc sẽ thay đổi ngay lập tức, không thể đọc từng mục từ danh sách phản ứng được nữa.
   const ids = [...selectedIds.value];
   deleting.value = true;
   try {
@@ -683,40 +683,40 @@ async function runDeleteSelected() {
     if (result.imported > 0) await syncHiddenNow(true);
     exitSelectMode();
     const parts = [
-      result.leaves ? `${result.leaves} 条摘要` : '',
-      result.summaries ? `${result.summaries} 条总结` : '',
+      result.leaves ? `${result.leaves} bản tóm tắt` : '',
+      result.summaries ? `${result.summaries} bản đại tóm tắt` : '',
     ].filter(Boolean);
-    toast(parts.length ? `已删除${parts.join('、')}` : '所选内容已不存在', parts.length ? 'success' : 'warning');
+    toast(parts.length ? `Đã xóa ${parts.join(', ')}` : 'Nội dung đã chọn không còn tồn tại', parts.length ? 'success' : 'warning');
   } finally {
     deleting.value = false;
   }
 }
 
-/** 行的展示时间:新数据用 timeStart/timeEnd 合成并压缩;旧数据回退到已固化的 timeLabel(也压缩一次) */
+/** Thời gian hiển thị của dòng: dữ liệu mới dùng timeStart/timeEnd tổng hợp và nén gọn; dữ liệu cũ lùi về timeLabel đã cố định (cũng nén gọn một lần) */
 function rowTime(r: SummaryRow): string {
   if (r.timeStart || r.timeEnd) return formatRange(r.timeStart, r.timeEnd);
   return r.timeLabel ? compactTimeLabel(r.timeLabel) : '';
 }
-/** 行的相对时间前缀(如「昨天·周三」):仅叶子(单楼摘要)显示;总结跨多楼、相对时间无意义,返回空串 */
+/** Tiền tố thời gian tương đối của dòng (như "Hôm qua·Thứ tư"): chỉ hiển thị ở lá (tóm tắt tầng đơn); đại tóm tắt trải qua nhiều tầng nên thời gian tương đối vô nghĩa, trả về chuỗi rỗng */
 function rowRelative(r: SummaryRow): string {
   if (r.kind !== 'leaf') return '';
   const event = r.timeEnd || r.timeStart || (r.timeLabel ? splitTimeLabel(r.timeLabel).end : '') || '';
-  // 周几并入相对前缀(标准公历带年份才有);与注入端口径一致
+  // Thứ mấy trong tuần được gộp vào tiền tố tương đối (chỉ dương lịch tiêu chuẩn có kèm năm mới có); đồng nhất tiêu chuẩn với đầu tiêm
   return [relativeTimeLabel(event, derivedMeta.latestStoryTime), weekdayLabel(event)].filter(Boolean).join('·');
 }
 
-// 当前时间:优先读正文标签实时算出的「故事内最新时间」(不受最新楼是否已摘影响);
-// 取不到再回退派生的 state.time(老数据/无标签场景)。修掉「最新楼未摘时显示旧时间」的问题。
+// Thời gian hiện tại: ưu tiên đọc "thời gian mới nhất trong truyện" được tính thời gian thực từ thẻ chính văn (không bị ảnh hưởng bởi việc tầng mới nhất đã tóm tắt hay chưa);
+// không lấy được mới lùi về state.time dẫn xuất (dữ liệu cũ / kịch bản không có thẻ). Sửa triệt để vấn đề "khi tầng mới nhất chưa tóm tắt lại hiển thị thời gian cũ".
 const currentTime = computed(() => derivedMeta.latestStoryTime || memory.state.time);
-/** 当前时间的周几(仅标准公历带年份才有);展示用 */
+/** Thứ mấy trong tuần của thời gian hiện tại (chỉ dương lịch tiêu chuẩn có kèm năm mới có); dùng để hiển thị */
 const currentWeekday = computed(() => weekdayLabel(currentTime.value));
 
 function levelLabel(level: number, imported = false): string {
-  if (imported) return '导入历史';
-  if (level === 0) return '摘要';
-  return `总结L${level}`;
+  if (imported) return 'Lịch sử nhập';
+  if (level === 0) return 'Tóm tắt';
+  return `Đại tóm tắt L${level}`;
 }
-/** 楼层范围标签:单楼 #5,跨楼 #0 - #10 */
+/** Nhãn phạm vi tầng: tầng đơn #5, liên tầng #0 - #10 */
 function floorLabel(r: SummaryRow): string {
   if (r.floorLo < 0) return '—';
   return r.floorLo === r.floorHi ? `#${r.floorLo}` : `#${r.floorLo} - #${r.floorHi}`;
@@ -724,39 +724,39 @@ function floorLabel(r: SummaryRow): string {
 
 async function onDelete(r: SummaryRow) {
   if (r.kind === 'leaf') {
-    if (!confirm('删除这条摘要?它带来的物品、计划、时间地点变化会按剩余摘要重新计算(可能回退);包含它的总结也会一并删除。原文楼层仍保持隐藏。')) return;
+    if (!confirm('Xóa bản tóm tắt này? Các biến đổi về vật phẩm, kế hoạch, thời gian địa điểm do nó mang lại sẽ được tính toán lại theo các tóm tắt còn lại (có thể lùi về trước); đại tóm tắt chứa nó cũng sẽ bị xóa theo. Tầng nguyên văn vẫn giữ nguyên trạng thái ẩn.')) return;
     if (typeof r.msgIndex === 'number') deleteLeafAt(r.msgIndex);
   } else {
     if (r.imported) {
-      if (!confirm('删除这条导入历史?它接管的旧楼层会重新显示并回到待摘要状态;原世界书内容不受影响。')) return;
+      if (!confirm('Xóa lịch sử nhập này? Các tầng cũ do nó tiếp quản sẽ hiển thị trở lại và quay về trạng thái chờ tóm tắt; nội dung Sách Thế Giới gốc không bị ảnh hưởng.')) return;
       invalidateSummaryAncestors(r.id);
       recomputeDerived();
       await syncHiddenNow(true);
       return;
     }
-    if (!confirm('删除这条总结?被它收纳的下层摘要会重新展开,物品/计划等不受影响。')) return;
+    if (!confirm('Xóa bản đại tóm tắt này? Các tóm tắt tầng dưới được nó thu nạp sẽ mở rộng trở lại, vật phẩm / kế hoạch... không bị ảnh hưởng.')) return;
     deleteSummary(r.id);
   }
   refreshInjection();
 }
 
-/* ============ 编辑弹窗 ============
- * 叶子:可改「故事内时间」+ 正文;总结:只压文本,故只改正文。
- * nested = 该节点已被某条总结收纳:编辑它不影响上层总结文本(总结只压快照),
- * 弹窗里提示用户「上层总结不会跟着变」,免得改完发现总结里旧信息还在、以为没保存上。 */
+/* ============ Hộp thoại chỉnh sửa ============
+ * Lá: có thể sửa "Thời gian trong truyện" + Nội dung chính; Đại tóm tắt: chỉ nén văn bản, nên chỉ sửa nội dung chính.
+ * nested = nút đó đã được một đại tóm tắt nào đó thu nạp: chỉnh sửa nó không ảnh hưởng văn bản đại tóm tắt tầng trên (đại tóm tắt chỉ nén ảnh chụp nhanh),
+ * trong hộp thoại nhắc người dùng "đại tóm tắt tầng trên sẽ không tự đổi theo", tránh việc sửa xong thấy thông tin cũ trong đại tóm tắt vẫn còn lại tưởng là chưa lưu được. */
 type Editing =
   | { kind: 'leaf'; msgIndex: number; text: string; timeStart: string; timeEnd: string; nested: boolean }
   | { kind: 'comp'; compId: string; level: number; text: string; imported: boolean; nested: boolean };
 const editing = ref<Editing | null>(null);
 
-/** 该 id 是否已被任何总结的 childIds 收纳(= 展开视图里的深层行) */
+/** id đó đã được childIds của bất kỳ đại tóm tắt nào thu nạp hay chưa (= dòng tầng sâu trong chế độ xem mở rộng) */
 function isNested(id: string): boolean {
   return memory.summaries.some(s => (s.childIds ?? []).includes(id));
 }
 
 function openEdit(r: SummaryRow) {
   if (r.kind === 'leaf' && typeof r.msgIndex === 'number') {
-    // 旧数据无 timeStart/timeEnd 时,从已固化的 timeLabel 拆出起止填入
+    // Khi dữ liệu cũ không có timeStart/timeEnd, tách điểm đầu cuối từ timeLabel đã cố định để điền vào
     const fb = !r.timeStart && !r.timeEnd ? splitTimeLabel(r.timeLabel) : {};
     editing.value = {
       kind: 'leaf',
@@ -782,7 +782,7 @@ function saveEdit() {
   editing.value = null;
 }
 
-// 注入递归卡片(SummaryNode)所需的状态、helper 与动作,免逐层 props 透传
+// Tiêm trạng thái, helper và hành động cần thiết cho thẻ đệ quy (SummaryNode), khỏi phải truyền props qua từng tầng
 provide(SUMMARY_CTX, {
   byId, expanded, selectMode, searching, selectedIds,
   toggleExpand, toggleSelect, openEdit, onDelete,
@@ -792,36 +792,36 @@ provide(SUMMARY_CTX, {
 
 <template>
   <section class="bbs-page">
-    <!-- ===== 眼下局势卡:当前场面快照(覆盖型;省略=不动,清空=落幕) ===== -->
+    <!-- ===== Thẻ cục diện trước mắt: ảnh chụp nhanh cảnh hiện tại (kiểu ghi đè; lược bỏ = giữ nguyên, xóa trống = khép màn) ===== -->
     <div class="bbs-fold-section">
       <div class="bbs-section-head">
-        <h2 class="bbs-title bbs-title-sub">眼下局势</h2>
-        <!-- 无卡时:铅笔留在区块头;有卡时:编辑/清空收进卡头操作区 -->
+        <h2 class="bbs-title bbs-title-sub">Cục diện trước mắt</h2>
+        <!-- Khi chưa có thẻ: bút chì nằm ở đầu phân khu; khi có thẻ: chỉnh sửa / xóa trống thu vào vùng thao tác đầu thẻ -->
         <span v-if="!focus" class="bbs-focus-acts">
           <button
             class="bbs-add-mini"
             type="button"
             :disabled="!hasLeaf"
-            :title="hasLeaf ? '手动编写局势卡' : '需先有摘要才能手动编写'"
+            :title="hasLeaf ? 'Viết thẻ cục diện thủ công' : 'Cần có tóm tắt trước mới có thể viết thủ công'"
             @click="openFocusEdit"
           >
             <Icon name="edit" />
           </button>
         </span>
       </div>
-      <!-- 与角色卡同构:左色条 + 头行(在场者 + 记时 + 操作区)+ 主文 + 彩色分类小标签字段表 -->
+      <!-- Đồng dạng với thẻ nhân vật: vạch màu bên trái + dòng đầu (người có mặt + ghi thời gian + vùng thao tác) + văn bản chính + bảng trường nhãn nhỏ phân loại có màu -->
       <article v-if="focus" class="bbs-focus">
         <div class="bbs-focus-head">
           <span class="bbs-focus-names" :class="{ 'is-empty': !focus.participants.length }">
-            {{ focus.participants.length ? focus.participants.join('、') : '眼下局势' }}
+            {{ focus.participants.length ? focus.participants.join(', ') : 'Cục diện trước mắt' }}
           </span>
-          <span v-if="focus.updatedTime" class="bbs-focus-time">记于 {{ focus.updatedTime }}</span>
+          <span v-if="focus.updatedTime" class="bbs-focus-time">Ghi lúc {{ focus.updatedTime }}</span>
           <span class="bbs-focus-acts">
             <button
               class="bbs-plan-act"
               type="button"
               :disabled="!hasLeaf"
-              :title="hasLeaf ? '手动修改局势卡' : '需先有摘要才能手动修改'"
+              :title="hasLeaf ? 'Sửa thẻ cục diện thủ công' : 'Cần có tóm tắt trước mới có thể sửa thủ công'"
               @click="openFocusEdit"
             >
               <Icon name="edit" />
@@ -830,7 +830,7 @@ provide(SUMMARY_CTX, {
               class="bbs-plan-act bbs-plan-del"
               type="button"
               :disabled="!hasLeaf"
-              title="清空局势卡(场面落幕)"
+              title="Xóa trống thẻ cục diện (cảnh truyện khép lại)"
               @click="clearFocus"
             >
               <Icon name="close" />
@@ -840,55 +840,55 @@ provide(SUMMARY_CTX, {
         <p class="bbs-focus-situation">{{ focus.situation }}</p>
         <dl v-if="focus.currentFocus || focus.tension || focus.pendingBeat" class="bbs-focus-fields">
           <div v-if="focus.currentFocus" class="bbs-focus-field">
-            <!-- currentFocus 已废弃:仅旧数据仍带值时才展示,不再提示记录 -->
-            <dt>焦点</dt>
+            <!-- currentFocus đã ngừng sử dụng: chỉ khi dữ liệu cũ vẫn còn giá trị mới hiển thị, không nhắc ghi nhận nữa -->
+            <dt>Tiêu điểm</dt>
             <dd>{{ focus.currentFocus }}</dd>
           </div>
           <div v-if="focus.tension" class="bbs-focus-field f-tension">
-            <dt>张力</dt>
+            <dt>Căng thẳng</dt>
             <dd>{{ focus.tension }}</dd>
           </div>
           <div v-if="focus.pendingBeat" class="bbs-focus-field f-next">
-            <dt>将至</dt>
+            <dt>Sắp tới</dt>
             <dd>{{ focus.pendingBeat }}</dd>
           </div>
         </dl>
       </article>
-      <p v-else class="bbs-plan-empty">还没有局势卡。场面实质变化时摘要会自动更新,也可点上方铅笔手动编写。</p>
+      <p v-else class="bbs-plan-empty">Chưa có thẻ cục diện. Khi cảnh truyện có thay đổi thực chất thì tóm tắt sẽ tự động cập nhật, cũng có thể nhấn vào biểu tượng bút chì phía trên để viết thủ công.</p>
     </div>
 
-    <!-- 局势卡编辑弹窗 -->
+    <!-- Hộp thoại chỉnh sửa thẻ cục diện -->
     <ModalMask :open="!!editingFocus" @close="cancelFocusEdit">
-      <div v-if="editingFocus" class="bbs-modal" role="dialog" aria-modal="true" aria-label="编辑局势卡">
+      <div v-if="editingFocus" class="bbs-modal" role="dialog" aria-modal="true" aria-label="Chỉnh sửa thẻ cục diện">
         <header class="bbs-modal-head">
-          <span class="bbs-modal-title">眼下局势卡</span>
-          <button class="bbs-summary-act" type="button" title="关闭" @click="cancelFocusEdit"><Icon name="close" /></button>
+          <span class="bbs-modal-title">Thẻ cục diện trước mắt</span>
+          <button class="bbs-summary-act" type="button" title="Đóng" @click="cancelFocusEdit"><Icon name="close" /></button>
         </header>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">局面(一句话)</span>
-          <textarea v-model="editingFocus.situation" class="bbs-input bbs-modal-textarea" rows="2" placeholder="如「午后同居日常,她情绪有点低落」/「潜行中,刚被巡逻队发现」"></textarea>
+          <span class="bbs-modal-label">Cục diện (một câu)</span>
+          <textarea v-model="editingFocus.situation" class="bbs-input bbs-modal-textarea" rows="2" placeholder="VD: &quot;Đời thường sống chung buổi chiều, tâm trạng cô ấy hơi trùng xuống&quot; / &quot;Đang lẻn vào, vừa bị đội tuần tra phát hiện&quot;"></textarea>
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">在场参与者(顿号分隔)</span>
-          <input v-model="editingFocus.participants" class="bbs-input" type="text" placeholder="如 主角、阿黛尔" />
+          <span class="bbs-modal-label">Người tham gia có mặt (ngăn cách bằng dấu phẩy)</span>
+          <input v-model="editingFocus.participants" class="bbs-input" type="text" placeholder="VD: Nhân vật chính, Adele" />
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">互动张力(可选,高门槛)</span>
-          <input v-model="editingFocus.tension" class="bbs-input" type="text" placeholder="仅明确且持续的社交张力,如 冷战/尴尬" />
+          <span class="bbs-modal-label">Căng thẳng tương tác (tùy chọn, ngưỡng cao)</span>
+          <input v-model="editingFocus.tension" class="bbs-input" type="text" placeholder="Chỉ căng thẳng xã hội rõ ràng và kéo dài, VD: Chiến tranh lạnh / Ngượng ngùng" />
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">即将发生(可选,禁预测)</span>
-          <input v-model="editingFocus.pendingBeat" class="bbs-input" type="text" placeholder="仅正文明确预告/约定的事" />
+          <span class="bbs-modal-label">Sắp diễn ra (tùy chọn, cấm dự đoán)</span>
+          <input v-model="editingFocus.pendingBeat" class="bbs-input" type="text" placeholder="Chỉ những việc được báo trước / hẹn ước rõ ràng trong chính văn" />
         </label>
         <footer class="bbs-modal-foot">
-          <button class="bbs-btn" type="button" @click="cancelFocusEdit">取消</button>
-          <button class="bbs-btn bbs-btn-primary" type="button" :disabled="!editingFocus.situation.trim()" @click="saveFocusEdit">保存</button>
+          <button class="bbs-btn" type="button" @click="cancelFocusEdit">Hủy</button>
+          <button class="bbs-btn bbs-btn-primary" type="button" :disabled="!editingFocus.situation.trim()" @click="saveFocusEdit">Lưu</button>
         </footer>
       </div>
     </ModalMask>
 
-    <!-- ===== 计划 / 悬念:顶部两区,各自折叠计数 ===== -->
-    <!-- 结构同构、配置驱动(foldGroups):标题行兼折叠开关,右侧「+」独立(disabled 时不响应,不误触折叠) -->
+    <!-- ===== Kế hoạch / Nghi vấn: hai vùng ở đỉnh, mỗi vùng tự thu gọn và đếm số lượng ===== -->
+    <!-- Cấu trúc đồng dạng, dẫn động bằng cấu hình (foldGroups): dòng tiêu đề kiêm công tắc thu gọn, nút "+" bên phải độc lập (khi disabled không phản hồi, không chạm nhầm thu gọn) -->
     <div v-for="g in foldGroups" :key="g.kind" class="bbs-fold-section">
       <div class="bbs-section-head">
         <button
@@ -897,7 +897,7 @@ provide(SUMMARY_CTX, {
           :class="{ 'is-static': !g.foldable }"
           :disabled="!g.foldable"
           :aria-expanded="g.shown"
-          :title="g.foldable ? (g.shown ? `收起${g.title}` : `展开${g.title}`) : ''"
+          :title="g.foldable ? (g.shown ? `Thu gọn ${g.title}` : `Mở rộng ${g.title}`) : ''"
           @click="toggleFold(g.kind)"
         >
           <Icon v-if="g.foldable" name="chevron" class="bbs-fold-caret" :class="{ 'is-collapsed': !g.shown }" />
@@ -908,31 +908,31 @@ provide(SUMMARY_CTX, {
           class="bbs-add-mini"
           type="button"
           :disabled="!hasLeaf"
-          :title="hasLeaf ? `手动添加${g.title}` : '需先有摘要才能手动添加'"
+          :title="hasLeaf ? `Thêm ${g.title} thủ công` : 'Cần có tóm tắt trước mới có thể thêm thủ công'"
           @click="openComposer(g.kind)"
         >
           <Icon name="plus" />
         </button>
       </div>
 
-      <!-- grid 1fr↔0fr 收展:高度自适应、无需写死 max-height;reduced-motion 下瞬切(见样式) -->
+      <!-- Thu mở grid 1fr↔0fr: chiều cao tự thích ứng, không cần viết cứng max-height; dưới reduced-motion sẽ cắt tức thì (xem kiểu dáng) -->
       <div class="bbs-fold-wrap" :class="{ 'is-collapsed': !g.shown }">
         <div class="bbs-fold-inner">
           <div v-if="g.items.length" class="bbs-plan-group">
             <div v-for="p in g.items" :key="p.id" class="bbs-plan">
               <div class="bbs-plan-head">
-                <span class="bbs-plan-kind" :class="p.kind">{{ p.kind === 'suspense' ? '悬念' : '计划' }}</span>
+                <span class="bbs-plan-kind" :class="p.kind">{{ p.kind === 'suspense' ? 'Nghi vấn' : 'Kế hoạch' }}</span>
                 <span v-if="planFloor(p.id) !== undefined" class="bbs-plan-floor">#{{ planFloor(p.id) }}</span>
                 <span class="bbs-plan-acts">
-                  <button class="bbs-plan-act" type="button" title="编辑" @click="openPlanEdit(p)"><Icon name="edit" /></button>
-                  <button class="bbs-plan-act bbs-plan-del" type="button" title="删除" @click="removePlan(p.id)"><Icon name="close" /></button>
+                  <button class="bbs-plan-act" type="button" title="Chỉnh sửa" @click="openPlanEdit(p)"><Icon name="edit" /></button>
+                  <button class="bbs-plan-act bbs-plan-del" type="button" title="Xóa" @click="removePlan(p.id)"><Icon name="close" /></button>
                 </span>
               </div>
               <p class="bbs-plan-content">{{ p.content }}</p>
-              <!-- 故事内时间:立于(创建时间)/ 目标(目标时间),任一存在才显示 -->
+              <!-- Thời gian trong truyện: Lập lúc (thời gian tạo) / Mục tiêu (thời gian mục tiêu), có bất kỳ cái nào mới hiển thị -->
               <div v-if="p.createdTime || p.targetTime" class="bbs-plan-times">
-                <span v-if="p.createdTime" class="bbs-plan-time">立于 {{ p.createdTime }}</span>
-                <span v-if="p.targetTime" class="bbs-plan-time bbs-plan-time-target">目标 {{ p.targetTime }}</span>
+                <span v-if="p.createdTime" class="bbs-plan-time">Lập lúc {{ p.createdTime }}</span>
+                <span v-if="p.targetTime" class="bbs-plan-time bbs-plan-time-target">Mục tiêu {{ p.targetTime }}</span>
               </div>
             </div>
           </div>
@@ -941,82 +941,82 @@ provide(SUMMARY_CTX, {
       </div>
     </div>
 
-    <!-- 分章分隔:两侧细线 + 居中金色菱形(古籍分章鱼尾标记),比普通 hr 更明确地隔开两区 -->
+    <!-- Ngăn cách phân chương: đường kẻ mảnh hai bên + hình thoi vàng ở giữa (dấu đuôi cá phân chương sách cổ), ngăn cách hai vùng rõ ràng hơn thẻ hr thông thường -->
     <div class="bbs-divider" role="separator" aria-hidden="true">
       <span class="bbs-divider-mark"></span>
     </div>
 
-    <!-- ===== 摘要 ===== -->
+    <!-- ===== Tóm tắt ===== -->
     <div class="bbs-section-head">
       <div class="bbs-summary-heading">
-        <h2 class="bbs-title bbs-title-sub">摘要</h2>
-        <div class="bbs-token-estimate" title="按 UTF-8 字节数估算,不会请求后端">
-          <span>摘要注入 ≈ {{ injectionTokenEstimate.summary }} tokens</span>
-          <span>其他注入 ≈ {{ injectionTokenEstimate.other }} tokens</span>
+        <h2 class="bbs-title bbs-title-sub">Tóm tắt</h2>
+        <div class="bbs-token-estimate" title="Ước tính theo số byte UTF-8, không gửi yêu cầu tới backend">
+          <span>Tiêm tóm tắt ≈ {{ injectionTokenEstimate.summary }} tokens</span>
+          <span>Tiêm khác ≈ {{ injectionTokenEstimate.other }} tokens</span>
         </div>
       </div>
       <div class="bbs-summary-tools">
-        <!-- 搜索:点放大镜展开搜索框(平时收起不占版面);已展开则收起并清空 -->
+        <!-- Tìm kiếm: nhấn kính lúp để mở rộng khung tìm kiếm (bình thường thu gọn không chiếm diện tích); đã mở rộng thì thu gọn và xóa trống -->
         <button
           v-if="!selectMode"
           class="bbs-add-mini"
           type="button"
           :class="{ 'is-on': searchOpen }"
           :disabled="!rootNodes.length"
-          :title="searchOpen ? '收起搜索' : '搜索摘要'"
+          :title="searchOpen ? 'Thu gọn tìm kiếm' : 'Tìm kiếm tóm tắt'"
           @click="toggleSearch"
         >
           <Icon name="search" />
         </button>
-        <!-- 选择模式:进/出。选择态下换成「完成」,并隐藏立即总结(避免与合并撞车) -->
-        <!-- 窄屏收成纯图标(隐藏 .bbs-btn-label),与左侧放大镜同权重,不喧宾夺主 -->
+        <!-- Chế độ chọn: vào/ra. Ở trạng thái chọn đổi thành "Hoàn tất", đồng thời ẩn Đại tóm tắt ngay (tránh đụng độ với gộp) -->
+        <!-- Màn hình hẹp thu thành biểu tượng thuần (ẩn .bbs-btn-label), cùng trọng lượng với kính lúp bên trái, không lấn át chủ thể -->
         <button
           v-if="!selectMode"
           class="bbs-btn bbs-btn-sm"
           type="button"
           :disabled="!rootNodes.length || searching"
-          title="勾选连续的多条摘要,手动合并成一条总结"
+          title="Tích chọn nhiều bản tóm tắt liên tiếp để gộp thủ công thành một bản đại tóm tắt"
           @click="enterSelectMode"
         >
-          <Icon name="checklist" /><span class="bbs-btn-label">多选</span>
+          <Icon name="checklist" /><span class="bbs-btn-label">Chọn nhiều</span>
         </button>
         <button
           v-else
           class="bbs-btn bbs-btn-sm"
           type="button"
-          title="退出多选"
+          title="Thoát chọn nhiều"
           @click="exitSelectMode"
         >
-          <Icon name="close" /><span class="bbs-btn-label">完成</span>
+          <Icon name="close" /><span class="bbs-btn-label">Hoàn tất</span>
         </button>
         <button
           v-if="!selectMode"
           class="bbs-btn bbs-btn-sm"
           type="button"
           :disabled="engineState.running"
-          title="粘贴并导入使用柏宝书之前的旧总结"
+          title="Dán và nhập bản đại tóm tắt cũ từ trước khi sử dụng Bách Bảo Thư"
           @click="openImportHistory"
         >
           <Icon name="download" />
-          <span class="bbs-btn-label">导入旧总结</span>
+          <span class="bbs-btn-label">Nhập đại tóm tắt cũ</span>
         </button>
         <button
           v-if="!selectMode"
           class="bbs-btn bbs-btn-sm bbs-resummary-btn"
           type="button"
           :disabled="resummaryRunning || engineState.running"
-          title="检测摘要是否达到总结阈值,达到则立即总结一次"
+          title="Kiểm tra xem tóm tắt đã đạt ngưỡng đại tóm tắt chưa, nếu đạt thì thực hiện đại tóm tắt ngay một lần"
           @click="doResummarize"
         >
           <span v-if="resummaryRunning" class="bbs-pending-spin"></span>
           <Icon v-else name="bolt" />
-          <span class="bbs-btn-label">立即总结</span>
+          <span class="bbs-btn-label">Đại tóm tắt ngay</span>
         </button>
       </div>
     </div>
     <p v-if="resummaryHint" class="bbs-resummary-hint">{{ resummaryHint }}</p>
 
-    <!-- 搜索框:点工具行放大镜才展开(选择模式下不显示,两态互斥)。搜全森林(含已压缩的深层节点) -->
+    <!-- Khung tìm kiếm: nhấn kính lúp trên thanh công cụ mới mở rộng (ở chế độ chọn không hiển thị, hai trạng thái loại trừ nhau). Tìm toàn bộ rừng (bao gồm cả các nút tầng sâu đã nén) -->
     <div v-if="!selectMode && searchOpen && rootNodes.length" class="bbs-search">
       <Icon name="search" class="bbs-search-icon" />
       <input
@@ -1024,36 +1024,36 @@ provide(SUMMARY_CTX, {
         v-model="searchQuery"
         class="bbs-input bbs-search-input"
         type="text"
-        placeholder="搜索摘要正文 / 时间,或输入 #楼层号"
+        placeholder="Tìm kiếm nội dung tóm tắt / thời gian, hoặc nhập #số tầng"
         @keydown.esc="closeSearch"
       />
-      <button class="bbs-search-clear" type="button" :title="searching ? '清空' : '收起搜索'" @click="searching ? (searchQuery = '') : closeSearch()">
+      <button class="bbs-search-clear" type="button" :title="searching ? 'Xóa trống' : 'Thu gọn tìm kiếm'" @click="searching ? (searchQuery = '') : closeSearch()">
         <Icon name="close" />
       </button>
     </div>
 
-    <!-- 未摘要楼层:只列楼层号,点一下单独补摘那一楼;楼层多时可「批量补摘」 -->
+    <!-- Các tầng chưa tóm tắt: chỉ liệt kê số tầng, nhấn một cái sẽ tóm tắt bù riêng tầng đó; khi có nhiều tầng có thể "Tóm tắt bù hàng loạt" -->
     <div v-if="pendingFloors.length" class="bbs-pending">
       <div class="bbs-pending-head">
         <span class="bbs-pending-label" :data-count="pendingFloors.length">
-          <Icon name="summary" />未摘要楼层
+          <Icon name="summary" />Tầng chưa tóm tắt
         </span>
-        <!-- 批量补摘:把全部未摘楼层分块串行补完(省 token、减请求);批量进行中显示进度+取消 -->
+        <!-- Tóm tắt bù hàng loạt: chia toàn bộ các tầng chưa tóm tắt thành từng đợt bù tuần tự cho xong (tiết kiệm token, giảm số yêu cầu); khi đang chạy hàng loạt hiển thị tiến độ + hủy -->
         <button
           v-if="!batchState.running"
           class="bbs-btn bbs-btn-sm bbs-batch-btn"
           type="button"
           :disabled="engineState.running || summarizingFloor !== null"
-          title="把全部未摘楼层分批一次性补完(比逐楼省 token、更快)"
+          title="Chia toàn bộ các tầng chưa tóm tắt thành từng đợt để tóm tắt bù một lần cho xong (tiết kiệm token và nhanh hơn so với từng tầng)"
           @click="openBatchConfirm"
         >
-          <Icon name="plans" />批量补摘
+          <Icon name="plans" />Tóm tắt bù hàng loạt
         </button>
         <span v-else class="bbs-batch-progress">
           <span class="bbs-pending-spin"></span>
-          补摘中 {{ batchState.done }}/{{ batchState.total }}
+          Đang tóm tắt bù {{ batchState.done }}/{{ batchState.total }}
           <button class="bbs-batch-cancel" type="button" :disabled="batchState.cancelRequested" @click="cancelBatchBackfill">
-            {{ batchState.cancelRequested ? '停止中…' : '取消' }}
+            {{ batchState.cancelRequested ? 'Đang dừng…' : 'Hủy' }}
           </button>
         </span>
       </div>
@@ -1064,7 +1064,7 @@ provide(SUMMARY_CTX, {
           class="bbs-pending-chip"
           type="button"
           :disabled="engineState.running || summarizingFloor !== null || batchState.running"
-          :title="`对楼层 #${f} 生成摘要`"
+          :title="`Tạo tóm tắt cho tầng #${f}`"
           @click="summarizeOne(f)"
         >
           <span v-if="summarizingFloor === f" class="bbs-pending-spin"></span>
@@ -1073,37 +1073,37 @@ provide(SUMMARY_CTX, {
       </div>
     </div>
 
-    <!-- 批量补摘确认弹窗 -->
+    <!-- Hộp thoại xác nhận tóm tắt bù hàng loạt -->
     <ConfirmDialog
       v-model:open="batchConfirmOpen"
-      title="批量补摘"
-      confirmText="开始"
+      title="Tóm tắt bù hàng loạt"
+      confirmText="Bắt đầu"
       @confirm="runBatchBackfill"
     >
-      共 {{ pendingFloors.length }} 个未摘楼层,将按内容量分批、逐批串行补摘(比逐楼省 token、更快)。
-      过程中可随时取消(会在当前这批完成后停下)。继续?
+      Tổng cộng {{ pendingFloors.length }} tầng chưa tóm tắt, sẽ được chia đợt theo dung lượng nội dung và tóm tắt bù tuần tự từng đợt (tiết kiệm token và nhanh hơn so với từng tầng).
+      Trong quá trình chạy có thể hủy bất cứ lúc nào (sẽ dừng lại sau khi đợt hiện tại hoàn tất). Tiếp tục?
     </ConfirmDialog>
 
-    <!-- 当前状态 -->
+    <!-- Trạng thái hiện tại -->
     <div v-if="currentTime || memory.state.location" class="bbs-state">
       <div v-if="currentTime" class="bbs-state-item">
-        <span class="bbs-state-key">时间</span>
+        <span class="bbs-state-key">Thời gian</span>
         <span class="bbs-state-val">{{ currentTime }}<template v-if="currentWeekday"> ({{ currentWeekday }})</template></span>
       </div>
       <div v-if="memory.state.location" class="bbs-state-item">
-        <span class="bbs-state-key">地点</span>
+        <span class="bbs-state-key">Địa điểm</span>
         <span class="bbs-state-val">{{ memory.state.location }}</span>
       </div>
     </div>
 
     <p v-if="engineState.lastError" class="bbs-error">{{ engineState.lastError }}</p>
 
-    <!-- 默认视图:根倒序,逐层展开由 SummaryNode 递归承载(grid 高度过渡,不脱流、无闪烁) -->
+    <!-- Chế độ xem mặc định: gốc ngược thứ tự, mở rộng từng tầng do SummaryNode đệ quy đảm nhận (chuyển tiếp chiều cao grid, không rời luồng, không nhấp nháy) -->
     <div v-if="!searching && !selectMode && rootNodes.length" class="bbs-summary-list">
       <SummaryNode v-for="n in rootNodes" :key="`${n.kind}:${n.id}`" :node="n" :depth="0" />
     </div>
 
-    <!-- 搜索 / 选择视图:平铺列表(无逐层展开)。搜索命中含已压缩的深层节点 -->
+    <!-- Chế độ xem Tìm kiếm / Chọn: danh sách trải phẳng (không mở rộng từng tầng). Kết quả tìm kiếm bao gồm cả các nút tầng sâu đã nén -->
     <div
       v-else-if="visibleRows.length"
       class="bbs-summary-list"
@@ -1121,7 +1121,7 @@ provide(SUMMARY_CTX, {
         @keydown.enter.prevent="selectMode && toggleSelect(r.id)"
         @keydown.space.prevent="selectMode && toggleSelect(r.id)"
       >
-        <!-- 选择模式:复选框仅作视觉状态,点整卡即可勾选(label 不再包 input,避免双触发) -->
+        <!-- Chế độ chọn: hộp kiểm chỉ làm trạng thái thị giác, nhấn vào cả thẻ là tích chọn (label không bọc input nữa, tránh kích hoạt kép) -->
         <span v-if="selectMode" class="bbs-summary-check" aria-hidden="true">
           <input
             class="bbs-checkbox"
@@ -1133,27 +1133,27 @@ provide(SUMMARY_CTX, {
         </span>
         <div class="bbs-summary-main">
           <header class="bbs-summary-meta">
-            <!-- 总结:层级标签 + 范围药丸 + 相对时间(留题首行)+ 绝对时间(窄屏换行) -->
+            <!-- Đại tóm tắt: nhãn cấp độ + viên nang phạm vi + thời gian tương đối (giữ ở dòng đầu đề) + thời gian tuyệt đối (xuống dòng trên màn hình hẹp) -->
             <template v-if="r.kind === 'comp'">
               <span class="bbs-summary-badge">{{ levelLabel(r.level, r.imported) }}</span>
               <span class="bbs-summary-loc">{{ floorLabel(r) }}</span>
               <span v-if="rowRelative(r)" class="bbs-summary-rel">({{ rowRelative(r) }})</span>
               <span v-if="rowTime(r)" class="bbs-summary-time">{{ rowTime(r) }}</span>
             </template>
-            <!-- 摘要:相对时间 + 楼层号都做成等高小标签(盒子居中,免去 CJK 基线下沉),绝对时间作题首文本(窄屏换行) -->
+            <!-- Tóm tắt: thời gian tương đối + số tầng đều làm thành nhãn nhỏ cùng chiều cao (căn giữa hộp, tránh chìm đường cơ sở CJK), thời gian tuyệt đối làm văn bản đầu đề (xuống dòng trên màn hình hẹp) -->
             <template v-else>
               <span v-if="rowRelative(r)" class="bbs-summary-rel">{{ rowRelative(r) }}</span>
               <span class="bbs-summary-loc">{{ floorLabel(r) }}</span>
               <span v-if="rowTime(r)" class="bbs-summary-dateline">{{ rowTime(r) }}</span>
             </template>
-            <span v-if="r.stale" class="bbs-summary-stale">待更新</span>
-            <!-- 操作键:编辑对任何命中行开放(结构安全;叶子改完向量自动重 embed,总结不进向量库);
-                 删除仅根行(删深层会级联删祖先总结链);选择模式无操作 -->
+            <span v-if="r.stale" class="bbs-summary-stale">Chờ cập nhật</span>
+            <!-- Nút thao tác: chỉnh sửa mở cho bất kỳ dòng trúng nào (an toàn cấu trúc; lá sửa xong vector tự động embed lại, đại tóm tắt không vào kho vector);
+                 xóa chỉ dành cho dòng gốc (xóa tầng sâu sẽ xóa dây chuyền chuỗi đại tóm tắt tổ tiên); chế độ chọn không có thao tác -->
             <span v-if="!selectMode" class="bbs-summary-acts">
               <button
                 class="bbs-summary-act"
                 type="button"
-                :title="r.imported ? '编辑导入历史' : r.kind === 'comp' ? '编辑总结' : '编辑摘要'"
+                :title="r.imported ? 'Chỉnh sửa lịch sử nhập' : r.kind === 'comp' ? 'Chỉnh sửa đại tóm tắt' : 'Chỉnh sửa tóm tắt'"
                 @click="openEdit(r)"
               >
                 <Icon name="edit" />
@@ -1162,7 +1162,7 @@ provide(SUMMARY_CTX, {
                 v-if="!r.isChild"
                 class="bbs-summary-act bbs-summary-del"
                 type="button"
-                :title="r.imported ? '删除导入历史' : r.kind === 'comp' ? '删除总结(下层会展开)' : '删除摘要'"
+                :title="r.imported ? 'Xóa lịch sử nhập' : r.kind === 'comp' ? 'Xóa đại tóm tắt (tầng dưới sẽ mở rộng ra)' : 'Xóa tóm tắt'"
                 @click="onDelete(r)"
               >
                 <Icon name="trash" />
@@ -1178,49 +1178,49 @@ provide(SUMMARY_CTX, {
         </div>
       </article>
     </div>
-    <!-- 搜索无结果:与「还没有摘要」区分 -->
+    <!-- Tìm kiếm không có kết quả: phân biệt với "Chưa có tóm tắt" -->
     <div v-else-if="searching" class="bbs-empty">
       <span class="bbs-empty-icon"><Icon name="search" /></span>
-      <p>没有匹配「{{ searchQuery.trim() }}」的摘要。换个关键词,或输入 #楼层号试试。</p>
+      <p>Không có bản tóm tắt nào khớp với "{{ searchQuery.trim() }}". Hãy thử đổi từ khóa khác, hoặc nhập #số tầng.</p>
     </div>
     <div v-else class="bbs-empty">
       <span class="bbs-empty-icon"><Icon name="summary" /></span>
-      <p>还没有摘要。对话累积到设定楼层后会自动生成,也可在「未摘要楼层」里点楼层号单独补摘。</p>
+      <p>Chưa có tóm tắt nào. Sau khi đối thoại tích lũy tới tầng đã thiết lập sẽ tự động tạo, cũng có thể nhấn vào số tầng trong phần "Tầng chưa tóm tắt" để tóm tắt bù riêng.</p>
     </div>
 
-    <!-- 选择模式底部操作条:显示已选统计 + 全选/删除/合并。sticky 在页面底部 -->
+    <!-- Thanh thao tác đáy ở chế độ chọn: hiển thị thống kê đã chọn + Chọn tất cả / Xóa / Gộp. sticky ở đáy trang -->
     <div v-if="selectMode" class="bbs-select-bar">
       <span class="bbs-select-info">
         <template v-if="selectionSummary.count">
-          已选 {{ selectionSummary.count }} 条
+          Đã chọn {{ selectionSummary.count }} mục
           <template v-if="selectionSummary.floorLo >= 0">
-            · 覆盖 {{ selectionSummary.floorLo === selectionSummary.floorHi ? `#${selectionSummary.floorLo}` : `#${selectionSummary.floorLo} - #${selectionSummary.floorHi}` }}
+            · Bao phủ {{ selectionSummary.floorLo === selectionSummary.floorHi ? `#${selectionSummary.floorLo}` : `#${selectionSummary.floorLo} - #${selectionSummary.floorHi}` }}
           </template>
-          · 生成 {{ levelLabel(selectionSummary.level) }}
+          · Tạo {{ levelLabel(selectionSummary.level) }}
         </template>
-        <template v-else>勾选连续的多条摘要合并</template>
+        <template v-else>Tích chọn nhiều bản tóm tắt liên tiếp để gộp</template>
       </span>
-      <span v-if="selectionSummary.count >= 2 && !canMerge" class="bbs-select-warn">需选连续的摘要</span>
-      <!-- 全选/取消全选:列表长时免逐条点;文案随 allSelected 切换 -->
+      <span v-if="selectionSummary.count >= 2 && !canMerge" class="bbs-select-warn">Cần chọn các bản tóm tắt liên tiếp</span>
+      <!-- Chọn tất cả / Bỏ chọn tất cả: khi danh sách dài khỏi phải nhấn từng mục; văn bản chuyển đổi theo allSelected -->
       <button
         class="bbs-btn bbs-btn-sm"
         type="button"
         :disabled="!rootNodes.length || deleting"
-        :title="allSelected ? '取消全选' : '全选全部根摘要'"
+        :title="allSelected ? 'Bỏ chọn tất cả' : 'Chọn tất cả các tóm tắt gốc'"
         @click="toggleSelectAll"
       >
-        {{ allSelected ? '取消全选' : '全选' }}
+        {{ allSelected ? 'Bỏ chọn tất cả' : 'Chọn tất cả' }}
       </button>
       <button
         class="bbs-btn bbs-btn-sm bbs-btn-danger"
         type="button"
         :disabled="!selectionSummary.count || deleting || merging || engineState.running"
-        title="删除所选条目及其收纳的下层摘要"
+        title="Xóa các mục đã chọn cùng các tóm tắt tầng dưới được chúng thu nạp"
         @click="openDeleteConfirm"
       >
         <span v-if="deleting" class="bbs-pending-spin"></span>
         <Icon v-else name="trash" />
-        删除所选
+        Xóa mục đã chọn
       </button>
       <button
         class="bbs-btn bbs-btn-sm bbs-btn-primary"
@@ -1230,58 +1230,58 @@ provide(SUMMARY_CTX, {
       >
         <span v-if="merging" class="bbs-pending-spin"></span>
         <Icon v-else name="plans" />
-        合并总结
+        Gộp đại tóm tắt
       </button>
     </div>
 
-    <!-- 合并确认弹窗 -->
+    <!-- Hộp thoại xác nhận gộp -->
     <ConfirmDialog
       v-model:open="mergeConfirmOpen"
-      title="合并总结"
-      confirmText="合并"
+      title="Gộp đại tóm tắt"
+      confirmText="Gộp"
       @confirm="runMerge"
     >
-      将把选中的 {{ selectionSummary.count }} 条摘要合并成一条 {{ levelLabel(selectionSummary.level) }}(无视自动总结阈值)。
-      原摘要会被收纳进新总结、从列表收起(数据不删,可删掉新总结还原)。继续?
+      Sẽ gộp {{ selectionSummary.count }} bản tóm tắt đã chọn thành một {{ levelLabel(selectionSummary.level) }} (bỏ qua ngưỡng đại tóm tắt tự động).
+      Các bản tóm tắt gốc sẽ được thu nạp vào đại tóm tắt mới và thu gọn khỏi danh sách (dữ liệu không bị xóa, có thể xóa bản đại tóm tắt mới để khôi phục). Tiếp tục?
     </ConfirmDialog>
 
-    <!-- 批量删除确认:选中总结代表整段历史,会连同其收纳的下层节点永久删除。 -->
+    <!-- Xác nhận xóa hàng loạt: chọn đại tóm tắt đại diện cho cả đoạn lịch sử, sẽ xóa vĩnh viễn cùng với các nút tầng dưới được nó thu nạp. -->
     <ConfirmDialog
       v-model:open="deleteConfirmOpen"
-      :title="allSelected ? '清空全部摘要' : '删除所选摘要'"
-      confirmText="删除"
+      :title="allSelected ? 'Xóa sạch toàn bộ tóm tắt' : 'Xóa tóm tắt đã chọn'"
+      confirmText="Xóa"
       confirmIcon="trash"
       tone="danger"
       @confirm="runDeleteSelected"
     >
-      将永久删除所选 {{ selectionSummary.count }} 个条目所代表的全部内容
-      ({{ selectionDeleteSummary.leaves }} 条逐楼摘要、{{ selectionDeleteSummary.summaries }} 条总结)。
-      选中的总结所收纳的下层摘要也会一并删除；逐楼摘要带来的物品、计划、时间地点等状态会按剩余摘要重新计算，原文楼层仍保持隐藏。
-      <template v-if="selectionDeleteSummary.imported">导入历史覆盖的原文楼层会重新显示。</template>
-      此操作无法撤销，继续?
+      Sẽ xóa vĩnh viễn toàn bộ nội dung đại diện bởi {{ selectionSummary.count }} mục đã chọn
+      ({{ selectionDeleteSummary.leaves }} bản tóm tắt từng tầng, {{ selectionDeleteSummary.summaries }} bản đại tóm tắt).
+      Các tóm tắt tầng dưới được thu nạp bởi đại tóm tắt đã chọn cũng sẽ bị xóa theo; các trạng thái vật phẩm, kế hoạch, thời gian địa điểm... do tóm tắt từng tầng mang lại sẽ được tính toán lại theo các tóm tắt còn lại, tầng nguyên văn vẫn giữ nguyên trạng thái ẩn.
+      <template v-if="selectionDeleteSummary.imported">Các tầng nguyên văn được bao phủ bởi lịch sử nhập sẽ hiển thị trở lại.</template>
+      Thao tác này không thể hoàn tác, tiếp tục?
     </ConfirmDialog>
 
-    <!-- ===== 导入旧总结弹窗 ===== -->
+    <!-- ===== Hộp thoại nhập đại tóm tắt cũ ===== -->
     <ModalMask :open="importHistoryOpen" @close="closeImportHistory">
-      <div class="bbs-modal" role="dialog" aria-modal="true" aria-label="导入旧总结">
+      <div class="bbs-modal" role="dialog" aria-modal="true" aria-label="Nhập đại tóm tắt cũ">
         <header class="bbs-modal-head">
-          <span class="bbs-modal-title">导入旧总结</span>
-          <button class="bbs-summary-act" type="button" title="关闭" @click="closeImportHistory"><Icon name="close" /></button>
+          <span class="bbs-modal-title">Nhập đại tóm tắt cũ</span>
+          <button class="bbs-summary-act" type="button" title="Đóng" @click="closeImportHistory"><Icon name="close" /></button>
         </header>
         <p class="bbs-field-hint bbs-import-note">
-          把使用柏宝书之前写在世界书等位置的剧情总结粘贴到这里。只导入叙事正文,不会自动生成物品、计划或角色状态。
+          Dán bản tổng kết cốt truyện được viết ở Sách Thế Giới hoặc nơi khác trước khi sử dụng Bách Bảo Thư vào đây. Chỉ nhập nội dung tự sự, không tự động tạo vật phẩm, kế hoạch hay trạng thái nhân vật.
         </p>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">旧总结正文</span>
+          <span class="bbs-modal-label">Nội dung đại tóm tắt cũ</span>
           <textarea
             v-model="importHistoryText"
             class="bbs-input bbs-modal-textarea"
             rows="10"
-            placeholder="粘贴按时间顺序整理好的旧剧情总结…"
+            placeholder="Dán bản tổng kết cốt truyện cũ đã được sắp xếp theo trình tự thời gian…"
           ></textarea>
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">覆盖截止楼层(含)</span>
+          <span class="bbs-modal-label">Tầng kết thúc bao phủ (bao gồm cả tầng này)</span>
           <input
             v-model.number="importHistoryFloor"
             class="bbs-input"
@@ -1289,119 +1289,119 @@ provide(SUMMARY_CTX, {
             min="0"
             :max="importHistoryMaxFloor"
           />
-          <span class="bbs-field-hint">导入内容将代表 #0 - #{{ importHistoryFloor }}；这些楼层不再重复补摘。当前最后一个 AI 楼层为 #{{ importHistoryMaxFloor }}。</span>
+          <span class="bbs-field-hint">Nội dung nhập sẽ đại diện cho #0 - #{{ importHistoryFloor }}; các tầng này sẽ không bị tóm tắt bù trùng lặp nữa. Tầng AI cuối cùng hiện tại là #{{ importHistoryMaxFloor }}.</span>
         </label>
         <p class="bbs-field-hint bbs-import-warning">
-          导入后请停用世界书里的原总结条目,避免主模型同时收到两份重复内容。原世界书不会被本操作修改。
+          Sau khi nhập vui lòng tắt mục tổng kết cũ trong Sách Thế Giới để tránh việc mô hình chính nhận đồng thời hai bản nội dung trùng lặp. Sách Thế Giới gốc sẽ không bị thao tác này sửa đổi.
         </p>
         <footer class="bbs-modal-foot">
-          <button class="bbs-btn" type="button" @click="closeImportHistory">取消</button>
-          <button class="bbs-btn bbs-btn-primary" type="button" :disabled="!importHistoryText.trim()" @click="saveImportedHistory">导入</button>
+          <button class="bbs-btn" type="button" @click="closeImportHistory">Hủy</button>
+          <button class="bbs-btn bbs-btn-primary" type="button" :disabled="!importHistoryText.trim()" @click="saveImportedHistory">Nhập</button>
         </footer>
       </div>
     </ModalMask>
 
-    <!-- ===== 添加计划 / 悬念弹窗 ===== -->
+    <!-- ===== Hộp thoại thêm Kế hoạch / Nghi vấn ===== -->
     <ModalMask :open="composerOpen" @close="closeComposer">
-      <div class="bbs-modal" role="dialog" aria-modal="true" aria-label="添加计划或悬念">
+      <div class="bbs-modal" role="dialog" aria-modal="true" aria-label="Thêm kế hoạch hoặc nghi vấn">
         <header class="bbs-modal-head">
-          <span class="bbs-modal-title">添加计划 / 悬念</span>
-          <button class="bbs-summary-act" type="button" title="关闭" @click="closeComposer"><Icon name="close" /></button>
+          <span class="bbs-modal-title">Thêm Kế hoạch / Nghi vấn</span>
+          <button class="bbs-summary-act" type="button" title="Đóng" @click="closeComposer"><Icon name="close" /></button>
         </header>
         <div class="bbs-modal-field">
-          <span class="bbs-modal-label">类型</span>
+          <span class="bbs-modal-label">Loại</span>
           <div class="bbs-kind-toggle">
-            <button type="button" class="bbs-kind" :class="{ 'is-on': newKind === 'plan' }" @click="newKind = 'plan'">计划</button>
-            <button type="button" class="bbs-kind" :class="{ 'is-on': newKind === 'suspense' }" @click="newKind = 'suspense'">悬念</button>
+            <button type="button" class="bbs-kind" :class="{ 'is-on': newKind === 'plan' }" @click="newKind = 'plan'">Kế hoạch</button>
+            <button type="button" class="bbs-kind" :class="{ 'is-on': newKind === 'suspense' }" @click="newKind = 'suspense'">Nghi vấn</button>
           </div>
         </div>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">内容</span>
+          <span class="bbs-modal-label">Nội dung</span>
           <textarea
             ref="contentInput"
             v-model="newContent"
             class="bbs-input bbs-modal-textarea"
             rows="3"
-            placeholder="描述这条计划或悬念…"
+            placeholder="Mô tả kế hoạch hoặc nghi vấn này…"
             @keydown.enter.exact.prevent="addPlan"
           ></textarea>
         </label>
-        <!-- 目标时间仅「计划」可填,可选;悬念一般无目标时间故不显示 -->
+        <!-- Thời gian mục tiêu chỉ "Kế hoạch" mới điền được, tùy chọn; nghi vấn thường không có thời gian mục tiêu nên không hiển thị -->
         <label v-if="newKind === 'plan'" class="bbs-modal-field">
-          <span class="bbs-modal-label">目标时间(可选)</span>
+          <span class="bbs-modal-label">Thời gian mục tiêu (tùy chọn)</span>
           <input
             v-model="newTargetTime"
             class="bbs-input"
             type="text"
-            placeholder="如 放学后 / 1988/10/1;模糊或留空都可"
+            placeholder="VD: Sau giờ học / 1988/10/1; ước chừng hoặc để trống đều được"
           />
         </label>
         <footer class="bbs-modal-foot">
-          <button class="bbs-btn" type="button" @click="closeComposer">取消</button>
-          <button class="bbs-btn bbs-btn-primary" type="button" :disabled="!newContent.trim()" @click="addPlan">添加</button>
+          <button class="bbs-btn" type="button" @click="closeComposer">Hủy</button>
+          <button class="bbs-btn bbs-btn-primary" type="button" :disabled="!newContent.trim()" @click="addPlan">Thêm</button>
         </footer>
       </div>
     </ModalMask>
 
-    <!-- ===== 编辑计划 / 悬念弹窗 ===== -->
+    <!-- ===== Hộp thoại chỉnh sửa Kế hoạch / Nghi vấn ===== -->
     <ModalMask :open="!!editingPlan" @close="cancelPlanEdit">
-      <div v-if="editingPlan" class="bbs-modal" role="dialog" aria-modal="true" aria-label="编辑计划或悬念">
+      <div v-if="editingPlan" class="bbs-modal" role="dialog" aria-modal="true" aria-label="Chỉnh sửa kế hoạch hoặc nghi vấn">
         <header class="bbs-modal-head">
-          <span class="bbs-modal-title">编辑{{ editingPlan.kind === 'suspense' ? '悬念' : '计划' }}</span>
-          <button class="bbs-summary-act" type="button" title="关闭" @click="cancelPlanEdit"><Icon name="close" /></button>
+          <span class="bbs-modal-title">Chỉnh sửa {{ editingPlan.kind === 'suspense' ? 'nghi vấn' : 'kế hoạch' }}</span>
+          <button class="bbs-summary-act" type="button" title="Đóng" @click="cancelPlanEdit"><Icon name="close" /></button>
         </header>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">内容</span>
+          <span class="bbs-modal-label">Nội dung</span>
           <textarea v-model="editingPlan.content" class="bbs-input bbs-modal-textarea" rows="3"></textarea>
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">创建时间(可选)</span>
-          <input v-model="editingPlan.createdTime" class="bbs-input" type="text" placeholder="故事内时间,如 1988/9/29" />
+          <span class="bbs-modal-label">Thời gian tạo (tùy chọn)</span>
+          <input v-model="editingPlan.createdTime" class="bbs-input" type="text" placeholder="Thời gian trong truyện, VD: 1988/9/29" />
         </label>
         <label v-if="editingPlan.kind === 'plan'" class="bbs-modal-field">
-          <span class="bbs-modal-label">目标时间(可选)</span>
-          <input v-model="editingPlan.targetTime" class="bbs-input" type="text" placeholder="如 放学后 / 1988/10/1;模糊或留空都可" />
+          <span class="bbs-modal-label">Thời gian mục tiêu (tùy chọn)</span>
+          <input v-model="editingPlan.targetTime" class="bbs-input" type="text" placeholder="VD: Sau giờ học / 1988/10/1; ước chừng hoặc để trống đều được" />
         </label>
         <footer class="bbs-modal-foot">
-          <button class="bbs-btn" type="button" @click="cancelPlanEdit">取消</button>
-          <button class="bbs-btn bbs-btn-primary" type="button" :disabled="!editingPlan.content.trim()" @click="savePlanEdit">保存</button>
+          <button class="bbs-btn" type="button" @click="cancelPlanEdit">Hủy</button>
+          <button class="bbs-btn bbs-btn-primary" type="button" :disabled="!editingPlan.content.trim()" @click="savePlanEdit">Lưu</button>
         </footer>
       </div>
     </ModalMask>
 
-    <!-- ===== 编辑弹窗 ===== -->
+    <!-- ===== Hộp thoại chỉnh sửa ===== -->
     <ModalMask :open="!!editing" @close="cancelEdit">
-      <div v-if="editing" class="bbs-modal" role="dialog" aria-modal="true" :aria-label="editing.kind === 'comp' ? '编辑总结' : '编辑摘要'">
+      <div v-if="editing" class="bbs-modal" role="dialog" aria-modal="true" :aria-label="editing.kind === 'comp' ? 'Chỉnh sửa đại tóm tắt' : 'Chỉnh sửa tóm tắt'">
         <header class="bbs-modal-head">
           <span class="bbs-modal-title">
-            {{ editing.kind === 'comp' ? `编辑${levelLabel(editing.level, editing.imported)}` : `编辑摘要 · 楼层 #${editing.msgIndex}` }}
+            {{ editing.kind === 'comp' ? `Chỉnh sửa ${levelLabel(editing.level, editing.imported)}` : `Chỉnh sửa tóm tắt · Tầng #${editing.msgIndex}` }}
           </span>
-          <button class="bbs-summary-act" type="button" title="关闭" @click="cancelEdit"><Icon name="close" /></button>
+          <button class="bbs-summary-act" type="button" title="Đóng" @click="cancelEdit"><Icon name="close" /></button>
         </header>
-        <!-- 已被总结收纳的节点:提醒上层总结不会跟着变。叶子才提向量召回(总结不进向量库) -->
+        <!-- Nút đã được đại tóm tắt thu nạp: nhắc nhở đại tóm tắt tầng trên sẽ không tự đổi theo. Chỉ lá mới nhắc truy xuất vector (đại tóm tắt không vào kho vector) -->
         <p v-if="editing.nested" class="bbs-field-hint bbs-nested-hint">
           {{ editing.kind === 'leaf'
-            ? '这条已被上层总结收纳:改动会用于向量召回,但上层总结的文本不会自动更新;若总结里也有同样的错误,请一并编辑。'
-            : '这条已被更上层总结收纳:改动不会同步到上层总结;若上层里也有同样的错误,请一并编辑。' }}
+            ? 'Mục này đã được đại tóm tắt tầng trên thu nạp: thay đổi sẽ được dùng cho truy xuất vector, nhưng văn bản của đại tóm tắt tầng trên sẽ không tự động cập nhật; nếu trong đại tóm tắt cũng có lỗi tương tự, vui lòng chỉnh sửa cả ở đó.'
+            : 'Mục này đã được đại tóm tắt tầng cao hơn thu nạp: thay đổi sẽ không đồng bộ lên đại tóm tắt tầng trên; nếu ở tầng trên cũng có lỗi tương tự, vui lòng chỉnh sửa cả ở đó.' }}
         </p>
-        <!-- 时间仅叶子可编辑(起止两端);总结只压文本,无时间字段 -->
+        <!-- Thời gian chỉ lá mới chỉnh sửa được (hai đầu bắt đầu và kết thúc); đại tóm tắt chỉ nén văn bản, không có trường thời gian -->
         <div v-if="editing.kind === 'leaf'" class="bbs-modal-field bbs-time-pair">
           <label class="bbs-time-col">
-            <span class="bbs-modal-label">起始时间</span>
-            <input v-model="editing.timeStart" class="bbs-input" type="text" placeholder="如 1988/9/29 21:00" />
+            <span class="bbs-modal-label">Thời gian bắt đầu</span>
+            <input v-model="editing.timeStart" class="bbs-input" type="text" placeholder="VD: 1988/9/29 21:00" />
           </label>
           <label class="bbs-time-col">
-            <span class="bbs-modal-label">结束时间</span>
-            <input v-model="editing.timeEnd" class="bbs-input" type="text" placeholder="如 1988/9/29 21:30" />
+            <span class="bbs-modal-label">Thời gian kết thúc</span>
+            <input v-model="editing.timeEnd" class="bbs-input" type="text" placeholder="VD: 1988/9/29 21:30" />
           </label>
         </div>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">{{ editing.kind === 'comp' ? (editing.imported ? '导入历史正文' : '总结正文') : '摘要正文' }}</span>
+          <span class="bbs-modal-label">{{ editing.kind === 'comp' ? (editing.imported ? 'Nội dung lịch sử nhập' : 'Nội dung đại tóm tắt') : 'Nội dung tóm tắt' }}</span>
           <textarea v-model="editing.text" class="bbs-input bbs-modal-textarea" rows="8"></textarea>
         </label>
         <footer class="bbs-modal-foot">
-          <button class="bbs-btn" type="button" @click="cancelEdit">取消</button>
-          <button class="bbs-btn bbs-btn-primary" type="button" @click="saveEdit">保存</button>
+          <button class="bbs-btn" type="button" @click="cancelEdit">Hủy</button>
+          <button class="bbs-btn bbs-btn-primary" type="button" @click="saveEdit">Lưu</button>
         </footer>
       </div>
     </ModalMask>
@@ -1414,7 +1414,7 @@ provide(SUMMARY_CTX, {
   display: flex;
   flex-direction: column;
 }
-/* 起止时间:两个输入框并排,各占一半 */
+/* Thời gian bắt đầu và kết thúc: hai ô nhập xếp cạnh nhau, mỗi ô chiếm một nửa */
 .bbs-time-pair {
   display: flex;
   gap: 10px;
@@ -1433,16 +1433,16 @@ provide(SUMMARY_CTX, {
 .bbs-import-warning {
   color: var(--bbs-warning);
 }
-/* 编辑已被总结收纳的节点时的提醒 */
+/* Lời nhắc khi chỉnh sửa nút đã được đại tóm tắt thu nạp */
 .bbs-nested-hint {
   margin-bottom: 14px;
   color: var(--bbs-warning);
 }
-/* .bbs-section-head / .bbs-add-mini 已提升为 base.css 全局原子(摘要、场景共用) */
+/* .bbs-section-head / .bbs-add-mini đã được nâng lên thành nguyên tử toàn cục trong base.css (Tóm tắt và Khung cảnh dùng chung) */
 
-/* —— 悬念簿折叠开关 ——
- * 标题行整体可点:左箭头 + 标题 + 金色计数标。无框透明,贴着 section-head 的左缘,
- * 不喧宾夺主——折叠是辅助操作,标题仍是主体。 */
+/* —— Công tắc thu gọn Sổ nghi vấn ——
+ * Toàn bộ dòng tiêu đề có thể nhấn: mũi tên trái + tiêu đề + nhãn đếm màu vàng. Không khung trong suốt, bám sát mép trái của section-head,
+ * không lấn át chủ thể —— thu gọn là thao tác phụ trợ, tiêu đề vẫn là chủ thể. */
 .bbs-fold-head {
   flex: 1 1 auto;
   min-width: 0;
@@ -1456,12 +1456,12 @@ provide(SUMMARY_CTX, {
   text-align: left;
   cursor: pointer;
 }
-/* 无可折叠(零条目)时退化为普通标题:不是按钮观感、光标默认 */
+/* Khi không có gì để thu gọn (không có mục nào) thì thoái hóa thành tiêu đề thường: không mang cảm giác nút bấm, con trỏ mặc định */
 .bbs-fold-head.is-static {
   cursor: default;
 }
-/* 折叠箭头:展开朝下,收拢转 -90° 朝右——像「合上这一章」。
-   描边继承 currentColor(muted),hover 整行才点亮强调色。 */
+/* Mũi tên thu gọn: mở rộng hướng xuống, thu gọn xoay -90° hướng sang phải —— giống như "khép chương này lại".
+   Nét viền kế thừa currentColor (muted), hover cả dòng mới bật sáng màu nhấn. */
 .bbs-fold-caret {
   flex: 0 0 auto;
   color: var(--bbs-ink-muted);
@@ -1474,8 +1474,8 @@ provide(SUMMARY_CTX, {
 .bbs-fold-head:focus-visible .bbs-fold-caret {
   color: var(--bbs-accent);
 }
-/* 计数标:金底描边小药丸,呼应账册「结尾计数」,始终显示;收拢时尤其有用——点明藏了多少条。
-   margin-top:2px —— 标题是 CJK 大字,基线偏低,小药丸按行盒居中会偏上,下压 2px 才视觉对齐。 */
+/* Nhãn đếm: viên nang nhỏ viền nền vàng, hưởng ứng "bộ đếm cuối trang" của sổ cái, luôn hiển thị; khi thu gọn lại càng hữu ích —— chỉ rõ đang ẩn bao nhiêu mục.
+   margin-top:2px —— tiêu đề là chữ lớn, đường cơ sở hơi thấp, viên nang nhỏ căn giữa theo hộp dòng sẽ hơi lệch lên trên, ép xuống 2px mới căn chỉnh về mặt thị giác. */
 .bbs-fold-count {
   flex: 0 0 auto;
   margin-top: 2px;
@@ -1488,12 +1488,12 @@ provide(SUMMARY_CTX, {
   padding: 1px 9px;
   font-variant-numeric: tabular-nums;
 }
-/* 两区平级并列:靠间距 + 各自标题分隔即可;更重的鱼尾分章线留给「账目区 ↔ 摘要」那道界 */
+/* Hai vùng ngang cấp xếp cạnh nhau: ngăn cách nhờ khoảng cách + tiêu đề riêng của mỗi vùng là đủ; đường phân chương đuôi cá đậm hơn dành cho ranh giới "Vùng sổ sách ↔ Tóm tắt" */
 .bbs-fold-section + .bbs-fold-section {
   margin-top: 22px;
 }
 
-/* —— 可收展容器:grid 1fr↔0fr,高度随内容自适应,无需写死 max-height —— */
+/* —— Vùng chứa có thể thu mở: grid 1fr↔0fr, chiều cao tự thích ứng theo nội dung, không cần viết cứng max-height —— */
 .bbs-fold-wrap {
   display: grid;
   grid-template-rows: 1fr;
@@ -1502,7 +1502,7 @@ provide(SUMMARY_CTX, {
 .bbs-fold-wrap.is-collapsed {
   grid-template-rows: 0fr;
 }
-/* min-height:0 + overflow:hidden 才能让 0fr 真正压到零高(否则子项最小内容高顶开) */
+/* min-height:0 + overflow:hidden mới có thể ép 0fr thực sự về chiều cao bằng không (nếu không chiều cao nội dung tối thiểu của mục con sẽ chống mở ra) */
 .bbs-fold-inner {
   min-height: 0;
   overflow: hidden;
@@ -1535,7 +1535,7 @@ provide(SUMMARY_CTX, {
   gap: 10px;
   margin-top: 14px;
 }
-/* 卡片竖排:标签行在上(类型药丸 + 右侧小删除键),内容占满整宽在下 */
+/* Thẻ xếp dọc: dòng nhãn ở trên (viên nang loại + nút xóa nhỏ bên phải), nội dung chiếm trọn chiều rộng ở dưới */
 .bbs-plan {
   display: flex;
   flex-direction: column;
@@ -1545,13 +1545,13 @@ provide(SUMMARY_CTX, {
   border-radius: var(--bbs-radius);
   background: var(--bbs-surface);
 }
-/* 标签行:类型药丸靠左,删除键推到最右 */
+/* Dòng nhãn: viên nang loại dạt sang trái, nút xóa đẩy về ngoài cùng bên phải */
 .bbs-plan-head {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-/* 类型标签:小药丸,用颜色区分计划/悬念 */
+/* Nhãn loại: viên nang nhỏ, dùng màu sắc phân biệt Kế hoạch / Nghi vấn */
 .bbs-plan-kind {
   flex: 0 0 auto;
   font-size: 11px;
@@ -1568,7 +1568,7 @@ provide(SUMMARY_CTX, {
   color: var(--bbs-warning);
   background: var(--bbs-warning-soft);
 }
-/* 楼层号:创建该计划/悬念时所在楼层,描边定位标签;与摘要列表 #楼层 同款观感 */
+/* Số tầng: tầng tại thời điểm tạo kế hoạch/nghi vấn đó, nhãn định vị nét viền; cùng cảm giác nhìn với #tầng của danh sách tóm tắt */
 .bbs-plan-floor {
   flex: 0 0 auto;
   font-size: 11px;
@@ -1580,7 +1580,7 @@ provide(SUMMARY_CTX, {
   padding: 1px 7px;
   font-variant-numeric: tabular-nums;
 }
-/* 动作组(编辑/删除)推到最右;平时低调,桌面 hover/聚焦该卡才浮现 */
+/* Nhóm hành động (chỉnh sửa/xóa) đẩy về ngoài cùng bên phải; bình thường trầm lắng, trên máy tính hover/focus vào thẻ đó mới hiện lên */
 .bbs-plan-acts {
   margin-left: auto;
   flex: 0 0 auto;
@@ -1593,7 +1593,7 @@ provide(SUMMARY_CTX, {
 .bbs-plan:focus-within .bbs-plan-acts {
   opacity: 1;
 }
-/* 单个动作键:小而 muted */
+/* Nút hành động đơn lẻ: nhỏ và muted */
 .bbs-plan-act {
   flex: 0 0 auto;
   display: inline-flex;
@@ -1618,7 +1618,7 @@ provide(SUMMARY_CTX, {
   color: var(--bbs-danger);
   background: var(--bbs-danger-soft);
 }
-/* 内容:独占整宽,自然换行 */
+/* Nội dung: chiếm riêng toàn bộ chiều rộng, xuống dòng tự nhiên */
 .bbs-plan-content {
   margin: 0;
   font-size: 14px;
@@ -1626,7 +1626,7 @@ provide(SUMMARY_CTX, {
   color: var(--bbs-ink);
   word-break: break-word;
 }
-/* 计划时间:立于/目标 两枚小标签,描边低调,目标用强调色区分 */
+/* Thời gian kế hoạch: hai nhãn nhỏ Lập lúc / Mục tiêu, viền trầm lắng, Mục tiêu dùng màu nhấn để phân biệt */
 .bbs-plan-times {
   display: flex;
   flex-wrap: wrap;
@@ -1650,7 +1650,7 @@ provide(SUMMARY_CTX, {
   color: var(--bbs-ink-muted);
 }
 
-/* —— 当前状态 —— */
+/* —— Trạng thái hiện tại —— */
 .bbs-state {
   display: flex;
   flex-wrap: wrap;
@@ -1661,7 +1661,7 @@ provide(SUMMARY_CTX, {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-width: 0; /* 允许本项在 wrap 容器内收缩,收缩额度由下面两个子项分配 */
+  min-width: 0; /* Cho phép mục này thu hẹp trong vùng chứa wrap, hạn mức thu hẹp do hai mục con bên dưới phân bổ */
 }
 .bbs-state-key {
   font-size: 11px;
@@ -1669,8 +1669,8 @@ provide(SUMMARY_CTX, {
   border: 1px solid var(--bbs-accent);
   border-radius: var(--bbs-radius-pill);
   padding: 1px 8px;
-  /* 药丸固宽:长地名会把整项撑超宽,默认 flex-shrink:1 会连这枚标签一起压扁
-     (内距被吃、「地点」二字竖排)。让它不参与收缩,超出的宽度全由右侧值消化 */
+  /* Viên nang chiều rộng cố định: tên địa điểm dài sẽ kéo giãn toàn bộ mục quá rộng, mặc định flex-shrink:1 sẽ ép bẹp cả nhãn này
+     (lề trong bị nuốt mất, chữ "Địa điểm" bị xếp dọc). Để nó không tham gia thu hẹp, chiều rộng vượt quá hoàn toàn do giá trị bên phải tiêu hóa */
   flex: none;
   white-space: nowrap;
 }
@@ -1687,7 +1687,7 @@ provide(SUMMARY_CTX, {
   color: var(--bbs-danger);
 }
 
-/* —— 立即总结按钮:摘要标题右侧的次级操作,小一号,带图标 —— */
+/* —— Nút Đại tóm tắt ngay: thao tác thứ cấp bên phải tiêu đề Tóm tắt, nhỏ hơn một cỡ, kèm biểu tượng —— */
 .bbs-resummary-btn {
   flex: 0 0 auto;
   display: inline-flex;
@@ -1696,7 +1696,7 @@ provide(SUMMARY_CTX, {
   padding: 6px 11px;
   font-size: 12px;
 }
-/* 复用未摘要楼层的旋转环(.bbs-pending-spin),此处微调尺寸贴合按钮文字 */
+/* Tái sử dụng vòng xoay của tầng chưa tóm tắt (.bbs-pending-spin), ở đây tinh chỉnh kích thước cho khớp chữ nút bấm */
 .bbs-resummary-btn .bbs-pending-spin {
   width: 12px;
   height: 12px;
@@ -1707,7 +1707,7 @@ provide(SUMMARY_CTX, {
   color: var(--bbs-ink-soft);
 }
 
-/* —— 未摘要楼层:待办面板,用强调色描边的卡片框起来,提示「这些楼还没摘」 —— */
+/* —— Tầng chưa tóm tắt: bảng việc cần làm, đóng khung bằng thẻ viền màu nhấn, nhắc nhở "những tầng này chưa được tóm tắt" —— */
 .bbs-pending {
   display: flex;
   flex-direction: column;
@@ -1718,7 +1718,7 @@ provide(SUMMARY_CTX, {
   border-radius: var(--bbs-radius);
   background: var(--bbs-accent-soft);
 }
-/* 标题行:标签靠左,批量补摘按钮/进度推到右侧 */
+/* Dòng tiêu đề: nhãn dạt sang trái, nút/tiến độ tóm tắt bù hàng loạt đẩy sang bên phải */
 .bbs-pending-head {
   display: flex;
   align-items: center;
@@ -1732,7 +1732,7 @@ provide(SUMMARY_CTX, {
   font-weight: 600;
   color: var(--bbs-accent);
 }
-/* 批量补摘按钮:推到标题行最右,小一号带图标 */
+/* Nút tóm tắt bù hàng loạt: đẩy về ngoài cùng bên phải dòng tiêu đề, nhỏ hơn một cỡ kèm biểu tượng */
 .bbs-batch-btn {
   margin-left: auto;
   flex: 0 0 auto;
@@ -1742,7 +1742,7 @@ provide(SUMMARY_CTX, {
   padding: 5px 11px;
   font-size: 12px;
 }
-/* 批量进行中的进度块:旋转环 + 进度文字 + 取消键 */
+/* Khối tiến độ khi đang chạy hàng loạt: vòng xoay + chữ tiến độ + nút hủy */
 .bbs-batch-progress {
   margin-left: auto;
   flex: 0 0 auto;
@@ -1777,7 +1777,7 @@ provide(SUMMARY_CTX, {
   opacity: 0.55;
   cursor: default;
 }
-/* 标签后跟一枚计数小点,强化「有 N 楼待办」 */
+/* Sau nhãn kèm một chấm đếm nhỏ, nhấn mạnh "có N tầng chờ xử lý" */
 .bbs-pending-label::after {
   content: attr(data-count);
   display: inline-flex;
@@ -1822,7 +1822,7 @@ provide(SUMMARY_CTX, {
   opacity: 0.55;
   cursor: default;
 }
-/* 生成中:小旋转环替代楼层号 */
+/* Đang tạo: vòng xoay nhỏ thay thế cho số tầng */
 .bbs-pending-spin {
   width: 13px;
   height: 13px;
@@ -1837,7 +1837,7 @@ provide(SUMMARY_CTX, {
   }
 }
 
-/* —— 眼下局势卡:与角色卡同构——左色条 + 头行(在场者+记时+操作区)+ 主文 + 分类标签字段表 —— */
+/* —— Thẻ cục diện trước mắt: đồng dạng với thẻ nhân vật —— vạch màu bên trái + dòng đầu (người có mặt + ghi thời gian + vùng thao tác) + văn bản chính + bảng trường nhãn phân loại —— */
 .bbs-focus-acts {
   display: inline-flex;
   gap: 2px;
@@ -1855,9 +1855,9 @@ provide(SUMMARY_CTX, {
   border: 1px solid var(--bbs-line);
   border-radius: var(--bbs-radius);
   background: var(--bbs-surface);
-  overflow: hidden; /* 让左色条贴着圆角边缘 */
+  overflow: hidden; /* Để vạch màu bên trái bám sát mép bo góc */
 }
-/* 左缘一道金色条:与角色卡「在场」色条同款 */
+/* Vạch màu vàng bên меp trái: cùng kiểu với vạch màu "Có mặt" của thẻ nhân vật */
 .bbs-focus::before {
   content: '';
   position: absolute;
@@ -1868,7 +1868,7 @@ provide(SUMMARY_CTX, {
   background: var(--bbs-accent);
   opacity: 0.5;
 }
-/* 头行:在场者名字 + 记时小标 + 操作区(靠右,桌面 hover 才浮现,同角色卡) */
+/* Dòng đầu: tên người có mặt + nhãn nhỏ ghi thời gian + vùng thao tác (dạt sang phải, trên máy tính hover mới hiện lên, giống thẻ nhân vật) */
 .bbs-focus-head {
   display: flex;
   align-items: center;
@@ -1904,7 +1904,7 @@ provide(SUMMARY_CTX, {
     opacity: 1;
   }
 }
-/* 局面:主文,类比角色卡的正文段 */
+/* Cục diện: văn bản chính, tương tự đoạn văn bản chính của thẻ nhân vật */
 .bbs-focus-situation {
   margin: 0;
   font-size: 13px;
@@ -1912,7 +1912,7 @@ provide(SUMMARY_CTX, {
   color: var(--bbs-ink);
   word-break: break-word;
 }
-/* 字段表:与角色卡同款「彩色类别标签 + 内容」对齐行 */
+/* Bảng trường: dòng căn chỉnh "nhãn phân loại có màu + nội dung" cùng kiểu với thẻ nhân vật */
 .bbs-focus-fields {
   margin: 2px 0 0;
   display: flex;
@@ -1926,15 +1926,15 @@ provide(SUMMARY_CTX, {
 }
 .bbs-focus-field dt {
   flex: 0 0 auto;
-  width: 30px;
+  width: 68px;
   text-align: center;
-  padding: 1px 0;
+  padding: 1px 4px;
   border-radius: var(--bbs-radius-sm);
   font-size: 10.5px;
   font-weight: 600;
   line-height: 1.5;
-  letter-spacing: 0.04em;
-  /* 默认中性(旧数据焦点行沿用),具体类别下方各自染色 */
+  letter-spacing: 0.02em;
+  /* Mặc định trung tính (dòng tiêu điểm dữ liệu cũ tiếp tục dùng), các phân loại cụ thể bên dưới tự nhuộm màu riêng */
   background: var(--bbs-surface-2);
   color: var(--bbs-ink-muted);
 }
@@ -1947,7 +1947,7 @@ provide(SUMMARY_CTX, {
   color: var(--bbs-ink-soft);
   word-break: break-word;
 }
-/* 张力:暖色标签——正在持续的关系气压,与「会变的即时状态」同级醒目 */
+/* Căng thẳng: nhãn màu ấm —— áp lực quan hệ đang tiếp diễn, nổi bật ngang cấp với "trạng thái tức thời có thể thay đổi" */
 .bbs-focus-field.f-tension dt {
   background: var(--bbs-warning-soft);
   color: var(--bbs-warning);
@@ -1955,7 +1955,7 @@ provide(SUMMARY_CTX, {
 .bbs-focus-field.f-tension dd {
   color: var(--bbs-ink);
 }
-/* 将至:强调金标签——正文明确预告的下一拍,是关键前瞻信息 */
+/* Sắp tới: nhãn vàng nhấn mạnh —— nhịp tiếp theo được báo trước rõ ràng trong chính văn, là thông tin dự báo mấu chốt */
 .bbs-focus-field.f-next dt {
   background: var(--bbs-accent-soft);
   color: var(--bbs-accent);
@@ -1964,8 +1964,8 @@ provide(SUMMARY_CTX, {
   color: var(--bbs-ink);
 }
 
-/* —— 分章分隔:计划/悬念 与 摘要 两区之间的明确界线 —— */
-/* 两侧细线在中间断开,嵌一枚金色小菱形——古籍分章的鱼尾标记,呼应纸墨主题 */
+/* —— Ngăn cách phân chương: ranh giới rõ ràng giữa hai vùng Kế hoạch/Nghi vấn và Tóm tắt —— */
+/* Đường kẻ mảnh hai bên ngắt ở giữa, khảm một hình thoi nhỏ màu vàng —— dấu đuôi cá phân chương sách cổ, hưởng ứng chủ đề giấy mực */
 .bbs-divider {
   display: flex;
   align-items: center;
@@ -1988,7 +1988,7 @@ provide(SUMMARY_CTX, {
   border-radius: 1px;
 }
 
-/* —— 摘要区工具行:标题右侧「选择 / 立即总结」并排 —— */
+/* —— Dòng công cụ vùng Tóm tắt: "Chọn nhiều / Đại tóm tắt ngay" xếp cạnh nhau bên phải tiêu đề —— */
 .bbs-summary-heading {
   min-width: 0;
 }
@@ -2014,13 +2014,13 @@ provide(SUMMARY_CTX, {
   padding: 6px 11px;
   font-size: 12px;
 }
-/* 搜索切换键激活态:点亮强调色,呼应「正在搜索」 */
+/* Trạng thái kích hoạt của nút chuyển đổi tìm kiếm: bật sáng màu nhấn, hưởng ứng "đang tìm kiếm" */
 .bbs-summary-tools .bbs-add-mini.is-on {
   color: var(--bbs-accent);
   background: var(--bbs-accent-soft);
 }
 
-/* —— 搜索框:放大镜内嵌左侧,清空键在右;整行圆角与输入一致 —— */
+/* —— Khung tìm kiếm: kính lúp nhúng bên trái, nút xóa trống bên phải; bo góc toàn dòng đồng nhất với ô nhập —— */
 .bbs-search {
   position: relative;
   display: flex;
@@ -2035,7 +2035,7 @@ provide(SUMMARY_CTX, {
   font-size: 15px;
 }
 .bbs-search-input {
-  /* 左留放大镜位、右留清空键位 */
+  /* Bên trái chừa chỗ cho kính lúp, bên phải chừa chỗ cho nút xóa trống */
   padding-left: 34px;
   padding-right: 34px;
 }
@@ -2061,7 +2061,7 @@ provide(SUMMARY_CTX, {
   background: var(--bbs-surface-2);
 }
 
-/* —— 搜索命中高亮:强调色淡底,不改字色保证可读 —— */
+/* —— Tô sáng kết quả trúng tìm kiếm: nền nhạt màu nhấn, không đổi màu chữ để đảm bảo dễ đọc —— */
 .bbs-hit {
   background: var(--bbs-accent-soft);
   color: inherit;
@@ -2069,24 +2069,24 @@ provide(SUMMARY_CTX, {
   padding: 0 1px;
 }
 
-/* —— 摘要列表 —— */
+/* —— Danh sách tóm tắt —— */
 .bbs-summary-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
   margin-top: 14px;
 }
-/* 卡片视觉(.bbs-summary-card / meta / 标签 / 展开条 / 收起条)已提到 base.css 全局,
-   供 SummaryNode.vue 与本页平铺列表共用(scoped 不跨组件)。此处只留本页专属:选择模式 + 底部操作条。 */
+/* Thị giác thẻ (.bbs-summary-card / meta / nhãn / thanh mở rộng / thanh thu gọn) đã được đưa lên toàn cục trong base.css,
+   cung cấp cho SummaryNode.vue và danh sách trải phẳng của trang này dùng chung (scoped không xuyên qua component). Ở đây chỉ giữ lại phần riêng của trang này: chế độ chọn + thanh thao tác đáy. */
 
-/* 选择模式:卡片左侧腾出复选框列,横向布局;整卡可点,指针提示可点 */
+/* Chế độ chọn: bên trái thẻ nhường ra cột hộp kiểm, bố cục ngang; cả thẻ nhấn được, con trỏ gợi ý nhấn được */
 .bbs-summary-list.is-selecting .bbs-summary-card {
   display: flex;
   align-items: flex-start;
   gap: 12px;
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
-  /* 键盘聚焦可见(role=checkbox 时 tabindex=0) */
+  /* Hiển thị khi focus bằng bàn phím (khi role=checkbox thì tabindex=0) */
   outline: none;
 }
 .bbs-summary-list.is-selecting .bbs-summary-card:focus-visible {
@@ -2105,7 +2105,7 @@ provide(SUMMARY_CTX, {
   display: inline-flex;
   align-items: center;
   padding-top: 2px;
-  /* 不抢点击:整卡已负责 toggle,复选框仅视觉状态 */
+  /* Không tranh giành thao tác nhấn: cả thẻ đã phụ trách toggle, hộp kiểm chỉ mang trạng thái thị giác */
   pointer-events: none;
 }
 .bbs-summary-check .bbs-checkbox {
@@ -2113,16 +2113,16 @@ provide(SUMMARY_CTX, {
   height: 16px;
   accent-color: var(--bbs-accent);
 }
-/* 选择模式下 main 占满剩余宽 */
+/* Ở chế độ chọn main chiếm hết chiều rộng còn lại */
 .bbs-summary-list.is-selecting .bbs-summary-main {
   flex: 1 1 auto;
   min-width: 0;
 }
 
-/* 展开开关(.bbs-expand-bar)、收起条(.bbs-collapse-footer)、展开态左缘(.is-expanded)
-   均在 base.css,供 SummaryNode.vue 共用。 */
+/* Công tắc mở rộng (.bbs-expand-bar), thanh thu gọn (.bbs-collapse-footer), viền trái trạng thái mở rộng (.is-expanded)
+   đều nằm trong base.css, dùng chung cho SummaryNode.vue. */
 
-/* —— 选择模式底部操作条:sticky 贴底,强调色描边突出 —— */
+/* —— Thanh thao tác đáy ở chế độ chọn: sticky bám đáy, viền màu nhấn nổi bật —— */
 .bbs-select-bar {
   position: sticky;
   bottom: 0;
@@ -2171,7 +2171,7 @@ provide(SUMMARY_CTX, {
   flex: 1;
 }
 
-/* —— 编辑弹窗:外壳样式已提到 base.css 通用,这里只补本页专用的 textarea —— */
+/* —— Hộp thoại chỉnh sửa: kiểu dáng vỏ ngoài đã đưa lên base.css dùng chung, ở đây chỉ bổ sung textarea chuyên dụng của trang này —— */
 .bbs-modal-textarea {
   resize: vertical;
   min-height: 120px;
@@ -2179,12 +2179,12 @@ provide(SUMMARY_CTX, {
   font-family: var(--bbs-font-sans);
 }
 
-/* ============ 触屏:悬念簿动作键常显但低调(摘要卡片动作键在 base.css 处理) ============ */
+/* ============ Màn hình cảm ứng: các nút hành động của Sổ nghi vấn hiển thị thường trực nhưng trầm lắng (nút hành động thẻ tóm tắt xử lý trong base.css) ============ */
 @media (hover: none) {
   .bbs-plan-acts {
     opacity: 1;
   }
-  /* 触达区略放大到 ~32px(够点),图标维持小巧 */
+  /* Vùng chạm hơi phóng to lên ~32px (đủ nhấn), biểu tượng giữ nhỏ gọn */
   .bbs-plan-act {
     width: 32px;
     height: 32px;
@@ -2192,7 +2192,7 @@ provide(SUMMARY_CTX, {
   }
 }
 
-/* ============ 减弱动效:悬念簿箭头与收展瞬切(摘要展开动效在 SummaryNode/base.css) ============ */
+/* ============ Giảm chuyển động: mũi tên và thu mở Sổ nghi vấn cắt tức thì (hoạt ảnh mở rộng tóm tắt nằm ở SummaryNode/base.css) ============ */
 @media (prefers-reduced-motion: reduce) {
   .bbs-fold-caret,
   .bbs-fold-wrap {
@@ -2200,9 +2200,9 @@ provide(SUMMARY_CTX, {
   }
 }
 
-/* ============ 窄屏:类型切换撑满、状态条整齐 ============ */
+/* ============ Màn hình hẹp: chuyển đổi loại căng đầy, thanh trạng thái ngay ngắn ============ */
 @media (max-width: 640px) {
-  /* 添加弹窗里的类型切换:计划 | 悬念 各占一半,撑满整行 */
+  /* Chuyển đổi loại trong hộp thoại thêm mới: Kế hoạch | Nghi vấn mỗi bên chiếm một nửa, căng đầy cả dòng */
   .bbs-kind-toggle {
     width: 100%;
   }
@@ -2210,26 +2210,26 @@ provide(SUMMARY_CTX, {
     flex: 1;
   }
 
-  /* 时间/地点:窄屏整齐堆叠成两行,长地点不再把行挤乱 */
+  /* Thời gian / Địa điểm: trên màn hình hẹp xếp chồng ngay ngắn thành hai dòng, địa điểm dài không còn làm rối dòng */
   .bbs-state {
     flex-direction: column;
     gap: 8px;
   }
 
-  /* 摘要题首窄屏排布:绝对时间(纯文本)较长,会把相对时间+楼层标签挤满首行、把操作键顶到第二行。
-     用 order 把绝对时间排到末尾并 flex-basis:100% 独占一行,首行只留「相对时间标签 + 楼层标签 + 操作键」。 */
+  /* Bố trí đầu đề tóm tắt trên màn hình hẹp: thời gian tuyệt đối (văn bản thuần) khá dài, sẽ ép thời gian tương đối + nhãn tầng chật kín dòng đầu, đẩy nút thao tác sang dòng thứ hai.
+     Dùng order xếp thời gian tuyệt đối xuống cuối và flex-basis:100% chiếm riêng một dòng, dòng đầu chỉ để lại "nhãn thời gian tương đối + nhãn tầng + nút thao tác". */
   .bbs-summary-dateline,
   .bbs-summary-time {
     order: 99;
     flex-basis: 100%;
   }
 
-  /* 摘要工具行:窄屏下「多选/立即总结」收成纯图标(藏文字、去边框),
-     与左侧放大镜同权重、同尺寸——移动端带框带字的按钮视觉分量过重、喧宾夺主。 */
+  /* Dòng công cụ tóm tắt: dưới màn hình hẹp "Chọn nhiều / Đại tóm tắt ngay" thu thành biểu tượng thuần (ẩn chữ, bỏ viền),
+     cùng trọng lượng, cùng kích thước với kính lúp bên trái —— trên di động nút bấm có khung có chữ mang trọng lượng thị giác quá nặng, lấn át chủ thể. */
   .bbs-summary-tools .bbs-btn-label {
     display: none;
   }
-  /* 三键统一 32×32 方形图标:放大镜(.bbs-add-mini)与两个 .bbs-btn-sm 对齐,消除大小不一 */
+  /* Ba nút thống nhất biểu tượng vuông 32×32: kính lúp (.bbs-add-mini) căn chỉnh với hai nút .bbs-btn-sm, triệt tiêu sự lệch cỡ */
   .bbs-summary-tools .bbs-add-mini,
   .bbs-summary-tools .bbs-btn-sm {
     width: 32px;
@@ -2241,12 +2241,12 @@ provide(SUMMARY_CTX, {
     color: var(--bbs-ink-muted);
     font-size: 16px;
   }
-  /* 保留放大镜激活态点亮(is-on),与桌面一致 */
+  /* Giữ nguyên trạng thái kích hoạt bật sáng của kính lúp (is-on), đồng nhất với máy tính */
   .bbs-summary-tools .bbs-add-mini.is-on {
     color: var(--bbs-accent);
     background: var(--bbs-accent-soft);
   }
-  /* 立即总结进行中的旋转环仍需占位居中(此时无文字) */
+  /* Vòng xoay khi đang thực hiện Đại tóm tắt ngay vẫn cần chiếm chỗ căn giữa (lúc này không có chữ) */
   .bbs-summary-tools .bbs-resummary-btn {
     gap: 0;
   }

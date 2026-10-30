@@ -1,26 +1,26 @@
 <script setup lang="ts">
 /**
- * 弹窗遮罩外壳:统一承载各页弹窗的 .bbs-modal-mask 层 + 遮罩点击关闭。
+ * Vỏ lớp phủ hộp thoại: thống nhất đảm nhận lớp .bbs-modal-mask của hộp thoại các trang + nhấn lớp phủ để đóng.
  *
- * Teleport 到 modalHost(.bbs-root 直接子级,在 .bbs-body 滚动容器之外):
- * 修复 iOS Safari 的老问题——「可滚动祖先内的 position:fixed 后代」会相对滚动内容、
- * 而非视口定位,导致设置页滚动后弹窗整体偏上、顶出屏幕(渠道弹窗最先暴露)。
- * 宿主仍在 shadow root 内,scoped 样式与 --bbs-* 主题变量照常生效,
- * 故 to 的是 shadow 内元素,而非会逃出 shadow 的 Teleport to="body"。
+ * Teleport tới modalHost (con trực tiếp của .bbs-root, nằm ngoài vùng chứa cuộn .bbs-body):
+ * Sửa lỗi cố hữu trên iOS Safari —— "hậu duệ position:fixed bên trong tổ tiên có thể cuộn" sẽ định vị tương đối theo nội dung cuộn
+ * thay vì khung nhìn, dẫn tới sau khi trang cài đặt cuộn thì hộp thoại bị lệch hẳn lên trên, vọt ra khỏi màn hình (hộp thoại kênh lộ ra đầu tiên).
+ * Chủ thể vẫn nằm trong shadow root, kiểu dáng scoped và biến giao diện --bbs-* vẫn có hiệu lực như thường,
+ * do đó đích to là phần tử trong shadow, chứ không phải Teleport to="body" sẽ thoát ra ngoài shadow.
  *
- * 内容经 <slot> 投入,scoped data-v 标记随之保留,各页弹窗的独立类样式不受 Teleport 影响。
+ * Nội dung được đưa vào qua <slot>, đánh dấu data-v của scoped được giữ lại theo, kiểu dáng lớp độc lập của hộp thoại các trang không bị Teleport ảnh hưởng.
  *
- * 显隐用 open prop(而非调用方在 <ModalMask> 上写 v-if):Transition 容器须常驻、由内部
- * v-if 切换弹窗,离场动画才能播(否则组件随父 v-if 一起卸载,leave 来不及触发)。
- * slot 是惰性函数,open=false 时走不到 <slot/>、不会求值,故 slot 里引用关闭后变 null 的
- * 对象(editingChannel.name 等)也不会报错——无需在各调用点加守卫。
+ * Ẩn hiện dùng prop open (thay vì phía gọi viết v-if trên <ModalMask>): vùng chứa Transition phải thường trực, do v-if bên trong
+ * chuyển đổi hộp thoại thì hoạt ảnh rời đi mới phát được (nếu không component bị gỡ cùng v-if cha, leave không kịp kích hoạt).
+ * slot là hàm lười (lazy), khi open=false sẽ không đi tới <slot/>, không tính giá trị, nên trong slot có tham chiếu tới đối tượng biến thành null
+ * sau khi đóng (như editingChannel.name) cũng sẽ không báo lỗi —— không cần thêm chốt chặn ở từng điểm gọi.
  */
 import { modalHost } from '@/state/ui';
 
 defineProps<{
-  /** 弹窗是否显示 */
+  /** Hộp thoại có hiển thị hay không */
   open?: boolean;
-  /** 叠加在其它弹窗之上(更高 z-index),如渠道弹窗里再开删除确认 */
+  /** Chồng lên trên các hộp thoại khác (z-index cao hơn), ví dụ mở thêm xác nhận xóa bên trong hộp thoại kênh */
   topLayer?: boolean;
 }>();
 
@@ -28,7 +28,7 @@ const emit = defineEmits<{ (e: 'close'): void }>();
 </script>
 
 <template>
-  <!-- modalHost 未就绪时就地渲染兜底,绝不丢弹窗 -->
+  <!-- Khi modalHost chưa sẵn sàng thì kết xuất tại chỗ để dự phòng, tuyệt đối không làm mất hộp thoại -->
   <Teleport :to="modalHost" :disabled="!modalHost">
     <Transition name="bbs-modal">
       <div
@@ -44,7 +44,7 @@ const emit = defineEmits<{ (e: 'close'): void }>();
 </template>
 
 <style scoped>
-/* 叠加层:盖在普通弹窗之上(与 ConfirmDialog 的 -top 同级) */
+/* Lớp chồng: đè lên trên hộp thoại thường (ngang cấp với -top của ConfirmDialog) */
 .bbs-modal-mask-top {
   z-index: 10002;
 }

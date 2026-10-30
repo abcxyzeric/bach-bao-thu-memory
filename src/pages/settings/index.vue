@@ -31,15 +31,15 @@ import { versionedAssetUrl } from '@/version';
 import { computed, nextTick, onMounted, ref } from 'vue';
 
 const navOptions: { value: NavPosition; label: string }[] = [
-  { value: 'auto', label: '自动' },
-  { value: 'top', label: '顶部' },
-  { value: 'bottom', label: '底部' },
+  { value: 'auto', label: 'Tự động' },
+  { value: 'top', label: 'Phía trên' },
+  { value: 'bottom', label: 'Phía dưới' },
 ];
 
 /**
- * 思考强度候选:各家取值的并集,**不是**某一家的官方列表。
- * auto 是显式选项(值为空串 = 不发送该参数),不是「留空」。
- * 取值不做校验,原样发给端点(见 ApiChannel.reasoningEffort)。
+ * Các ứng viên cường độ suy luận: hợp tập các giá trị của các hãng, **không phải** danh sách chính thức của riêng hãng nào.
+ * auto là tùy chọn tường minh (giá trị là chuỗi rỗng = không gửi tham số này), không phải "để trống".
+ * Giá trị không kiểm tra hợp lệ, gửi nguyên mẫu cho điểm cuối (xem ApiChannel.reasoningEffort).
  */
 const REASONING_EFFORT_OPTIONS = [
   { value: '', label: 'auto' },
@@ -52,17 +52,17 @@ const REASONING_EFFORT_OPTIONS = [
 ];
 
 const VERBOSITY_OPTIONS: { value: Verbosity; label: string }[] = [
-  { value: 'detailed', label: '详细' },
-  { value: 'concise', label: '精简' },
+  { value: 'detailed', label: 'Chi tiết' },
+  { value: 'concise', label: 'Tinh gọn' },
 ];
 
-/** 任务指派下拉:空串 = 跟随主 API,其余为副渠道 id(未命名渠道给个占位名,免空白选项) */
+/** Hộp thả xuống chỉ định tác vụ: chuỗi rỗng = Theo API chính, phần còn lại là id kênh phụ (kênh chưa đặt tên thì gán tên giữ chỗ, tránh tùy chọn trống) */
 const channelOptions = computed(() => [
-  { value: '', label: '跟随主 API' },
-  ...apiSettings.channels.map(c => ({ value: c.id, label: c.name || '未命名渠道' })),
+  { value: '', label: 'Theo API chính' },
+  ...apiSettings.channels.map(c => ({ value: c.id, label: c.name || 'Kênh chưa đặt tên' })),
 ]);
 
-/* —— 悬浮球自定义图标:选图 → 压缩上传到 ST 服务器 → 存路径串(跨设备同步) —— */
+/* —— Biểu tượng tùy chỉnh quả cầu nổi: chọn ảnh → nén và tải lên máy chủ ST → lưu chuỗi đường dẫn (đồng bộ đa thiết bị) —— */
 const orbFileInput = ref<HTMLInputElement | null>(null);
 const orbUploading = ref(false);
 function pickOrbImage() {
@@ -71,14 +71,14 @@ function pickOrbImage() {
 async function onOrbFileChange(e: Event) {
   const input = e.target as HTMLInputElement;
   const file = input.files?.[0];
-  input.value = ''; // 复位,允许重复选同一文件
+  input.value = ''; // Đặt lại, cho phép chọn lại cùng một tệp
   if (!file) return;
   orbUploading.value = true;
   try {
     ui.orbImage = await uploadOrbImage(file);
-    toast('悬浮球图标已更新', 'success');
+    toast('Đã cập nhật biểu tượng quả cầu nổi', 'success');
   } catch (err) {
-    toast(err instanceof Error ? err.message : '上传失败', 'error');
+    toast(err instanceof Error ? err.message : 'Tải lên thất bại', 'error');
   } finally {
     orbUploading.value = false;
   }
@@ -87,27 +87,27 @@ function resetOrbImage() {
   ui.orbImage = '';
 }
 
-/* —— 渠道:列表只读展示,编辑/新建都在弹窗里进行,避免一长列表平铺误触。
-   两套独立渠道:'api'=副 API(摘要/总结),'vector'=向量记忆。弹窗按 scope 操作对应列表。 —— */
+/* —— Kênh: danh sách hiển thị chỉ đọc, chỉnh sửa / tạo mới đều tiến hành trong hộp thoại, tránh một danh sách dài trải phẳng gây chạm nhầm.
+   Hai bộ kênh độc lập: 'api' = API phụ (Tóm tắt / Đại tóm tắt), 'vector' = Trí nhớ vector. Hộp thoại thao tác danh sách tương ứng theo scope. —— */
 type ChannelScope = 'api' | 'vector';
-// editingId:正在编辑的「已有渠道」id;新建时为 null。仅用于「完成」时定位写回目标。
+// editingId: id của "kênh đã có" đang được chỉnh sửa; khi tạo mới là null. Chỉ dùng để định vị đích ghi lại khi nhấn "Hoàn tất".
 const editingId = ref<string | null>(null);
 const editingScope = ref<ChannelScope>('api');
-// 当前 scope 对应的渠道数组(增删/查找都走它)。向量已改扁平端点,只剩副 API 用渠道。
+// Mảng kênh tương ứng với scope hiện tại (thêm/xóa/tìm kiếm đều đi qua nó). Vector đã chuyển sang điểm cuối phẳng, chỉ còn API phụ dùng kênh.
 function channelsOf(_scope: ChannelScope): ApiChannel[] {
   return apiSettings.channels;
 }
-// 编辑用「草稿副本」:v-model 全改在草稿上,只有点「完成」才写回 apiSettings(避免每敲一字就触发存盘)。
-// 弹窗开关也以它为准:草稿存在 = 弹窗打开。
+// Chỉnh sửa dùng "bản sao nháp": v-model sửa toàn bộ trên bản nháp, chỉ khi nhấn "Hoàn tất" mới ghi lại vào apiSettings (tránh việc mỗi lần gõ một chữ lại kích hoạt lưu ổ đĩa).
+// Công tắc hộp thoại cũng lấy nó làm chuẩn: bản nháp tồn tại = hộp thoại mở.
 const editingChannel = ref<ApiChannel | null>(null);
-// 深拷贝渠道(纯数据,JSON 即可),切断与 apiSettings 真身的引用
+// Sao chép sâu kênh (dữ liệu thuần, dùng JSON là đủ), cắt đứt tham chiếu với bản gốc apiSettings
 function cloneChannel(ch: ApiChannel): ApiChannel {
   return JSON.parse(JSON.stringify(ch)) as ApiChannel;
 }
-// 密钥默认隐藏;每次打开/关闭弹窗都复位,避免密钥意外保持明文
+// Khóa bảo mật mặc định ẩn; mỗi lần mở/đóng hộp thoại đều đặt lại, tránh việc khóa vô tình giữ ở dạng văn bản rõ
 const showKey = ref(false);
 
-// 排除参数:内部存 string[],编辑时用逗号分隔的单行文本承载,读/写两向转换。
+// Tham số loại trừ: bên trong lưu string[], khi chỉnh sửa dùng văn bản một dòng ngăn cách bằng dấu phẩy để chứa, chuyển đổi hai chiều đọc/ghi.
 const excludeParamsText = computed<string>({
   get: () => editingChannel.value?.excludeParams.join(', ') ?? '',
   set: v => {
@@ -123,8 +123,8 @@ const excludeParamsText = computed<string>({
 function addChannel(scope: ChannelScope = 'api') {
   showKey.value = false;
   editingScope.value = scope;
-  editingId.value = null; // null = 新建,完成时 push
-  editingChannel.value = newChannel(); // 草稿,尚未进 apiSettings
+  editingId.value = null; // null = tạo mới, khi hoàn tất sẽ push
+  editingChannel.value = newChannel(); // Bản nháp, chưa đưa vào apiSettings
 }
 function openChannel(id: string, scope: ChannelScope = 'api') {
   const src = channelsOf(scope).find(c => c.id === id);
@@ -132,15 +132,15 @@ function openChannel(id: string, scope: ChannelScope = 'api') {
   showKey.value = false;
   editingScope.value = scope;
   editingId.value = id;
-  editingChannel.value = cloneChannel(src); // 编辑草稿副本,不动真身
+  editingChannel.value = cloneChannel(src); // Chỉnh sửa bản sao nháp, không động vào bản gốc
 }
-/** 取消(× / 点遮罩):丢弃草稿,不写回 apiSettings(无论新建还是编辑,改动都作废)。 */
+/** Hủy (× / nhấn lớp phủ): vứt bỏ bản nháp, không ghi lại vào apiSettings (bất kể tạo mới hay chỉnh sửa, thay đổi đều hủy bỏ). */
 function closeChannel() {
   showKey.value = false;
   editingId.value = null;
   editingChannel.value = null;
 }
-/** 完成:把草稿写回 apiSettings —— 新建则 push,编辑则按 id 覆盖。此时才触发存盘。 */
+/** Hoàn tất: ghi bản nháp về lại apiSettings —— tạo mới thì push, chỉnh sửa thì ghi đè theo id. Lúc này mới kích hoạt lưu ổ đĩa. */
 function confirmChannel() {
   const draft = editingChannel.value;
   if (draft) {
@@ -152,7 +152,7 @@ function confirmChannel() {
     if (editingId.value) {
       const idx = list.findIndex(c => c.id === editingId.value);
       if (idx >= 0) list[idx] = draft;
-      else list.push(draft); // 编辑期间原渠道被删等异常 → 兜底为新增
+      else list.push(draft); // Ngoại lệ như kênh gốc bị xóa trong lúc đang chỉnh sửa → dự phòng thành thêm mới
     } else {
       list.push(draft);
     }
@@ -161,14 +161,14 @@ function confirmChannel() {
   editingId.value = null;
   editingChannel.value = null;
 }
-// 删除渠道前的二次确认:点删除先开确认弹窗,确认后才真正删。
+// Xác nhận lần hai trước khi xóa kênh: nhấn Xóa sẽ mở hộp thoại xác nhận trước, sau khi xác nhận mới thực sự xóa.
 const confirmDeleteOpen = ref(false);
 function askRemoveChannel() {
   confirmDeleteOpen.value = true;
 }
 function confirmRemoveChannel() {
   confirmDeleteOpen.value = false;
-  // 删除针对「已有渠道」(editingId);新建草稿尚未入库,等同直接丢弃草稿
+  // Xóa nhắm vào "kênh đã có" (editingId); bản nháp tạo mới chưa vào kho, tương đương với vứt bỏ trực tiếp bản nháp
   if (editingId.value) removeChannel(editingId.value);
   editingId.value = null;
   editingChannel.value = null;
@@ -178,7 +178,7 @@ function removeChannel(id: string) {
   const list = channelsOf(scope);
   const idx = list.findIndex(c => c.id === id);
   if (idx >= 0) list.splice(idx, 1);
-  // 清理指派:副 API 清两类摘要指派(向量已改扁平端点,不再走渠道系统)
+  // Dọn dẹp chỉ định: API phụ xóa hai loại chỉ định tóm tắt (vector đã chuyển sang điểm cuối phẳng, không còn đi theo hệ thống kênh)
   if (scope === 'api') {
     if (apiSettings.assignments.summary === id) apiSettings.assignments.summary = '';
     if (apiSettings.assignments.resummary === id) apiSettings.assignments.resummary = '';
@@ -187,12 +187,12 @@ function removeChannel(id: string) {
 
 const testing = ref<Record<string, string>>({});
 async function doTest(ch: ApiChannel) {
-  testing.value[ch.id] = '测试中…';
+  testing.value[ch.id] = 'Đang kiểm tra…';
   const r = await testChannel(ch);
   testing.value[ch.id] = r.message;
 }
 
-// 各渠道拉取到的模型列表 + 拉取状态
+// Danh sách mô hình kéo về được của từng kênh + trạng thái kéo
 const models = ref<Record<string, string[]>>({});
 const loadingModels = ref<Record<string, boolean>>({});
 async function pullModels(ch: ApiChannel) {
@@ -202,7 +202,7 @@ async function pullModels(ch: ApiChannel) {
     const list = await fetchModels(ch);
     models.value[ch.id] = list;
     if (list.length && !ch.model) ch.model = list[0];
-    if (!list.length) testing.value[ch.id] = '未返回任何模型';
+    if (!list.length) testing.value[ch.id] = 'Không trả về mô hình nào';
   } catch (e) {
     testing.value[ch.id] = e instanceof Error ? e.message : String(e);
   } finally {
@@ -210,15 +210,15 @@ async function pullModels(ch: ApiChannel) {
   }
 }
 
-/* —— 模型可搜索下拉(combobox):输入框既是当前值也是过滤词,聚焦弹出过滤列表 —— */
+/* —— Hộp thả xuống mô hình có thể tìm kiếm (combobox): ô nhập vừa là giá trị hiện tại vừa là từ lọc, khi focus sẽ bật danh sách đã lọc —— */
 const modelMenuOpen = ref(false);
-const modelQuery = ref(''); // 聚焦后用户输入的过滤词;失焦时清空
-// 已拉取到的当前渠道模型列表
+const modelQuery = ref(''); // Từ lọc do người dùng nhập sau khi focus; khi mất focus sẽ xóa trống
+// Danh sách mô hình của kênh hiện tại đã kéo về được
 const modelList = computed<string[]>(() => {
   const id = editingChannel.value?.id;
   return id ? models.value[id] ?? [] : [];
 });
-// 过滤:有 query 按子串(大小写不敏感)过滤;为空则显示全部。性能上限 200 条,避免超长列表卡顿。
+// Lọc: có query thì lọc theo chuỗi con (không phân biệt hoa thường); để trống thì hiển thị toàn bộ. Giới hạn hiệu năng 200 mục, tránh danh sách quá dài gây giật lag.
 const filteredModels = computed<string[]>(() => {
   const q = modelQuery.value.trim().toLowerCase();
   const list = modelList.value;
@@ -234,7 +234,7 @@ function pickModel(m: string) {
   modelMenuOpen.value = false;
   modelQuery.value = '';
 }
-// 失焦延迟关闭,让 option 的 mousedown/click 先生效
+// Trễ đóng khi mất focus, để mousedown/click của option có hiệu lực trước
 function closeModelMenuSoon() {
   setTimeout(() => {
     modelMenuOpen.value = false;
@@ -242,7 +242,7 @@ function closeModelMenuSoon() {
   }, 150);
 }
 
-/* —— 自定义提示词:列表(摘要/总结/破限/时间标签),点开在弹窗里编辑大文本 —— */
+/* —— Lời nhắc tùy chỉnh: danh sách (Tóm tắt / Đại tóm tắt / Phá giới hạn / Thẻ thời gian), nhấn vào sẽ chỉnh sửa văn bản lớn trong hộp thoại —— */
 type PromptKey = 'summary' | 'resummary' | 'resummary2' | 'jailbreak' | 'timeTag';
 interface PromptMeta {
   key: PromptKey;
@@ -254,54 +254,54 @@ interface PromptMeta {
 const PROMPT_METAS: PromptMeta[] = [
   {
     key: 'summary',
-    label: '摘要提示词',
-    hint: '把单楼对话整理成结构化记忆(摘要正文 + 时间/地点/物品/计划)。',
+    label: 'Lời nhắc tóm tắt',
+    hint: 'Tổng hợp đối thoại tầng đơn thành trí nhớ có cấu trúc (nội dung tóm tắt + thời gian / địa điểm / vật phẩm / kế hoạch).',
     builtin: SUMMARY_PROMPT,
     macros: SUMMARY_MACROS,
   },
   {
     key: 'resummary',
-    label: '总结提示词',
-    hint: '把多条楼层摘要压成一条 L1 总结(普通总结,固定 300-500 字)。',
+    label: 'Lời nhắc đại tóm tắt',
+    hint: 'Nén nhiều bản tóm tắt tầng thành một bản đại tóm tắt L1 (đại tóm tắt thường, cố định 300-500 chữ).',
     builtin: RESUMMARY_PROMPT,
     macros: RESUMMARY_MACROS,
   },
   {
     key: 'resummary2',
-    label: '二次总结提示词',
-    hint: '把多条总结再压一层(L1+ → 更上层)。动态字数区间:详细为输入的 40%–50%,精简为 30%–40%。',
+    label: 'Lời nhắc đại tóm tắt cấp hai',
+    hint: 'Nén nhiều bản đại tóm tắt thêm một tầng nữa (L1+ → tầng cao hơn). Khoảng số chữ động: Chi tiết bằng 40%–50% đầu vào, Tinh gọn bằng 30%–40%.',
     builtin: RESUMMARY2_PROMPT,
     macros: RESUMMARY2_MACROS,
   },
   {
     key: 'jailbreak',
-    label: '破限提示词',
-    hint: '作为置顶 system 附加在摘要/总结请求里,降低副 API 拒答率。留空则用内置默认。',
+    label: 'Lời nhắc phá giới hạn',
+    hint: 'Đính kèm làm system ghim đầu trong yêu cầu tóm tắt / đại tóm tắt, giảm tỷ lệ từ chối trả lời của API phụ. Để trống sẽ dùng mặc định tích hợp sẵn.',
     builtin: JAILBREAK_PROMPT,
     macros: [],
   },
   {
     key: 'timeTag',
-    label: '固定提示词(时间标签)',
-    hint: '注入主对话,要求 AI 每条正文前后输出时间标签,作为剧情时间锚点(摘要与新剧情据此对齐,不再错乱)。需开启下方「正文时间标签」开关。留空用内置默认。',
+    label: 'Lời nhắc cố định (Thẻ thời gian)',
+    hint: 'Tiêm vào đối thoại chính, yêu cầu AI xuất thẻ thời gian ở trước và sau mỗi chính văn, làm mốc thời gian cốt truyện (tóm tắt và cốt truyện mới căn chỉnh theo đó, không còn rối loạn). Cần bật công tắc "Thẻ thời gian chính văn" ở phần Cài đặt tóm tắt. Để trống dùng mặc định tích hợp sẵn.',
     builtin: TIME_TAG_PROMPT,
     macros: [],
   },
 ];
 
-// 正在编辑的提示词;draft 是草稿,点「完成」才写回 apiSettings(取消则丢弃)。
+// Lời nhắc đang chỉnh sửa; draft là bản nháp, nhấn "Hoàn tất" mới ghi lại vào apiSettings (hủy thì vứt bỏ).
 const editingPrompt = ref<PromptMeta | null>(null);
 const promptDraft = ref('');
 const promptArea = ref<HTMLTextAreaElement | null>(null);
 
-// 该任务是否已自定义(非空即视为已覆盖内置)
+// Tác vụ đó đã được tùy chỉnh hay chưa (khác rỗng tức là coi như đã ghi đè bản tích hợp sẵn)
 function isCustom(key: PromptKey): boolean {
   return apiSettings.prompts[key].trim().length > 0;
 }
 
 function openPrompt(meta: PromptMeta) {
   editingPrompt.value = meta;
-  // 已自定义→载入用户内容;未自定义→预填内置模板,方便直接在其上改
+  // Đã tùy chỉnh → tải nội dung người dùng; chưa tùy chỉnh → điền sẵn mẫu tích hợp sẵn, tiện sửa trực tiếp trên đó
   promptDraft.value = apiSettings.prompts[meta.key].trim() || meta.builtin;
 }
 function closePrompt() {
@@ -311,44 +311,44 @@ function closePrompt() {
 function savePrompt() {
   const meta = editingPrompt.value;
   if (!meta) return;
-  // 草稿与内置完全一致→存空串(回落内置),避免把模板冗余存进设置、也便于显示「默认」
+  // Bản nháp hoàn toàn giống hệt bản tích hợp sẵn → lưu chuỗi rỗng (lùi về bản tích hợp sẵn), tránh lưu dư thừa mẫu vào cài đặt, cũng tiện hiển thị "Mặc định"
   const v = promptDraft.value.trim();
   apiSettings.prompts[meta.key] = v === meta.builtin.trim() ? '' : promptDraft.value;
   closePrompt();
 }
-// 「恢复默认」:把草稿重置回内置模板(保存后即回落内置)
+// "Khôi phục mặc định": đặt lại bản nháp về mẫu tích hợp sẵn (sau khi lưu sẽ lùi về bản tích hợp sẵn)
 function resetPrompt() {
   if (editingPrompt.value) promptDraft.value = editingPrompt.value.builtin;
 }
 
-/* —— 向量记忆:三个模型角色,embedding 为基准,后两者留空复用它 —— */
+/* —— Trí nhớ vector: ba vai trò mô hình, embedding làm chuẩn, hai cái sau để trống sẽ tái sử dụng nó —— */
 type VectorRole = 'embedding' | 'rerank' | 'queryRewrite';
 interface VectorRoleMeta {
   key: VectorRole;
   label: string;
 }
 const VECTOR_ROLES: VectorRoleMeta[] = [
-  { key: 'embedding', label: 'Embedding(向量化,必填)' },
-  { key: 'rerank', label: 'Rerank(重排)' },
-  { key: 'queryRewrite', label: 'Query 重写' },
+  { key: 'embedding', label: 'Embedding (Vector hóa, bắt buộc)' },
+  { key: 'rerank', label: 'Rerank (Sắp xếp lại)' },
+  { key: 'queryRewrite', label: 'Viết lại Query' },
 ];
 
-/* —— 向量端点:每角色直接填 地址/密钥/模型;模型可一键拉取(combobox)。 —— */
+/* —— Điểm cuối vector: mỗi vai trò điền trực tiếp Địa chỉ / Khóa bảo mật / Mô hình; mô hình có thể kéo lấy bằng một cú nhấn (combobox). —— */
 const vecShowKey = ref<Record<VectorRole, boolean>>({ embedding: false, rerank: false, queryRewrite: false });
-// 三个端点卡片各自折叠,默认全收起,只露标题,需要时再展开。
+// Ba thẻ điểm cuối tự thu gọn riêng, mặc định thu gọn toàn bộ, chỉ lộ tiêu đề, khi cần mới mở rộng.
 const vecEpOpen = ref<Record<VectorRole, boolean>>({ embedding: false, rerank: false, queryRewrite: false });
 const vecModels = ref<Record<VectorRole, string[]>>({ embedding: [], rerank: [], queryRewrite: [] });
 const vecLoadingModels = ref<Record<VectorRole, boolean>>({ embedding: false, rerank: false, queryRewrite: false });
 const vecModelMsg = ref<Record<VectorRole, string>>({ embedding: '', rerank: '', queryRewrite: '' });
-// combobox:当前展开的角色(null=都收起)+ 过滤词
+// combobox: vai trò hiện đang mở rộng (null = đều thu gọn) + từ lọc
 const vecModelMenuOpen = ref<VectorRole | null>(null);
 const vecModelQuery = ref('');
 
 async function pullVecModels(role: VectorRole) {
-  // 解析回落后的地址/密钥:rerank/query 留空时自动用 Embedding 的去拉(模型仍写回本角色)
+  // Phân giải địa chỉ/khóa sau khi lùi về dự phòng: khi rerank/query để trống sẽ tự động dùng của Embedding để kéo (mô hình vẫn ghi về vai trò này)
   const ep = resolveVectorModel(role);
   if (!ep.url.trim()) {
-    vecModelMsg.value[role] = role === 'embedding' ? '请先填 Embedding 地址' : '请先填本角色或 Embedding 的地址';
+    vecModelMsg.value[role] = role === 'embedding' ? 'Vui lòng điền địa chỉ Embedding trước' : 'Vui lòng điền địa chỉ của vai trò này hoặc của Embedding trước';
     return;
   }
   vecLoadingModels.value[role] = true;
@@ -357,7 +357,7 @@ async function pullVecModels(role: VectorRole) {
     const list = await fetchModels({ url: ep.url, key: ep.key, timeoutSec: ep.timeoutSec });
     vecModels.value[role] = list;
     if (list.length && !apiSettings.vector[role].model) apiSettings.vector[role].model = list[0];
-    if (!list.length) vecModelMsg.value[role] = '未返回任何模型';
+    if (!list.length) vecModelMsg.value[role] = 'Không trả về mô hình nào';
   } catch (e) {
     vecModelMsg.value[role] = e instanceof Error ? e.message : String(e);
   } finally {
@@ -386,7 +386,7 @@ function closeVecModelMenuSoon() {
   }, 150);
 }
 
-/* —— 向量后端类型:'backend' 柏宝库后端 / 'local' 本地降级;探测一次,展示当前在用哪个。 —— */
+/* —— Loại backend vector: 'backend' Backend Bách Bảo Khố / 'local' Hạ cấp cục bộ; thăm dò một lần, hiển thị hiện đang dùng cái nào. —— */
 const vecBackend = ref<'backend' | 'local' | 'unknown'>('unknown');
 async function refreshVecBackend(): Promise<void> {
   try {
@@ -397,9 +397,9 @@ async function refreshVecBackend(): Promise<void> {
 }
 onMounted(refreshVecBackend);
 
-/* —— 检测更新:版本区块 + 确认弹窗 —— */
+/* —— Kiểm tra cập nhật: phân khu phiên bản + hộp thoại xác nhận —— */
 const updateConfirmOpen = ref(false);
-// 进设置页时静默重查一次(force:绕开「会话只查一次」,让用户每次进设置页都拿最新结论)
+// Khi vào trang Cài đặt thì kiểm tra lại ngầm một lần (force: bỏ qua "mỗi phiên chỉ kiểm tra một lần", để người dùng mỗi lần vào trang Cài đặt đều nhận được kết luận mới nhất)
 onMounted(() => void checkForUpdate(true));
 function openUpdateConfirm() {
   if (updateState.available) updateConfirmOpen.value = true;
@@ -409,37 +409,37 @@ async function confirmUpdate() {
   const toastr = (globalThis as Record<string, any>).toastr;
   try {
     await performUpdate();
-    // performUpdate 成功后会自动刷新页面;走到这里通常是已触发刷新倒计时
-    toastr?.success?.('更新成功,正在刷新页面…', '柏宝书');
+    // Sau khi performUpdate thành công sẽ tự động làm mới trang; đi tới đây thường là đã kích hoạt đếm ngược làm mới
+    toastr?.success?.('Cập nhật thành công, đang làm mới trang…', 'Bách Bảo Thư');
   } catch (e) {
-    toastr?.error?.(`更新失败:${e instanceof Error ? e.message : String(e)}`, '柏宝书');
+    toastr?.error?.(`Cập nhật thất bại: ${e instanceof Error ? e.message : String(e)}`, 'Bách Bảo Thư');
   }
 }
 
-/* —— 索引维护:手动重建当前聊天向量索引 —— */
+/* —— Bảo trì chỉ mục: dựng lại thủ công chỉ mục vector của cuộc trò chuyện hiện tại —— */
 const vecIndexing = ref(false);
 const vecIndexMsg = ref('');
 async function doRebuildIndex() {
   if (vecIndexing.value) return;
   vecIndexing.value = true;
   vecIndexMsg.value = '';
-  resetVectorStoreProbe(); // 重测后端,确保索引落到当前真实可用的 store
+  resetVectorStoreProbe(); // Đo lại backend, đảm bảo chỉ mục rơi vào store thực sự khả dụng hiện tại
   try {
     const result = await syncVectorIndex();
     const parts = [
-      result.embedded > 0 ? `重新生成 ${result.embedded} 条向量` : '',
-      result.payloadUpdated > 0 ? `更新 ${result.payloadUpdated} 条全文/时间` : '',
+      result.embedded > 0 ? `tạo lại ${result.embedded} vector` : '',
+      result.payloadUpdated > 0 ? `cập nhật ${result.payloadUpdated} toàn văn/thời gian` : '',
     ].filter(Boolean);
-    vecIndexMsg.value = parts.length ? `已${parts.join('，')}。` : '没有需要更新的索引(已是最新)。';
+    vecIndexMsg.value = parts.length ? `Đã ${parts.join(', ')}.` : 'Không có chỉ mục nào cần cập nhật (đã là mới nhất).';
   } catch (e) {
-    vecIndexMsg.value = `索引失败:${e instanceof Error ? e.message : String(e)}`;
+    vecIndexMsg.value = `Lập chỉ mục thất bại: ${e instanceof Error ? e.message : String(e)}`;
   } finally {
     vecIndexing.value = false;
     void refreshVecBackend();
   }
 }
 
-// 清空当前聊天向量索引:破坏性操作,点一次先要二次确认,再点才真清。
+// Xóa sạch chỉ mục vector của cuộc trò chuyện hiện tại: thao tác mang tính phá hủy, nhấn lần một cần xác nhận lần hai trước, nhấn lần nữa mới thực sự xóa sạch.
 const vecClearing = ref(false);
 const vecClearConfirm = ref(false);
 async function doClearIndex() {
@@ -453,20 +453,20 @@ async function doClearIndex() {
   vecIndexMsg.value = '';
   try {
     const n = await clearVectorIndex();
-    vecIndexMsg.value = `已清空当前聊天向量索引(删除 ${n} 条)。可点「重建」从头索引。`;
+    vecIndexMsg.value = `Đã xóa sạch chỉ mục vector của cuộc trò chuyện hiện tại (đã xóa ${n} mục). Có thể nhấn "Dựng lại" để lập chỉ mục lại từ đầu.`;
   } catch (e) {
-    vecIndexMsg.value = `清空失败:${e instanceof Error ? e.message : String(e)}`;
+    vecIndexMsg.value = `Xóa sạch thất bại: ${e instanceof Error ? e.message : String(e)}`;
   } finally {
     vecClearing.value = false;
     void refreshVecBackend();
   }
 }
 
-/* —— 带数据创建新对话 —— */
+/* —— Tạo cuộc trò chuyện mới kèm dữ liệu —— */
 const carrying = ref(false);
 const carryMsg = ref('');
 const carryConfirmOpen = ref(false);
-// 携带计划:展开面板时实时算(纯读 chat,不缓存,避免切聊天后过期)
+// Kế hoạch mang theo: khi mở rộng bảng sẽ tính toán thời gian thực (thuần đọc chat, không lưu đệm, tránh bị hết hạn sau khi chuyển trò chuyện)
 const carryPlan = computed<CarryoverPlan>(() => computeCarryoverPlan());
 async function runCarryover() {
   carryConfirmOpen.value = false;
@@ -474,25 +474,25 @@ async function runCarryover() {
   carryMsg.value = '';
   try {
     const ok = await createNewChatWithCarryover();
-    carryMsg.value = ok ? '已创建新对话。' : '创建未完成(详见提示)。';
+    carryMsg.value = ok ? 'Đã tạo cuộc trò chuyện mới.' : 'Tạo chưa hoàn tất (xem chi tiết ở thông báo).';
   } catch (e) {
-    carryMsg.value = `创建失败:${e instanceof Error ? e.message : String(e)}`;
+    carryMsg.value = `Tạo thất bại: ${e instanceof Error ? e.message : String(e)}`;
   } finally {
     carrying.value = false;
   }
 }
 
-/* —— 从 Horae 迁移 —— */
+/* —— Di chuyển dữ liệu từ Horae —— */
 const migrating = ref(false);
 const migrateMsg = ref('');
 const migrateConfirmOpen = ref(false);
-// 迁移计划:展开面板时实时算(纯读当前 chat 的 horae_meta,不缓存)
+// Kế hoạch di chuyển: khi mở rộng bảng sẽ tính toán thời gian thực (thuần đọc horae_meta của chat hiện tại, không lưu đệm)
 const migratePlan = computed<MigrationPlan>(() => computeMigrationPlan());
-// 确认文案随「是否覆盖」变化
+// Văn bản xác nhận thay đổi theo việc "có ghi đè hay không"
 const migrateConfirmText = computed(() =>
   migratePlan.value.willOverwrite
-    ? '当前聊天已有柏宝书数据,迁移会覆盖现有摘要并在各楼写入数据。继续吗?'
-    : '将把当前聊天里的 Horae 旧数据迁移成柏宝书记忆。继续吗?',
+    ? 'Cuộc trò chuyện hiện tại đã có dữ liệu Bách Bảo Thư, việc di chuyển sẽ ghi đè các tóm tắt hiện có và ghi dữ liệu vào từng tầng. Tiếp tục chứ?'
+    : 'Sẽ di chuyển dữ liệu Horae cũ trong cuộc trò chuyện hiện tại thành trí nhớ Bách Bảo Thư. Tiếp tục chứ?',
 );
 async function runMigrate() {
   migrateConfirmOpen.value = false;
@@ -500,21 +500,21 @@ async function runMigrate() {
   migrateMsg.value = '';
   try {
     const ok = await runHoraeMigration();
-    migrateMsg.value = ok ? '迁移完成。' : '迁移未完成(详见提示)。';
+    migrateMsg.value = ok ? 'Di chuyển hoàn tất.' : 'Di chuyển chưa hoàn tất (xem chi tiết ở thông báo).';
   } catch (e) {
-    migrateMsg.value = `迁移失败:${e instanceof Error ? e.message : String(e)}`;
+    migrateMsg.value = `Di chuyển thất bại: ${e instanceof Error ? e.message : String(e)}`;
   } finally {
     migrating.value = false;
   }
 }
 
-/* —— 排除角色:勾选的角色名(含重名卡)的聊天里,记忆系统所有功能都不生效。
-   按「名字」排除,所以同名卡是一批一起排除。列表很长时易卡,故:① 仅在弹窗打开时取/去重角色名;
-   ② 带搜索框过滤;③ 用 v-show + 子串匹配,渲染量随搜索收敛。 —— */
+/* —— Loại trừ nhân vật: trong cuộc trò chuyện của tên nhân vật được tích chọn (bao gồm cả thẻ trùng tên), mọi tính năng của hệ thống trí nhớ đều không có hiệu lực.
+   Loại trừ theo "tên", nên các thẻ trùng tên sẽ được loại trừ cùng nhau theo lô. Khi danh sách rất dài dễ bị giật lag, do đó: ① Chỉ lấy / khử trùng lặp tên nhân vật khi hộp thoại mở;
+   ② Kèm khung tìm kiếm để lọc; ③ Dùng v-show + khớp chuỗi con, khối lượng kết xuất hội tụ theo tìm kiếm. —— */
 const excludeOpen = ref(false);
 const excludeSearch = ref('');
 
-// 弹窗打开时一次性算出去重后的角色名(按名排序),关闭后不再持有,避免常驻大列表。
+// Khi hộp thoại mở sẽ tính ra một lần danh sách tên nhân vật sau khi khử trùng lặp (sắp xếp theo tên), sau khi đóng không giữ lại nữa, tránh giữ danh sách lớn thường trực.
 const charNames = computed<string[]>(() => {
   if (!excludeOpen.value) return [];
   const chars = getContext()?.characters ?? [];
@@ -523,10 +523,10 @@ const charNames = computed<string[]>(() => {
     const n = c?.name?.trim();
     if (n) seen.add(n);
   }
-  return [...seen].sort((a, b) => a.localeCompare(b, 'zh'));
+  return [...seen].sort((a, b) => a.localeCompare(b, 'vi'));
 });
 
-// 过滤:空搜索显示全部;否则大小写不敏感子串匹配
+// Lọc: tìm kiếm trống hiển thị toàn bộ; nếu không thì khớp chuỗi con không phân biệt hoa thường
 const filteredCharNames = computed<string[]>(() => {
   const q = excludeSearch.value.trim().toLowerCase();
   if (!q) return charNames.value;
@@ -550,13 +550,13 @@ function toggleExcluded(name: string) {
   else list.push(name);
 }
 
-/* —— 排除世界书:摘要/总结时不带这些整本世界书的条目。复刻排除角色的搜索+勾选弹窗;
-   世界书名从 ST 的 getWorldInfoNames()(全部已加载的世界书文件)取。 —— */
+/* —— Loại trừ Sách Thế Giới: khi tóm tắt / đại tóm tắt sẽ không kèm theo các mục của những cuốn Sách Thế Giới nguyên cuốn này. Sao chép lại hộp thoại tìm kiếm + tích chọn của Loại trừ nhân vật;
+   tên Sách Thế Giới lấy từ getWorldInfoNames() (toàn bộ các tệp Sách Thế Giới đã tải) của ST. —— */
 const excludeWorldOpen = ref(false);
 const excludeWorldSearch = ref('');
 
-// 旧版 ST(如 1.13.5)的 getContext() 没有 getWorldInfoNames,退而从主页面世界书
-// 下拉框 #world_editor_select 读选项文本(value="" 是占位项,跳过)。
+// getContext() của ST bản cũ (như 1.13.5) không có getWorldInfoNames, lùi về đọc văn bản tùy chọn từ hộp thả xuống
+// Sách Thế Giới #world_editor_select trên trang chính (value="" là mục giữ chỗ, bỏ qua).
 function readWorldNamesFromDom(): string[] {
   const opts = document.querySelectorAll<HTMLOptionElement>('#world_editor_select option');
   const out: string[] = [];
@@ -566,7 +566,7 @@ function readWorldNamesFromDom(): string[] {
   return out;
 }
 
-// 弹窗打开时一次性取世界书名(去重去空、按名排序);关闭后不持有。
+// Khi hộp thoại mở sẽ lấy một lần tên Sách Thế Giới (khử trùng lặp, bỏ rỗng, sắp xếp theo tên); sau khi đóng không giữ lại.
 const worldNames = computed<string[]>(() => {
   if (!excludeWorldOpen.value) return [];
   const getNames = getContext()?.getWorldInfoNames;
@@ -576,7 +576,7 @@ const worldNames = computed<string[]>(() => {
     const t = n?.trim();
     if (t) seen.add(t);
   }
-  return [...seen].sort((a, b) => a.localeCompare(b, 'zh'));
+  return [...seen].sort((a, b) => a.localeCompare(b, 'vi'));
 });
 
 const filteredWorldNames = computed<string[]>(() => {
@@ -602,8 +602,8 @@ function toggleWorldExcluded(name: string) {
   else list.push(name);
 }
 
-/* —— 排除世界书条目:按条目名(comment)过滤,复刻清洗标签的输入框+chips。
-   规则当正则,普通名字即包含匹配;编译失败降级子串。 —— */
+/* —— Loại trừ mục Sách Thế Giới: lọc theo tên mục (comment), sao chép lại ô nhập + chips của thẻ làm sạch.
+   Quy tắc được coi là biểu thức chính quy (regex), tên thông thường tức là khớp bao gồm; biên dịch thất bại sẽ hạ cấp xuống khớp chuỗi con. —— */
 const wiPatternDraft = ref('');
 function addWiPattern() {
   const pat = wiPatternDraft.value.trim();
@@ -619,7 +619,7 @@ function removeWiPattern(pat: string) {
   if (idx >= 0) apiSettings.excludedWorldInfoPatterns.splice(idx, 1);
 }
 
-/* —— 自定义清洗标签:用户填标签名(如 snow),清洗正文时把 <snow>…</snow> 整块删掉 —— */
+/* —— Thẻ làm sạch tùy chỉnh: người dùng điền tên thẻ (như snow), khi làm sạch chính văn sẽ xóa nguyên khối <snow>…</snow> —— */
 const stripTagDraft = ref('');
 function addStripTag() {
   const tag = sanitizeTagName(stripTagDraft.value);
@@ -635,7 +635,7 @@ function removeStripTag(tag: string) {
   if (idx >= 0) apiSettings.customStripTags.splice(idx, 1);
 }
 
-// 点宏标签 → 插入到文本框光标处(无焦点则追加到末尾)
+// Nhấn nhãn macro → chèn vào vị trí con trỏ của khung văn bản (không có focus thì nối thêm vào cuối)
 function insertMacro(token: string) {
   const el = promptArea.value;
   if (!el) {
@@ -645,7 +645,7 @@ function insertMacro(token: string) {
   const start = el.selectionStart ?? promptDraft.value.length;
   const end = el.selectionEnd ?? start;
   promptDraft.value = promptDraft.value.slice(0, start) + token + promptDraft.value.slice(end);
-  // 等 v-model 回填后把光标移到插入内容之后
+  // Đợi sau khi v-model điền lại thì di chuyển con trỏ ra sau nội dung vừa chèn
   void nextTick(() => {
     el.focus();
     const pos = start + token.length;
@@ -653,61 +653,61 @@ function insertMacro(token: string) {
   });
 }
 
-/* —— 上次召回详情(调试面板):纯只读展示 recallDebug,reactive 自动刷新 —— */
+/* —— Chi tiết lần truy xuất trước (bảng gỡ lỗi): hiển thị thuần chỉ đọc recallDebug, reactive tự động làm mới —— */
 function fmtRecallTime(at: number): string {
   if (!at) return '';
   const d = new Date(at);
   const p = (n: number) => String(n).padStart(2, '0');
   return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
-// 来源 Q 标签:后端回传 -1(旧后端未支持)时显示占位符
+// Nhãn nguồn Q: khi backend trả về -1 (backend cũ chưa hỗ trợ) thì hiển thị ký tự giữ chỗ
 function qLabel(queryIndex: number): string {
   return queryIndex >= 0 ? `Q${queryIndex + 1}` : '—';
 }
-const TIER_LABEL: Record<'full' | 'brief' | 'drop', string> = { full: '全文', brief: '摘要', drop: '丢弃' };
-// 状态语气:决定横幅左侧圆点的配色(成功/警示/失败/进行中)
+const TIER_LABEL: Record<'full' | 'brief' | 'drop', string> = { full: 'Toàn văn', brief: 'Tóm tắt', drop: 'Loại bỏ' };
+// Sắc thái trạng thái: quyết định phối màu chấm tròn bên trái biểu ngữ (thành công / cảnh báo / thất bại / đang thực hiện)
 const recallStatusKind = computed<'ok' | 'warn' | 'fail' | 'pending'>(() => {
   const s = recallDebug.status;
-  if (s.includes('失败')) return 'fail';
-  if (s.includes('进行中')) return 'pending';
-  if (s.includes('未召回') || s.includes('未注入')) return 'warn';
+  if (s.includes('Thất bại')) return 'fail';
+  if (s.includes('Đang thực hiện')) return 'pending';
+  if (s.includes('Chưa truy xuất') || s.includes('Chưa chèn')) return 'warn';
   return 'ok';
 });
-// 分数(0~1)→ 进度条宽度百分比;负分(如未知)按 0 处理
+// Điểm số (0~1) → phần trăm chiều rộng thanh tiến độ; điểm âm (như chưa rõ) xử lý theo 0
 function scorePct(score: number): number {
   return Math.max(0, Math.min(1, score)) * 100;
 }
 
-/* —— 获取数据:宏速查 + 公共接口文档导出 —— */
+/* —— Lấy dữ liệu: tra cứu nhanh macro + xuất tài liệu giao diện công khai —— */
 const DATA_MACROS = [
   {
     token: '{{bbsInjectedHistory}}',
-    title: '正常注入历史',
-    desc: '与柏宝书正常注入一致,自动跳过滑动窗口内仍发送全文的摘要。',
+    title: 'Lịch sử tiêm thông thường',
+    desc: 'Đồng nhất với nội dung tiêm thông thường của Bách Bảo Thư, tự động bỏ qua các bản tóm tắt trong cửa sổ trượt vốn vẫn đang gửi toàn văn.',
   },
   {
     token: '{{bbsHistory}}',
-    title: '全部压缩历史',
-    desc: '返回当前聊天全部有效摘要与总结,包括滑动窗口内已有摘要的楼层。',
+    title: 'Toàn bộ lịch sử nén',
+    desc: 'Trả về toàn bộ các bản tóm tắt và đại tóm tắt hợp lệ của cuộc trò chuyện hiện tại, bao gồm cả các tầng đã có tóm tắt trong cửa sổ trượt.',
   },
   {
     token: '{{bbsVars}}',
-    title: '全部变量',
-    desc: '返回当前自定义变量树的紧凑 JSON。',
+    title: 'Toàn bộ biến số',
+    desc: 'Trả về JSON nhỏ gọn của cây biến số tùy chỉnh hiện tại.',
   },
   {
-    token: '{{bbsVar::路径}}',
-    title: '单个变量',
-    desc: '按路径读取变量,例如 {{bbsVar::关系.爱丽丝.好感度}}。需要新版宏引擎。',
+    token: '{{bbsVar::Đường_dẫn}}',
+    title: 'Biến số đơn lẻ',
+    desc: 'Đọc biến số theo đường dẫn, ví dụ {{bbsVar::Quan_hệ.Alice.Hảo_cảm}}. Cần bộ máy macro phiên bản mới.',
   },
 ] as const;
 
 async function copyDataMacro(token: string) {
   try {
     await navigator.clipboard.writeText(token);
-    toast(`已复制 ${token}`, 'success');
+    toast(`Đã sao chép ${token}`, 'success');
   } catch {
-    toast('复制失败,请手动选择宏文本', 'error');
+    toast('Sao chép thất bại, vui lòng chọn văn bản macro thủ công', 'error');
   }
 }
 
@@ -716,21 +716,21 @@ function exportPublicApiDocument() {
   anchor.href = versionedAssetUrl('../PUBLIC_API.md', import.meta.url);
   anchor.download = 'ST-BaiBai-Book-PUBLIC_API.md';
   anchor.click();
-  toast('公共接口文档已导出', 'success');
+  toast('Đã xuất tài liệu giao diện công khai', 'success');
 }
 </script>
 
 <template>
   <section class="bbs-page">
-    <!-- 标题行右端显示版本号;有更新时旁边出现「更新」按钮。 -->
+    <!-- Đầu bên phải dòng tiêu đề hiển thị số phiên bản; khi có bản cập nhật bên cạnh sẽ xuất hiện nút "Cập nhật". -->
     <div class="bbs-page-head">
-      <h2 class="bbs-title bbs-title-sub">设置</h2>
+      <h2 class="bbs-title bbs-title-sub">Cài đặt</h2>
       <div class="bbs-ver-row">
         <button
           class="bbs-ver"
           type="button"
           :disabled="updateState.checking"
-          :title="updateState.checking ? '正在检查更新' : '点击检查更新'"
+          :title="updateState.checking ? 'Đang kiểm tra cập nhật' : 'Nhấn để kiểm tra cập nhật'"
           @click="checkForUpdate(true)"
         >
           v{{ updateState.current || '—' }}
@@ -740,21 +740,21 @@ function exportPublicApiDocument() {
           class="bbs-btn bbs-btn-primary bbs-btn-sm"
           type="button"
           :disabled="updateState.updating"
-          :title="`更新到 v${updateState.latest}`"
+          :title="`Cập nhật lên v${updateState.latest}`"
           @click="openUpdateConfirm"
         >
-          {{ updateState.updating ? '更新中…' : '更新' }}
+          {{ updateState.updating ? 'Đang cập nhật…' : 'Cập nhật' }}
         </button>
       </div>
     </div>
     <hr class="bbs-rule" />
 
-    <!-- 总开关:整个插件的主控,关闭即停止注入/摘要/总结/隐藏(已有数据保留)。
-         单独抬出在折叠区之上,作为这页最显眼的一处决策。 -->
+    <!-- Công tắc tổng: điều khiển chính của toàn bộ plugin, tắt đi sẽ dừng tiêm / tóm tắt / đại tóm tắt / ẩn (dữ liệu đã có vẫn được giữ lại).
+         Được đưa riêng lên phía trên các vùng thu gọn, làm quyết định nổi bật nhất của trang này. -->
     <div class="bbs-master" :class="{ 'is-off': !apiSettings.enabled }">
       <span class="bbs-master-spine" aria-hidden="true"></span>
       <div class="bbs-master-text">
-        <span class="bbs-master-title">柏宝书 · 记忆引擎</span>
+        <span class="bbs-master-title">Bách Bảo Thư · Bộ máy trí nhớ</span>
       </div>
       <button
         type="button"
@@ -762,7 +762,7 @@ function exportPublicApiDocument() {
         class="bbs-toggle"
         :class="{ 'is-on': apiSettings.enabled }"
         :aria-checked="apiSettings.enabled"
-        :title="apiSettings.enabled ? '点击停用' : '点击启用'"
+        :title="apiSettings.enabled ? 'Nhấn để tắt' : 'Nhấn để bật'"
         @click="apiSettings.enabled = !apiSettings.enabled"
       >
         <span class="bbs-toggle-knob"></span>
@@ -770,11 +770,11 @@ function exportPublicApiDocument() {
     </div>
 
     <div class="bbs-sections">
-      <!-- 基本设置 -->
-      <Collapsible title="基本设置" :open="false">
+      <!-- Cài đặt cơ bản -->
+      <Collapsible title="Cài đặt cơ bản" :open="false">
         <div class="bbs-field">
           <div class="bbs-field-head">
-            <span class="bbs-field-label">主题</span>
+            <span class="bbs-field-label">Giao diện</span>
           </div>
           <div class="bbs-segmented bbs-segmented-wrap">
             <button
@@ -793,7 +793,7 @@ function exportPublicApiDocument() {
 
         <div class="bbs-field">
           <div class="bbs-field-head">
-            <span class="bbs-field-label">导航位置</span>
+            <span class="bbs-field-label">Vị trí thanh điều hướng</span>
           </div>
           <div class="bbs-segmented">
             <button
@@ -810,41 +810,41 @@ function exportPublicApiDocument() {
         </div>
 
         <label class="bbs-switch-row">
-          <span class="bbs-field-label">移动端点当前页导航关窗</span>
+          <span class="bbs-field-label">Nhấn điều hướng trang hiện tại để đóng cửa sổ trên di động</span>
           <input v-model="ui.navTapClose" type="checkbox" class="bbs-checkbox" />
         </label>
-        <p class="bbs-field-hint">移动端再点一下当前所在页的导航按钮即可关闭整个窗口,省得去够右上角的 ×。怕误触可关。</p>
+        <p class="bbs-field-hint">Trên di động nhấn thêm một lần vào nút điều hướng của trang đang mở sẽ đóng toàn bộ cửa sổ, đỡ phải với tay lên nút × ở góc trên bên phải. Nếu sợ chạm nhầm có thể tắt đi.</p>
 
         <label class="bbs-switch-row">
-          <span class="bbs-field-label">在 ST 顶栏显示按钮</span>
+          <span class="bbs-field-label">Hiển thị nút trên thanh đỉnh ST</span>
           <input v-model="ui.showTopBar" type="checkbox" class="bbs-checkbox" />
         </label>
-        <p class="bbs-field-hint">在酒馆顶部导航栏(用户设定管理左侧)加一个快速打开柏宝书的按钮,免去每次点左下角魔杖。左下角魔杖入口照旧保留。</p>
+        <p class="bbs-field-hint">Thêm một nút mở nhanh Bách Bảo Thư trên thanh điều hướng đỉnh của quán rượu (bên trái Quản lý thiết lập người dùng), khỏi phải nhấn vào cây đũa phép ở góc dưới bên trái mỗi lần. Lối vào ở cây đũa phép góc dưới bên trái vẫn được giữ nguyên.</p>
 
         <label class="bbs-switch-row">
-          <span class="bbs-field-label">在聊天框上方显示按钮</span>
+          <span class="bbs-field-label">Hiển thị nút phía trên khung trò chuyện</span>
           <input v-model="ui.showQuickReply" type="checkbox" class="bbs-checkbox" />
         </label>
-        <p class="bbs-field-hint">在输入框上方(与快速回复同位)加一个「柏宝书」按钮,跟随酒馆主题美化。</p>
+        <p class="bbs-field-hint">Thêm một nút "Bách Bảo Thư" ở phía trên khung nhập liệu (cùng vị trí với Trả lời nhanh), đi theo làm đẹp giao diện của quán rượu.</p>
 
         <label class="bbs-switch-row">
-          <span class="bbs-field-label">启用楼层界面</span>
+          <span class="bbs-field-label">Bật giao diện tầng</span>
           <input v-model="ui.showFloorPanel" type="checkbox" class="bbs-checkbox" />
         </label>
-        <p class="bbs-field-hint">在每条 AI 楼层下方加一个界面:查看该楼摘要与数据变动,并可一键标记「番外」。标为番外的楼层被记忆系统彻底忽略(不摘要、不总结、不注入),适合小剧场/番外篇;取消番外即恢复。</p>
+        <p class="bbs-field-hint">Thêm một giao diện ở bên dưới mỗi tầng AI: xem tóm tắt và biến động dữ liệu của tầng đó, đồng thời có thể đánh dấu "Ngoại truyện" chỉ với một cú nhấn. Tầng được đánh dấu là ngoại truyện sẽ bị hệ thống trí nhớ bỏ qua hoàn toàn (không tóm tắt, không đại tóm tắt, không tiêm), phù hợp cho tiểu kịch trường / phần ngoại truyện; bỏ ngoại truyện sẽ khôi phục lại.</p>
 
-        <!-- 屏幕悬浮球:配置项多,收进可收缩小分组 -->
-        <Collapsible title="屏幕悬浮球" :open="false">
+        <!-- Quả cầu nổi trên màn hình: nhiều mục cấu hình, thu vào nhóm nhỏ có thể thu gọn -->
+        <Collapsible title="Quả cầu nổi trên màn hình" :open="false">
           <label class="bbs-switch-row">
-            <span class="bbs-field-label">显示屏幕悬浮球</span>
+            <span class="bbs-field-label">Hiển thị quả cầu nổi trên màn hình</span>
             <input v-model="ui.showOrb" type="checkbox" class="bbs-checkbox" />
           </label>
-          <p class="bbs-field-hint">在屏幕边缘挂一枚可拖动的悬浮球,点击即开柏宝书。拖到中间可常驻悬浮,拖近左右边缘则吸附贴边。</p>
+          <p class="bbs-field-hint">Gắn một quả cầu nổi có thể kéo thả ở mép màn hình, nhấn vào là mở Bách Bảo Thư. Kéo ra giữa có thể nổi thường trực, kéo lại gần mép trái/phải sẽ hít bám cạnh.</p>
 
-          <!-- 形状:仅开启时可配 -->
+          <!-- Hình dáng: chỉ cấu hình được khi bật -->
           <div v-if="ui.showOrb" class="bbs-field">
             <div class="bbs-field-head">
-              <span class="bbs-field-label">形状</span>
+              <span class="bbs-field-label">Hình dáng</span>
             </div>
             <div class="bbs-segmented">
               <button
@@ -860,329 +860,329 @@ function exportPublicApiDocument() {
             </div>
           </div>
 
-          <!-- 静止透明度:仅开启时可配 -->
+          <!-- Độ mờ khi đứng yên: chỉ cấu hình được khi bật -->
           <div v-if="ui.showOrb" class="bbs-field">
             <div class="bbs-field-head">
-              <span class="bbs-field-label">静止透明度</span>
+              <span class="bbs-field-label">Độ mờ khi đứng yên</span>
               <span class="bbs-field-value">{{ ui.orbOpacity }}%</span>
             </div>
             <input v-model.number="ui.orbOpacity" type="range" min="20" max="100" step="1" class="bbs-range" />
-            <p class="bbs-field-hint">悬浮球静止时的不透明度;鼠标悬停 / 拖动时一律全显。</p>
+            <p class="bbs-field-hint">Độ mờ khi quả cầu nổi đứng yên; khi di chuột qua / kéo thả sẽ nhất loạt hiển thị rõ toàn phần.</p>
           </div>
 
-          <!-- 大小:仅开启时可配 -->
+          <!-- Kích thước: chỉ cấu hình được khi bật -->
           <div v-if="ui.showOrb" class="bbs-field">
             <div class="bbs-field-head">
-              <span class="bbs-field-label">大小</span>
+              <span class="bbs-field-label">Kích thước</span>
               <span class="bbs-field-value">{{ ui.orbSize }}px</span>
             </div>
             <input v-model.number="ui.orbSize" type="range" min="32" max="80" step="1" class="bbs-range" />
           </div>
 
-          <!-- 图标:仅开启时可配 -->
+          <!-- Biểu tượng: chỉ cấu hình được khi bật -->
           <div v-if="ui.showOrb" class="bbs-orb-config">
             <div class="bbs-orb-preview" :class="[`shape-${ui.orbShape}`, { 'has-image': !!ui.orbImage }]">
-              <img v-if="ui.orbImage" :src="ui.orbImage" alt="悬浮球图标预览" />
+              <img v-if="ui.orbImage" :src="ui.orbImage" alt="Xem trước biểu tượng quả cầu nổi" />
               <Icon v-else name="bookmark" />
             </div>
             <div class="bbs-orb-config-actions">
               <button type="button" class="bbs-btn bbs-btn-sm bbs-btn-primary" :disabled="orbUploading" @click="pickOrbImage">
-                {{ orbUploading ? '上传中…' : ui.orbImage ? '更换图标' : '上传图标' }}
+                {{ orbUploading ? 'Đang tải lên…' : ui.orbImage ? 'Đổi biểu tượng' : 'Tải biểu tượng lên' }}
               </button>
-              <button v-if="ui.orbImage" type="button" class="bbs-btn bbs-btn-sm" @click="resetOrbImage">恢复默认</button>
+              <button v-if="ui.orbImage" type="button" class="bbs-btn bbs-btn-sm" @click="resetOrbImage">Khôi phục mặc định</button>
             </div>
             <input ref="orbFileInput" type="file" accept="image/*" hidden @change="onOrbFileChange" />
           </div>
-          <p v-if="ui.showOrb" class="bbs-field-hint">支持静态图与 GIF 动图(GIF 保留动画,≤2MB)。图标上传到酒馆服务器、跨设备同步;留空则用默认书签图标。</p>
+          <p v-if="ui.showOrb" class="bbs-field-hint">Hỗ trợ ảnh tĩnh và ảnh động GIF (GIF giữ nguyên hoạt ảnh, ≤2MB). Biểu tượng được tải lên máy chủ quán rượu, đồng bộ đa thiết bị; để trống sẽ dùng biểu tượng thẻ đánh dấu sách mặc định.</p>
         </Collapsible>
       </Collapsible>
 
-      <!-- 副 API -->
-      <Collapsible title="副 API" :open="false">
-        <!-- 任务指派 -->
+      <!-- API phụ -->
+      <Collapsible title="API phụ" :open="false">
+        <!-- Chỉ định tác vụ -->
         <div class="bbs-field bbs-assign">
           <div class="bbs-assign-row">
-            <span class="bbs-field-label">摘要使用</span>
-            <BbsSelect v-model="apiSettings.assignments.summary" :options="channelOptions" class="bbs-assign-select" aria-label="摘要使用的渠道" />
+            <span class="bbs-field-label">Tóm tắt sử dụng</span>
+            <BbsSelect v-model="apiSettings.assignments.summary" :options="channelOptions" class="bbs-assign-select" aria-label="Kênh sử dụng cho tóm tắt" />
           </div>
           <div class="bbs-assign-row">
-            <span class="bbs-field-label">总结使用</span>
-            <BbsSelect v-model="apiSettings.assignments.resummary" :options="channelOptions" class="bbs-assign-select" aria-label="总结使用的渠道" />
+            <span class="bbs-field-label">Đại tóm tắt sử dụng</span>
+            <BbsSelect v-model="apiSettings.assignments.resummary" :options="channelOptions" class="bbs-assign-select" aria-label="Kênh sử dụng cho đại tóm tắt" />
           </div>
         </div>
-        <p class="bbs-field-hint">推荐使用DeepSeek或豆包，不推荐Gemini，甲太厚</p>
+        <p class="bbs-field-hint">Khuyên dùng DeepSeek hoặc Doubao, không khuyên dùng Gemini vì lớp giáp kiểm duyệt quá dày</p>
 
         <hr class="bbs-rule" />
 
-        <!-- 渠道:顶部添加按钮 + 紧凑只读列表(点行进弹窗编辑),不再一长列表单平铺 -->
+        <!-- Kênh: nút thêm ở đỉnh + danh sách chỉ đọc nhỏ gọn (nhấn vào dòng để mở hộp thoại chỉnh sửa), không trải phẳng một danh sách dài nữa -->
         <div class="bbs-channel-bar">
-          <span class="bbs-field-label">渠道</span>
+          <span class="bbs-field-label">Kênh</span>
           <button class="bbs-btn bbs-btn-primary bbs-btn-sm" type="button" @click="addChannel('api')">
-            <Icon name="plus" /> 添加渠道
+            <Icon name="plus" /> Thêm kênh
           </button>
         </div>
 
         <ul v-if="apiSettings.channels.length" class="bbs-channel-list">
           <li v-for="ch in apiSettings.channels" :key="ch.id" class="bbs-channel-item">
             <button class="bbs-channel-open" type="button" @click="openChannel(ch.id)">
-              <span class="bbs-channel-item-name">{{ ch.name || '未命名渠道' }}</span>
-              <span class="bbs-channel-item-model">{{ ch.model || '未设模型' }}</span>
+              <span class="bbs-channel-item-name">{{ ch.name || 'Kênh chưa đặt tên' }}</span>
+              <span class="bbs-channel-item-model">{{ ch.model || 'Chưa đặt mô hình' }}</span>
             </button>
           </li>
         </ul>
-        <p v-else class="bbs-field-hint">还没有渠道。点「添加渠道」配置摘要/总结要用的 API。</p>
+        <p v-else class="bbs-field-hint">Chưa có kênh nào. Nhấn "Thêm kênh" để cấu hình API dùng cho tóm tắt / đại tóm tắt.</p>
       </Collapsible>
 
-      <!-- 摘要设置 -->
-      <Collapsible title="摘要设置" :open="false">
+      <!-- Cài đặt tóm tắt -->
+      <Collapsible title="Cài đặt tóm tắt" :open="false">
         <label class="bbs-switch-row">
-          <span class="bbs-field-label">启用自动摘要</span>
+          <span class="bbs-field-label">Bật tóm tắt tự động</span>
           <input v-model="apiSettings.autoSummaryEnabled" type="checkbox" class="bbs-checkbox" />
         </label>
-        <p class="bbs-field-hint">开启后自动摘要并隐藏旧楼,同时启用正文时间标签(剧情时间锚点)与积压拦截(漏摘时拦截发送、提示补摘)。</p>
+        <p class="bbs-field-hint">Sau khi bật sẽ tự động tóm tắt và ẩn các tầng cũ, đồng thời bật thẻ thời gian chính văn (mốc thời gian cốt truyện) và chặn tồn đọng (khi bị sót tóm tắt sẽ chặn gửi đi và nhắc tóm tắt bù).</p>
         <div class="bbs-num-row">
-          <span class="bbs-field-label">字数档位</span>
-          <BbsSelect v-model="apiSettings.verbosity" :options="VERBOSITY_OPTIONS" class="bbs-select-narrow" aria-label="字数档位" />
+          <span class="bbs-field-label">Mức số chữ</span>
+          <BbsSelect v-model="apiSettings.verbosity" :options="VERBOSITY_OPTIONS" class="bbs-select-narrow" aria-label="Mức số chữ" />
         </div>
-        <p class="bbs-field-hint">一键调节摘要/总结/二次总结的目标字数。详细=信息全(摘要150-300、总结300-500字)；精简=省token(摘要80-150、总结150-300字)。仅影响内置提示词,自定义模板不受影响。</p>
+        <p class="bbs-field-hint">Điều chỉnh nhanh số chữ mục tiêu của Tóm tắt / Đại tóm tắt / Đại tóm tắt cấp hai. Chi tiết = đầy đủ thông tin (Tóm tắt 150-300, Đại tóm tắt 300-500 chữ); Tinh gọn = tiết kiệm token (Tóm tắt 80-150, Đại tóm tắt 150-300 chữ). Chỉ ảnh hưởng tới lời nhắc tích hợp sẵn, mẫu tùy chỉnh không bị ảnh hưởng.</p>
         <label class="bbs-num-row">
-          <span class="bbs-field-label">保留最近 AI 消息数</span>
+          <span class="bbs-field-label">Số tin nhắn AI giữ lại gần nhất</span>
           <input v-model.number="apiSettings.keepRecent" class="bbs-input bbs-num" type="number" min="0" />
         </label>
-        <p class="bbs-field-hint">保留多少条 AI 消息发送全文,超出部分自动隐藏并发送摘要。</p>
+        <p class="bbs-field-hint">Giữ lại bao nhiêu tin nhắn AI để gửi toàn văn, phần vượt quá sẽ tự động ẩn đi và gửi bản tóm tắt.</p>
         <label class="bbs-num-row">
-          <span class="bbs-field-label">每次总结 AI 消息数</span>
+          <span class="bbs-field-label">Số tin nhắn AI mỗi lần đại tóm tắt</span>
           <input v-model.number="apiSettings.leafBatchThreshold" class="bbs-input bbs-num" type="number" min="0" />
         </label>
-        <p class="bbs-field-hint">每次总结多少条摘要,不计算 user 楼层,0 为关闭自动总结。</p>
+        <p class="bbs-field-hint">Mỗi lần đại tóm tắt bao nhiêu bản tóm tắt, không tính tầng user, 0 là tắt đại tóm tắt tự động.</p>
         <label class="bbs-num-row">
-          <span class="bbs-field-label">总结时保留摘要数</span>
+          <span class="bbs-field-label">Số bản tóm tắt giữ lại khi đại tóm tắt</span>
           <input v-model.number="apiSettings.leafKeepRecent" class="bbs-input bbs-num" type="number" min="0" />
         </label>
-        <p class="bbs-field-hint">总结时在末尾保留这么多条摘要不压缩,让隐藏区始终留一截细节、避免总结后信息断崖。例:每次总结 12、这里填 3,则攒够 15 条才总结,压最旧 12 条,留最新 3 条摘要。0 为攒够即全压(旧行为),默认 3。</p>
+        <p class="bbs-field-hint">Khi đại tóm tắt sẽ giữ lại ngần này bản tóm tắt ở cuối không nén, để vùng ẩn luôn lưu lại một đoạn chi tiết, tránh đứt gãy thông tin sau khi đại tóm tắt. VD: mỗi lần đại tóm tắt 12, ở đây điền 3, thì phải tích đủ 15 bản mới đại tóm tắt, nén 12 bản cũ nhất, giữ lại 3 bản tóm tắt mới nhất. 0 là tích đủ thì nén hết (hành vi cũ), mặc định là 3.</p>
         <label class="bbs-num-row">
-          <span class="bbs-field-label">二次总结</span>
+          <span class="bbs-field-label">Đại tóm tắt cấp hai</span>
           <input v-model.number="apiSettings.resummaryThreshold" class="bbs-input bbs-num" type="number" min="0" />
         </label>
-        <p class="bbs-field-hint">L1 总结达到多少条后压成一条 L2,0 为关闭。默认 7。</p>
+        <p class="bbs-field-hint">Đại tóm tắt L1 đạt bao nhiêu bản thì nén thành một bản L2, 0 là tắt. Mặc định là 7.</p>
         <label class="bbs-num-row">
-          <span class="bbs-field-label">高层总结</span>
+          <span class="bbs-field-label">Đại tóm tắt cấp cao</span>
           <input v-model.number="apiSettings.higherResummaryThreshold" class="bbs-input bbs-num" type="number" min="0" />
         </label>
-        <p class="bbs-field-hint">L2 及以上总结达到多少条后再压一层。高层正文更长,建议使用较小阈值；0 为关闭,默认 3。</p>
+        <p class="bbs-field-hint">Đại tóm tắt L2 trở lên đạt bao nhiêu bản thì nén thêm một tầng nữa. Nội dung cấp cao dài hơn, khuyên dùng ngưỡng nhỏ hơn; 0 là tắt, mặc định là 3.</p>
         <label class="bbs-num-row">
-          <span class="bbs-field-label">附带近期已完成计划</span>
+          <span class="bbs-field-label">Đính kèm kế hoạch đã hoàn thành gần đây</span>
           <input v-model.number="apiSettings.recentResolvedPlansCount" class="bbs-input bbs-num" type="number" min="0" />
         </label>
-        <p class="bbs-field-hint">在状态快照里附带「已完成的计划/悬念」,提醒 AI 别把刚了结的事又当未完成去推进或重复记录;主模型注入与摘要副API同时附带。计划、悬念各取最近这么多条(如填 5 = 最多计划 5 + 悬念 5)。0 为不附带,默认 5。</p>
+        <p class="bbs-field-hint">Đính kèm "Kế hoạch / Nghi vấn đã hoàn thành" trong ảnh chụp nhanh trạng thái, nhắc AI đừng lấy những việc vừa mới kết thúc coi như chưa hoàn thành để thúc đẩy tiếp hoặc ghi nhận trùng lặp; đồng thời đính kèm cho cả phần tiêm vào mô hình chính và API phụ tóm tắt. Kế hoạch và nghi vấn mỗi loại lấy tối đa ngần này mục gần nhất (VD: điền 5 = tối đa 5 kế hoạch + 5 nghi vấn). 0 là không đính kèm, mặc định là 5.</p>
         <label class="bbs-num-row">
-          <span class="bbs-field-label">失败重试次数</span>
+          <span class="bbs-field-label">Số lần thử lại khi thất bại</span>
           <input v-model.number="apiSettings.summaryMaxRetries" class="bbs-input bbs-num" type="number" min="0" />
         </label>
-        <p class="bbs-field-hint">摘要/总结请求失败(报错或返回内容无法解析)时最多额外重试几次,0 为不重试。默认 1。</p>
+        <p class="bbs-field-hint">Khi yêu cầu tóm tắt / đại tóm tắt thất bại (báo lỗi hoặc nội dung trả về không phân tích được) thì thử lại thêm tối đa mấy lần, 0 là không thử lại. Mặc định là 1.</p>
         <label class="bbs-num-row">
-          <span class="bbs-field-label">批量补摘·每批字数</span>
+          <span class="bbs-field-label">Tóm tắt bù hàng loạt · Số chữ mỗi đợt</span>
           <input v-model.number="apiSettings.batchMaxChars" class="bbs-input bbs-num" type="number" min="500" step="500" />
         </label>
-        <p class="bbs-field-hint">批量补摘时,每次请求最多打包多少字正文(清洗后)就切一批。越大越省 token/越快,但太大会让 AI 注意力分散、质量下降。默认 30000。</p>
+        <p class="bbs-field-hint">Khi tóm tắt bù hàng loạt, mỗi yêu cầu đóng gói tối đa bao nhiêu chữ chính văn (sau khi làm sạch) thì cắt thành một đợt. Càng lớn càng tiết kiệm token / càng nhanh, nhưng lớn quá sẽ làm phân tán sự chú ý của AI, giảm chất lượng. Mặc định là 30000.</p>
         <label class="bbs-num-row">
-          <span class="bbs-field-label">批量补摘·每批楼数上限</span>
+          <span class="bbs-field-label">Tóm tắt bù hàng loạt · Giới hạn số tầng mỗi đợt</span>
           <input v-model.number="apiSettings.batchMaxFloors" class="bbs-input bbs-num" type="number" min="1" />
         </label>
-        <p class="bbs-field-hint">字数没到上限时,楼数到此也切批,作为兜底。默认 10。</p>
+        <p class="bbs-field-hint">Khi số chữ chưa chạm trần nhưng số tầng đạt tới mức này cũng sẽ cắt đợt để dự phòng. Mặc định là 10.</p>
       </Collapsible>
 
-      <!-- 注入设置 -->
-      <Collapsible title="注入设置" :open="false">
-        <p class="bbs-field-hint">选择哪些状态块注入主对话(生成正文的请求)。这些开关<strong>只影响主模型看到的内容</strong>:副 API 摘要始终能看到全量状态、照常记录,关闭某项不会导致重复记录。时间/地点、计划/悬念与自定义变量保持常驻,不在此处开关。</p>
+      <!-- Cài đặt tiêm -->
+      <Collapsible title="Cài đặt tiêm" :open="false">
+        <p class="bbs-field-hint">Chọn những khối trạng thái nào được tiêm vào cuộc đối thoại chính (yêu cầu tạo chính văn). Các công tắc này <strong>chỉ ảnh hưởng tới nội dung mà mô hình chính nhìn thấy</strong>: API phụ tóm tắt luôn nhìn thấy trạng thái toàn lượng và ghi nhận như thường, tắt một mục nào đó sẽ không dẫn tới ghi nhận trùng lặp. Thời gian / Địa điểm, Kế hoạch / Nghi vấn và Biến số tùy chỉnh được giữ thường trực, không bật tắt tại đây.</p>
 
         <label class="bbs-switch-row">
-          <span class="bbs-field-label">仅注入剧情摘要</span>
+          <span class="bbs-field-label">Chỉ tiêm tóm tắt cốt truyện</span>
           <input v-model="apiSettings.summaryOnlyMode" type="checkbox" class="bbs-checkbox" />
         </label>
-        <p class="bbs-field-hint">兼容角色卡自带的变量系统。开启后仍会分析、保存并在柏宝书内展示物品、角色、场景、计划和变量,但不再把当前状态注入主模型(下方各块开关也随之不生效),也不再向后续楼层正文写入物品/变量变动旁注。已有楼层中的旁注不会主动清理;场景页的「前往」功能不受影响。</p>
+        <p class="bbs-field-hint">Tương thích với hệ thống biến số có sẵn của thẻ nhân vật. Sau khi bật vẫn sẽ phân tích, lưu trữ và hiển thị vật phẩm, nhân vật, khung cảnh, kế hoạch và biến số trong Bách Bảo Thư, nhưng không còn tiêm trạng thái hiện tại vào mô hình chính (công tắc các khối bên dưới cũng theo đó không còn hiệu lực), đồng thời không ghi chú thích biến động vật phẩm / biến số vào chính văn các tầng tiếp theo nữa. Chú thích trong các tầng đã có sẽ không tự động bị xóa; tính năng "Đi tới" ở trang Khung cảnh không bị ảnh hưởng.</p>
 
         <hr class="bbs-rule" />
 
         <label class="bbs-switch-row">
-          <span class="bbs-field-label">眼下局势</span>
+          <span class="bbs-field-label">Cục diện trước mắt</span>
           <input v-model="apiSettings.injection.sceneFocus" type="checkbox" class="bbs-checkbox" :disabled="apiSettings.summaryOnlyMode" />
         </label>
-        <p class="bbs-field-hint">当前互动局势卡:局面、在场人、当前焦点、互动张力与即将发生之事,衔接当下场面。</p>
+        <p class="bbs-field-hint">Thẻ cục diện tương tác hiện tại: cục diện, người có mặt, tiêu điểm hiện tại, căng thẳng tương tác và sự việc sắp diễn ra, nối tiếp cảnh tượng trước mắt.</p>
 
         <label class="bbs-switch-row">
-          <span class="bbs-field-label">生活档案</span>
+          <span class="bbs-field-label">Hồ sơ đời sống</span>
           <input v-model="apiSettings.injection.lifeDetails" type="checkbox" class="bbs-checkbox" :disabled="apiSettings.summaryOnlyMode" />
         </label>
-        <p class="bbs-field-hint">控制主角及主要角色生活档案的注入。记录始终开启(AI 照常积累档案,可在角色页管理);关闭后只是不再发给主模型,重开即可恢复注入。</p>
+        <p class="bbs-field-hint">Điều khiển việc tiêm hồ sơ đời sống của nhân vật chính và nhân vật chính yếu. Việc ghi nhận luôn được bật (AI tích lũy hồ sơ như thường, có thể quản lý ở trang Nhân vật); sau khi tắt chỉ là không gửi cho mô hình chính nữa, bật lại sẽ khôi phục tiêm.</p>
 
         <label class="bbs-switch-row">
-          <span class="bbs-field-label">主角信息</span>
+          <span class="bbs-field-label">Thông tin nhân vật chính</span>
           <input v-model="apiSettings.injection.protagonist" type="checkbox" class="bbs-checkbox" :disabled="apiSettings.summaryOnlyMode" />
         </label>
-        <p class="bbs-field-hint">主角当前状态:性别、年龄、身份、外貌、着装、状态。自包含,不依赖场景信息。</p>
+        <p class="bbs-field-hint">Trạng thái hiện tại của nhân vật chính: giới tính, tuổi, thân phận, ngoại hình, trang phục, trạng thái. Tự bao hàm, không phụ thuộc thông tin khung cảnh.</p>
 
         <label class="bbs-switch-row">
-          <span class="bbs-field-label">场景信息</span>
+          <span class="bbs-field-label">Thông tin khung cảnh</span>
           <input v-model="apiSettings.injection.scenes" type="checkbox" class="bbs-checkbox" :disabled="apiSettings.summaryOnlyMode" />
         </label>
-        <p class="bbs-field-hint">当前地点与祖先链(详细)+ 其他已知地点(仅名称)。<strong>NPC 名册与物品信息的在场/可达判定都依赖场景树,关闭此项后这两项也随之不注入。</strong></p>
+        <p class="bbs-field-hint">Địa điểm hiện tại và chuỗi tổ tiên (chi tiết) + các địa điểm đã biết khác (chỉ tên). <strong>Phán đoán có mặt / có thể tiếp cận của Danh sách NPC và Thông tin vật phẩm đều phụ thuộc vào cây khung cảnh, sau khi tắt mục này thì hai mục đó cũng sẽ không được tiêm theo.</strong></p>
 
         <label class="bbs-switch-row">
-          <span class="bbs-field-label">NPC 名册</span>
+          <span class="bbs-field-label">Danh sách NPC</span>
           <input v-model="apiSettings.injection.npcs" type="checkbox" class="bbs-checkbox" :disabled="apiSettings.summaryOnlyMode || !apiSettings.injection.scenes" />
         </label>
-        <p class="bbs-field-hint">在场角色全量、同区域从简、不在场仅名与身份;依赖场景信息。</p>
+        <p class="bbs-field-hint">Nhân vật có mặt gửi toàn lượng, cùng khu vực gửi rút gọn, không có mặt chỉ gửi tên và thân phận; phụ thuộc Thông tin khung cảnh.</p>
 
         <label class="bbs-switch-row">
-          <span class="bbs-field-label">角色好感估计</span>
+          <span class="bbs-field-label">Đánh giá hảo cảm nhân vật</span>
           <input v-model="apiSettings.injection.npcAffinity" type="checkbox" class="bbs-checkbox" :disabled="apiSettings.summaryOnlyMode || !apiSettings.injection.npcs" />
         </label>
-        <p class="bbs-field-hint">NPC 名册里的五档好感估计(内心好感/外在态度/说明)。记录与角色页展示始终开启;关闭后名册照发、只是不附带好感——适合角色卡自带好感系统、不想两套并行的场合。</p>
+        <p class="bbs-field-hint">Đánh giá hảo cảm 5 mức trong Danh sách NPC (hảo cảm nội tâm / thái độ bên ngoài / ghi chú). Việc ghi nhận và hiển thị ở trang Nhân vật luôn được bật; sau khi tắt thì danh sách vẫn gửi như thường, chỉ là không đính kèm hảo cảm —— phù hợp với trường hợp thẻ nhân vật đã có sẵn hệ thống hảo cảm và không muốn chạy song song hai bộ.</p>
 
-        <!-- 不随「仅注入摘要」禁用:此开关同时管记录 -->
+        <!-- Không bị vô hiệu hóa theo "Chỉ tiêm tóm tắt": công tắc này đồng thời quản lý cả việc ghi nhận -->
         <label class="bbs-switch-row">
-          <span class="bbs-field-label">角色对主角的了解</span>
+          <span class="bbs-field-label">Hiểu biết của nhân vật về nhân vật chính</span>
           <input v-model="apiSettings.injection.knowledge" type="checkbox" class="bbs-checkbox" />
         </label>
-        <p class="bbs-field-hint">记录每个角色知道(或以为)的主角的事,发给主要角色和在场角色;没记过、剧情里也没交代过的私事(身世、经历、秘密、喜好、名字)默认该角色不知道,防止角色凭人设/世界书全知主角。有记录的角色卡上会显示最近两条,点开或点灯泡按钮可查看和修改。关闭后不再记录也不再发送,已有清单保留。此项独立于「NPC 名册」:只关名册时,这里仍会带出主要/在场角色的名字。</p>
+        <p class="bbs-field-hint">Ghi lại những chuyện về nhân vật chính mà mỗi nhân vật biết (hoặc tưởng là vậy), gửi cho nhân vật chính yếu và nhân vật có mặt; những chuyện riêng tư chưa được ghi lại và trong cốt truyện cũng chưa từng tiết lộ (thân thế, trải nghiệm, bí mật, sở thích, tên tuổi) mặc định nhân vật đó không biết, ngăn nhân vật dựa vào thiết lập / Sách Thế Giới để toàn tri về nhân vật chính. Trên thẻ nhân vật có bản ghi sẽ hiển thị hai mục gần nhất, nhấn mở hoặc nhấn nút bóng đèn để xem và sửa đổi. Sau khi tắt sẽ không ghi nhận và cũng không gửi nữa, danh sách đã có vẫn được giữ lại. Mục này độc lập với "Danh sách NPC": khi chỉ tắt danh sách NPC, ở đây vẫn sẽ đưa ra tên của các nhân vật chính yếu / có mặt.</p>
 
         <label class="bbs-switch-row">
-          <span class="bbs-field-label">物品信息</span>
+          <span class="bbs-field-label">Thông tin vật phẩm</span>
           <input v-model="apiSettings.injection.items" type="checkbox" class="bbs-checkbox" :disabled="apiSettings.summaryOnlyMode || !apiSettings.injection.scenes" />
         </label>
-        <p class="bbs-field-hint">随身/可达物品发全量,他处寄存仅名与数量;依赖场景信息。</p>
+        <p class="bbs-field-hint">Vật phẩm mang theo / có thể tiếp cận gửi toàn lượng, cất giữ nơi khác chỉ gửi tên và số lượng; phụ thuộc Thông tin khung cảnh.</p>
       </Collapsible>
 
-      <!-- 排除角色 -->
-      <Collapsible title="排除角色" :open="false">
-        <p class="bbs-field-hint">勾选的角色名(含同名的重名卡)所在聊天里,柏宝书的所有功能都不生效——不摘要、不隐藏、不注入、不拦截。适合工具性、不需要记忆的角色。</p>
+      <!-- Loại trừ nhân vật -->
+      <Collapsible title="Loại trừ nhân vật" :open="false">
+        <p class="bbs-field-hint">Trong cuộc trò chuyện của tên nhân vật được tích chọn (bao gồm cả thẻ trùng tên), mọi tính năng của Bách Bảo Thư đều không có hiệu lực —— không tóm tắt, không ẩn, không tiêm, không chặn. Phù hợp với các nhân vật mang tính công cụ, không cần trí nhớ.</p>
         <div class="bbs-channel-bar">
           <span class="bbs-field-label">
-            已排除 {{ apiSettings.excludedChars.length }} 个
+            Đã loại trừ {{ apiSettings.excludedChars.length }} nhân vật
           </span>
           <button class="bbs-btn bbs-btn-primary bbs-btn-sm" type="button" @click="openExclude">
-            <Icon name="edit" /> 编辑名单
+            <Icon name="edit" /> Chỉnh sửa danh sách
           </button>
         </div>
         <ul v-if="apiSettings.excludedChars.length" class="bbs-exclude-chips">
           <li v-for="name in apiSettings.excludedChars" :key="name" class="bbs-exclude-chip">
             <span class="bbs-exclude-chip-name">{{ name }}</span>
-            <button class="bbs-exclude-chip-x" type="button" title="移出名单" @click="toggleExcluded(name)">
+            <button class="bbs-exclude-chip-x" type="button" title="Đưa ra khỏi danh sách" @click="toggleExcluded(name)">
               <Icon name="close" />
             </button>
           </li>
         </ul>
-        <p v-else class="bbs-field-hint">名单为空,所有角色都启用记忆系统。</p>
+        <p v-else class="bbs-field-hint">Danh sách trống, tất cả các nhân vật đều bật hệ thống trí nhớ.</p>
       </Collapsible>
 
-      <!-- 排除世界书内容 -->
-      <Collapsible title="排除世界书内容" :open="false">
+      <!-- Loại trừ nội dung Sách Thế Giới -->
+      <Collapsible title="Loại trừ nội dung Sách Thế Giới" :open="false">
         <p class="bbs-field-hint">
-          摘要 / 总结时会激活世界书当参考。这里可剔除对剧情记忆无用的条目——如全局挂载的附加知识书、
-          规则说明等,既省 token 也避免干扰。仅影响摘要副 API,不改变你主对话里的世界书。
+          Khi tóm tắt / đại tóm tắt sẽ kích hoạt Sách Thế Giới làm tài liệu tham khảo. Tại đây có thể loại bỏ các mục vô dụng đối với trí nhớ cốt truyện —— như sách kiến thức bổ sung gắn toàn cục,
+          giải thích quy tắc..., vừa tiết kiệm token vừa tránh gây nhiễu. Chỉ ảnh hưởng tới API phụ tóm tắt, không làm thay đổi Sách Thế Giới trong cuộc đối thoại chính của bạn.
         </p>
 
-        <!-- 渲染世界书模板:配合「提示词模板(ST-Prompt-Template)」等插件 -->
+        <!-- Kết xuất mẫu Sách Thế Giới: phối hợp với các plugin như "Mẫu lời nhắc (ST-Prompt-Template)" -->
         <label class="bbs-switch-row">
-          <span class="bbs-field-label">渲染世界书模板</span>
+          <span class="bbs-field-label">Kết xuất mẫu Sách Thế Giới</span>
           <input v-model="apiSettings.renderWorldInfoTemplates" type="checkbox" class="bbs-checkbox" />
         </label>
         <p class="bbs-field-hint">
-          开启后会兼容提示词模板（ejs）的世界书条目
+          Sau khi bật sẽ tương thích với các mục Sách Thế Giới dùng mẫu lời nhắc (ejs)
         </p>
 
         <hr class="bbs-rule" />
 
-        <!-- 整本排除:复刻排除角色的搜索+勾选弹窗 -->
+        <!-- Loại trừ nguyên cuốn: sao chép lại hộp thoại tìm kiếm + tích chọn của Loại trừ nhân vật -->
         <div class="bbs-channel-bar">
-          <span class="bbs-field-label">整本排除 · 已选 {{ apiSettings.excludedWorldNames.length }} 本</span>
+          <span class="bbs-field-label">Loại trừ nguyên cuốn · Đã chọn {{ apiSettings.excludedWorldNames.length }} cuốn</span>
           <button class="bbs-btn bbs-btn-primary bbs-btn-sm" type="button" @click="openExcludeWorld">
-            <Icon name="edit" /> 编辑名单
+            <Icon name="edit" /> Chỉnh sửa danh sách
           </button>
         </div>
         <ul v-if="apiSettings.excludedWorldNames.length" class="bbs-exclude-chips">
           <li v-for="name in apiSettings.excludedWorldNames" :key="name" class="bbs-exclude-chip">
             <span class="bbs-exclude-chip-name">{{ name }}</span>
-            <button class="bbs-exclude-chip-x" type="button" title="移出名单" @click="toggleWorldExcluded(name)">
+            <button class="bbs-exclude-chip-x" type="button" title="Đưa ra khỏi danh sách" @click="toggleWorldExcluded(name)">
               <Icon name="close" />
             </button>
           </li>
         </ul>
-        <p v-else class="bbs-field-hint">未排除任何世界书,全部激活条目都会进摘要参考。</p>
+        <p v-else class="bbs-field-hint">Chưa loại trừ cuốn Sách Thế Giới nào, toàn bộ các mục kích hoạt đều sẽ được đưa vào tham khảo tóm tắt.</p>
 
         <hr class="bbs-rule" />
 
-        <!-- 按条目名过滤:复刻清洗标签的输入框 + chips -->
+        <!-- Lọc theo tên mục: sao chép lại ô nhập + chips của thẻ làm sạch -->
         <div class="bbs-field-head">
-          <span class="bbs-field-label">按条目名过滤</span>
+          <span class="bbs-field-label">Lọc theo tên mục</span>
         </div>
         <p class="bbs-field-hint">
-          填条目备注名(comment)即按<strong>包含</strong>匹配(不分大小写)——如填 <code>附加</code> 可命中「附加设定」。
-          也支持正则:<code>^规则</code> 表示以「规则」开头。对上面未整本排除的世界书生效。
-          默认预置一条 <code>\[mvu[\s\S]*?\]</code>,过滤变量框架 MVU 的机制条目;不需要可直接删。
+          Điền tên ghi chú của mục (comment) tức là khớp theo dạng <strong>bao gồm</strong> (không phân biệt hoa thường) —— VD: điền <code>Phụ lục</code> có thể trúng "Thiết lập phụ lục".
+          Cũng hỗ trợ biểu thức chính quy (regex): <code>^Quy tắc</code> biểu thị bắt đầu bằng "Quy tắc". Có hiệu lực đối với các cuốn Sách Thế Giới chưa bị loại trừ nguyên cuốn ở trên.
+          Mặc định cài sẵn một mục <code>\[mvu[\s\S]*?\]</code> để lọc các mục cơ chế của khung biến số MVU; nếu không cần có thể xóa trực tiếp.
         </p>
         <div class="bbs-striptag-bar">
           <input
             v-model="wiPatternDraft"
             class="bbs-input"
             type="text"
-            placeholder="条目名或正则,如 附加 或 ^规则"
+            placeholder="Tên mục hoặc regex, VD: Phụ lục hoặc ^Quy tắc"
             @keydown.enter.prevent="addWiPattern"
           />
           <button class="bbs-btn bbs-btn-primary bbs-btn-sm" type="button" @click="addWiPattern">
-            <Icon name="plus" /> 添加
+            <Icon name="plus" /> Thêm
           </button>
         </div>
         <ul v-if="apiSettings.excludedWorldInfoPatterns.length" class="bbs-exclude-chips">
           <li v-for="pat in apiSettings.excludedWorldInfoPatterns" :key="pat" class="bbs-exclude-chip">
             <span class="bbs-exclude-chip-name">{{ pat }}</span>
-            <button class="bbs-exclude-chip-x" type="button" title="移除" @click="removeWiPattern(pat)">
+            <button class="bbs-exclude-chip-x" type="button" title="Gỡ bỏ" @click="removeWiPattern(pat)">
               <Icon name="close" />
             </button>
           </li>
         </ul>
-        <p v-else class="bbs-field-hint">暂无条目名规则。</p>
+        <p v-else class="bbs-field-hint">Chưa có quy tắc tên mục nào.</p>
       </Collapsible>
 
-      <!-- 自定义清洗标签 -->
-      <Collapsible title="自定义清洗标签" :open="false">
+      <!-- Thẻ làm sạch tùy chỉnh -->
+      <Collapsible title="Thẻ làm sạch tùy chỉnh" :open="false">
         <p class="bbs-field-hint">
-          正文里若混入其它插件/世界书写的格式块(如状态栏 <code>&lt;snow&gt;…&lt;/snow&gt;</code>),
-          可在此填入标签名(只填 <code>snow</code>,不带尖括号),摘要、向量索引与召回时会把整块连内容一并删掉。
-          调整后对**召回**即时生效(向量库存原文、召回再清洗),无需重建索引。
+          Nếu trong chính văn có lẫn các khối định dạng do plugin khác / Sách Thế Giới viết ra (như thanh trạng thái <code>&lt;snow&gt;…&lt;/snow&gt;</code>),
+          có thể điền tên thẻ vào đây (chỉ điền <code>snow</code>, không kèm dấu ngoặc nhọn), khi tóm tắt, lập chỉ mục vector và truy xuất sẽ xóa bỏ nguyên khối cùng nội dung bên trong.
+          Sau khi điều chỉnh sẽ có hiệu lực tức thì đối với **truy xuất** (kho vector lưu nguyên văn, khi truy xuất mới làm sạch), không cần dựng lại chỉ mục.
         </p>
         <div class="bbs-striptag-bar">
           <input
             v-model="stripTagDraft"
             class="bbs-input"
             type="text"
-            placeholder="标签名,如 snow"
+            placeholder="Tên thẻ, VD: snow"
             @keydown.enter.prevent="addStripTag"
           />
           <button class="bbs-btn bbs-btn-primary bbs-btn-sm" type="button" @click="addStripTag">
-            <Icon name="plus" /> 添加
+            <Icon name="plus" /> Thêm
           </button>
         </div>
         <ul v-if="apiSettings.customStripTags.length" class="bbs-exclude-chips">
           <li v-for="tag in apiSettings.customStripTags" :key="tag" class="bbs-exclude-chip">
             <span class="bbs-exclude-chip-name">&lt;{{ tag }}&gt;</span>
-            <button class="bbs-exclude-chip-x" type="button" title="移除" @click="removeStripTag(tag)">
+            <button class="bbs-exclude-chip-x" type="button" title="Gỡ bỏ" @click="removeStripTag(tag)">
               <Icon name="close" />
             </button>
           </li>
         </ul>
-        <p v-else class="bbs-field-hint">暂无自定义标签。仅内置清洗(思维链、注释、物品旁注等)生效。</p>
+        <p v-else class="bbs-field-hint">Chưa có thẻ tùy chỉnh nào. Chỉ có bộ làm sạch tích hợp sẵn (chuỗi suy luận, chú thích, chú thích vật phẩm...) có hiệu lực.</p>
       </Collapsible>
 
-      <!-- 自定义提示词 -->
-      <Collapsible title="自定义提示词" :open="false">
+      <!-- Lời nhắc tùy chỉnh -->
+      <Collapsible title="Lời nhắc tùy chỉnh" :open="false">
         <ul class="bbs-prompt-list">
           <li v-for="m in PROMPT_METAS" :key="m.key" class="bbs-prompt-item">
             <button class="bbs-prompt-open" type="button" @click="openPrompt(m)">
               <span class="bbs-prompt-name">{{ m.label }}</span>
               <span class="bbs-prompt-state" :class="{ 'is-custom': isCustom(m.key) }">
-                {{ isCustom(m.key) ? '已自定义' : '默认' }}
+                {{ isCustom(m.key) ? 'Đã tùy chỉnh' : 'Mặc định' }}
               </span>
               <Icon name="edit" class="bbs-prompt-edit" />
             </button>
@@ -1190,17 +1190,17 @@ function exportPublicApiDocument() {
         </ul>
       </Collapsible>
 
-      <!-- 向量记忆 -->
-      <Collapsible title="向量记忆" :open="false">
+      <!-- Trí nhớ vector -->
+      <Collapsible title="Trí nhớ vector" :open="false">
         <label class="bbs-switch-row bbs-vec-enable">
-          <span class="bbs-field-label">启用向量记忆</span>
+          <span class="bbs-field-label">Bật trí nhớ vector</span>
           <input v-model="apiSettings.vector.enabled" type="checkbox" class="bbs-checkbox" />
         </label>
 
         <hr class="bbs-rule bbs-vec-enable-rule" />
 
-        <!-- 三个端点:Embedding 必填;Rerank/Query 地址留空 = 整体复用 Embedding。
-             卡片自身可折叠(点标题栏),无额外外框;副标显当前模型,收起也看得出配没配。 -->
+        <!-- Ba điểm cuối: Embedding bắt buộc; địa chỉ Rerank/Query để trống = tái sử dụng toàn bộ Embedding.
+             Bản thân thẻ có thể thu gọn (nhấn thanh tiêu đề), không có khung ngoài dư thừa; tiêu đề phụ hiển thị mô hình hiện tại, khi thu gọn vẫn biết đã cấu hình hay chưa. -->
         <div
           v-for="role in VECTOR_ROLES"
           :key="role.key"
@@ -1220,32 +1220,32 @@ function exportPublicApiDocument() {
           <div class="bbs-vec-ep-outer">
             <div class="bbs-vec-ep-inner">
           <div class="bbs-vec-ep-body">
-          <p v-if="role.key !== 'embedding'" class="bbs-field-hint">地址 / 密钥留空即复用 Embedding;模型仍需各自填写。</p>
+          <p v-if="role.key !== 'embedding'" class="bbs-field-hint">Địa chỉ / khóa bảo mật để trống sẽ tái sử dụng Embedding; mô hình vẫn cần điền riêng cho từng vai trò.</p>
 
           <label class="bbs-modal-field">
-            <span class="bbs-modal-label">API 地址</span>
+            <span class="bbs-modal-label">Địa chỉ API</span>
             <input
               v-model="apiSettings.vector[role.key].url"
               class="bbs-input"
-              :placeholder="role.key === 'embedding' ? '如 https://api.openai.com/v1' : '留空 = 复用 Embedding 的地址'"
+              :placeholder="role.key === 'embedding' ? 'VD: https://api.openai.com/v1' : 'Để trống = tái sử dụng địa chỉ của Embedding'"
               :disabled="!apiSettings.vector.enabled"
             />
           </label>
 
           <label class="bbs-modal-field">
-            <span class="bbs-modal-label">API 密钥</span>
+            <span class="bbs-modal-label">Khóa bảo mật API</span>
             <div class="bbs-model-row">
               <input
                 v-model="apiSettings.vector[role.key].key"
                 class="bbs-input"
                 :type="vecShowKey[role.key] ? 'text' : 'password'"
-                :placeholder="role.key === 'embedding' ? 'API 密钥' : '留空 = 复用 Embedding 的密钥'"
+                :placeholder="role.key === 'embedding' ? 'Khóa bảo mật API' : 'Để trống = tái sử dụng khóa bảo mật của Embedding'"
                 :disabled="!apiSettings.vector.enabled"
               />
               <button
                 class="bbs-icon-mini"
                 type="button"
-                :title="vecShowKey[role.key] ? '隐藏密钥' : '显示密钥'"
+                :title="vecShowKey[role.key] ? 'Ẩn khóa bảo mật' : 'Hiển thị khóa bảo mật'"
                 @click="vecShowKey[role.key] = !vecShowKey[role.key]"
               >
                 <Icon :name="vecShowKey[role.key] ? 'eye-off' : 'eye'" />
@@ -1253,16 +1253,16 @@ function exportPublicApiDocument() {
             </div>
           </label>
 
-          <!-- 模型:三个角色各自独立(embedding/rerank/query 模型本就不同),都要单独选,从不复用。
-               拉取走「该角色的地址/密钥」,留空则自动用 Embedding 的地址/密钥去拉。 -->
+          <!-- Mô hình: ba vai trò độc lập với nhau (mô hình embedding/rerank/query vốn dĩ khác nhau), đều phải chọn riêng, không bao giờ tái sử dụng.
+               Kéo danh sách đi theo "địa chỉ/khóa của vai trò đó", để trống sẽ tự động dùng địa chỉ/khóa của Embedding để kéo. -->
           <label class="bbs-modal-field">
-            <span class="bbs-modal-label">模型</span>
+            <span class="bbs-modal-label">Mô hình</span>
             <div class="bbs-model-row">
               <div class="bbs-combo">
                 <input
                   v-model="apiSettings.vector[role.key].model"
                   class="bbs-input"
-                  :placeholder="(vecModels[role.key]?.length) ? '搜索或输入模型名…' : '模型名,或点右侧拉取'"
+                  :placeholder="(vecModels[role.key]?.length) ? 'Tìm kiếm hoặc nhập tên mô hình…' : 'Tên mô hình, hoặc nhấn nút bên phải để kéo danh sách'"
                   :disabled="!apiSettings.vector.enabled"
                   @focus="openVecModelMenu(role.key)"
                   @input="vecModelQuery = apiSettings.vector[role.key].model; vecModelMenuOpen = role.key"
@@ -1275,7 +1275,7 @@ function exportPublicApiDocument() {
                   aria-hidden="true"
                 />
                 <ul v-if="vecModelMenuOpen === role.key && vecModels[role.key]?.length" class="bbs-combo-menu">
-                  <li v-if="!filteredVecModels(role.key).length" class="bbs-combo-empty">无匹配模型</li>
+                  <li v-if="!filteredVecModels(role.key).length" class="bbs-combo-empty">Không có mô hình khớp</li>
                   <li
                     v-for="m in filteredVecModels(role.key)"
                     :key="m"
@@ -1290,7 +1290,7 @@ function exportPublicApiDocument() {
               <button
                 class="bbs-icon-mini"
                 type="button"
-                :title="vecLoadingModels[role.key] ? '拉取中…' : '拉取模型'"
+                :title="vecLoadingModels[role.key] ? 'Đang kéo danh sách…' : 'Kéo danh sách mô hình'"
                 :disabled="!apiSettings.vector.enabled || vecLoadingModels[role.key]"
                 @click="pullVecModels(role.key)"
               >
@@ -1300,11 +1300,11 @@ function exportPublicApiDocument() {
           </label>
           <p v-if="vecModelMsg[role.key]" class="bbs-field-hint">{{ vecModelMsg[role.key] }}</p>
 
-          <!-- 超时/重试(+ Query 重写的最大 token):各角色独立(默认 embedding 10s / rerank 20s / query 90s),不随地址复用回落。
-               grid auto-fit:空间够就一行排开,不够自动换行。 -->
+          <!-- Hết thời gian chờ / thử lại (+ token đầu ra tối đa của Viết lại Query): mỗi vai trò độc lập (mặc định embedding 10s / rerank 20s / query 90s), không lùi về theo tái sử dụng địa chỉ.
+               grid auto-fit: đủ không gian thì xếp một dòng, không đủ tự động xuống dòng. -->
           <div class="bbs-vec-io">
             <label class="bbs-vec-io-item">
-              <span class="bbs-modal-label">超时(秒)</span>
+              <span class="bbs-modal-label">Thời gian chờ (giây)</span>
               <input
                 v-model.number="apiSettings.vector[role.key].timeoutSec"
                 class="bbs-input bbs-num-sm"
@@ -1314,7 +1314,7 @@ function exportPublicApiDocument() {
               />
             </label>
             <label class="bbs-vec-io-item">
-              <span class="bbs-modal-label">失败重试次数</span>
+              <span class="bbs-modal-label">Số lần thử lại khi thất bại</span>
               <input
                 v-model.number="apiSettings.vector[role.key].retries"
                 class="bbs-input bbs-num-sm"
@@ -1324,7 +1324,7 @@ function exportPublicApiDocument() {
               />
             </label>
             <label v-if="role.key === 'queryRewrite'" class="bbs-vec-io-item">
-              <span class="bbs-modal-label">最大输出 token</span>
+              <span class="bbs-modal-label">Token đầu ra tối đa</span>
               <input
                 v-model.number="apiSettings.vector.queryRewriteMaxTokens"
                 class="bbs-input bbs-num-sm"
@@ -1342,22 +1342,22 @@ function exportPublicApiDocument() {
 
         <hr class="bbs-rule" />
 
-        <!-- 召回参数:机制说明 + 进阶旋钮整体折叠,默认收起,不淹没上方端点配置。 -->
-        <Collapsible title="召回参数" :open="false">
+        <!-- Tham số truy xuất: giải thích cơ chế + các nút vặn nâng cao thu gọn tổng thể, mặc định thu gọn để không làm ngập phần cấu hình điểm cuối phía trên. -->
+        <Collapsible title="Tham số truy xuất" :open="false">
           <div class="bbs-vec-recall" :class="{ 'is-disabled': !apiSettings.vector.enabled }">
             <p class="bbs-field-hint">
-              先对全部向量索引算 embedding 相似度,取得分最高的若干条进入 rerank;rerank 打分后分两档:
-              得分高的发原文全文,稍低但仍过 embedding 阈值的发摘要;两档合计不超过「最终召回条数」。
+              Tính độ tương đồng embedding cho toàn bộ chỉ mục vector trước, lấy một số mục có điểm cao nhất đưa vào rerank; sau khi rerank chấm điểm sẽ chia làm hai mức:
+              mức điểm cao gửi toàn văn nguyên văn, mức thấp hơn một chút nhưng vẫn vượt ngưỡng embedding thì gửi bản tóm tắt; tổng cộng hai mức không vượt quá "Số lượng truy xuất cuối cùng".
             </p>
 
             <p class="bbs-field-hint">
-              生成前用小模型(上方「Query 重写」)把当前剧情重写成多条检索 query,多路召回更全面。
-              <strong>查询重写为召回必经步骤,须配好「Query 重写」模型;未配或重写失败则本回合不召回。</strong>
-              每回合多一次小模型请求(略增延迟)。
+              Trước khi tạo phản hồi sẽ dùng mô hình nhỏ ("Viết lại Query" ở trên) viết lại cốt truyện hiện tại thành nhiều câu truy vấn tìm kiếm (query), truy xuất đa luồng toàn diện hơn.
+              <strong>Viết lại truy vấn là bước bắt buộc phải qua khi truy xuất, phải cấu hình đầy đủ mô hình "Viết lại Query"; nếu chưa cấu hình hoặc viết lại thất bại thì lượt này sẽ không truy xuất.</strong>
+              Mỗi lượt thêm một yêu cầu mô hình nhỏ (tăng nhẹ độ trễ).
             </p>
 
           <label class="bbs-num-row">
-            <span class="bbs-field-label">召回注入深度</span>
+            <span class="bbs-field-label">Độ sâu tiêm truy xuất</span>
             <input
               v-model.number="apiSettings.vector.recall.injectionDepth"
               class="bbs-input bbs-num"
@@ -1367,10 +1367,10 @@ function exportPublicApiDocument() {
               :disabled="!apiSettings.vector.enabled"
             />
           </label>
-          <p class="bbs-field-hint">召回内容注入到聊天中的深度。0 = D0,最贴近最新用户输入;数字越大越靠前。</p>
+          <p class="bbs-field-hint">Độ sâu tiêm nội dung truy xuất vào trong cuộc trò chuyện. 0 = D0, sát với nội dung nhập mới nhất của người dùng nhất; số càng lớn càng dịch về phía trước.</p>
 
           <label class="bbs-num-row">
-            <span class="bbs-field-label">Rerank 候选数</span>
+            <span class="bbs-field-label">Số ứng viên Rerank</span>
             <input
               v-model.number="apiSettings.vector.recall.rerankCandidates"
               class="bbs-input bbs-num"
@@ -1379,10 +1379,10 @@ function exportPublicApiDocument() {
               :disabled="!apiSettings.vector.enabled"
             />
           </label>
-          <p class="bbs-field-hint">按 embedding 相似度取前 N 条进入 rerank 精排(越大越准但越慢)。</p>
+          <p class="bbs-field-hint">Lấy N mục đầu theo độ tương đồng embedding để đưa vào rerank sắp xếp tinh chỉnh (càng lớn càng chuẩn nhưng càng chậm).</p>
 
           <label class="bbs-num-row">
-            <span class="bbs-field-label">Embedding 阈值</span>
+            <span class="bbs-field-label">Ngưỡng Embedding</span>
             <input
               v-model.number="apiSettings.vector.recall.embeddingThreshold"
               class="bbs-input bbs-num"
@@ -1393,10 +1393,10 @@ function exportPublicApiDocument() {
               :disabled="!apiSettings.vector.enabled"
             />
           </label>
-          <p class="bbs-field-hint">摘要档准入门槛:embedding 相似度低于此的内容连摘要都不召回(0~1)。</p>
+          <p class="bbs-field-hint">Ngưỡng đầu vào mức tóm tắt: nội dung có độ tương đồng embedding thấp hơn mức này thì ngay cả bản tóm tắt cũng không truy xuất (0~1).</p>
 
           <label class="bbs-num-row">
-            <span class="bbs-field-label">Rerank 阈值</span>
+            <span class="bbs-field-label">Ngưỡng Rerank</span>
             <input
               v-model.number="apiSettings.vector.recall.rerankThreshold"
               class="bbs-input bbs-num"
@@ -1407,10 +1407,10 @@ function exportPublicApiDocument() {
               :disabled="!apiSettings.vector.enabled"
             />
           </label>
-          <p class="bbs-field-hint">rerank 得分 ≥ 此值的发原文全文,低于此但过 embedding 阈值的退为发摘要(0~1)。</p>
+          <p class="bbs-field-hint">Điểm rerank ≥ giá trị này sẽ gửi toàn văn nguyên văn, thấp hơn mức này nhưng vượt ngưỡng embedding sẽ lùi về gửi bản tóm tắt (0~1).</p>
 
           <label class="bbs-num-row">
-            <span class="bbs-field-label">召回全文数</span>
+            <span class="bbs-field-label">Số lượng toàn văn truy xuất</span>
             <input
               v-model.number="apiSettings.vector.recall.fullTextCount"
               class="bbs-input bbs-num"
@@ -1419,10 +1419,10 @@ function exportPublicApiDocument() {
               :disabled="!apiSettings.vector.enabled"
             />
           </label>
-          <p class="bbs-field-hint">全文档最多取几条发原文(其余即便过 rerank 阈值也退为摘要)。</p>
+          <p class="bbs-field-hint">Mức toàn văn lấy tối đa mấy mục để gửi nguyên văn (phần còn lại dù vượt ngưỡng rerank cũng lùi về bản tóm tắt).</p>
 
           <label class="bbs-num-row">
-            <span class="bbs-field-label">最终召回条数</span>
+            <span class="bbs-field-label">Số lượng truy xuất cuối cùng</span>
             <input
               v-model.number="apiSettings.vector.recall.finalRecallCount"
               class="bbs-input bbs-num"
@@ -1431,10 +1431,10 @@ function exportPublicApiDocument() {
               :disabled="!apiSettings.vector.enabled"
             />
           </label>
-          <p class="bbs-field-hint">召回总条数上限(全文 + 摘要合计);全文不够用摘要补,补不满也无妨。</p>
+          <p class="bbs-field-hint">Giới hạn tổng số mục truy xuất (tổng cộng toàn văn + tóm tắt); toàn văn không đủ sẽ dùng tóm tắt bù vào, bù không đầy cũng không sao.</p>
 
           <label class="bbs-num-row">
-            <span class="bbs-field-label">起召 AI 楼数</span>
+            <span class="bbs-field-label">Số tầng AI bắt đầu truy xuất</span>
             <input
               v-model.number="apiSettings.vector.recall.minAiFloors"
               class="bbs-input bbs-num"
@@ -1444,32 +1444,32 @@ function exportPublicApiDocument() {
             />
           </label>
           <p class="bbs-field-hint">
-            当前聊天 AI 消息数少于此值时不触发召回(0=不限制)。早期剧情旧记忆少,跳过可省额度/延迟。
-            另:当所有消息都还在滑动窗口内全文发送时也会自动跳过(无窗口外旧楼可召);「带数据建新对话」的旧档不受此限,始终召回。
+            Khi số tin nhắn AI của cuộc trò chuyện hiện tại ít hơn giá trị này sẽ không kích hoạt truy xuất (0 = không giới hạn). Cốt truyện giai đoạn đầu có ít ký ức cũ, bỏ qua giúp tiết kiệm hạn mức / độ trễ.
+            Ngoài ra: khi mọi tin nhắn đều vẫn đang nằm trong cửa sổ trượt gửi toàn văn thì cũng sẽ tự động bỏ qua (không có tầng cũ ngoài cửa sổ để truy xuất); bản lưu cũ của "Tạo cuộc trò chuyện mới kèm dữ liệu" không chịu giới hạn này, luôn được truy xuất.
           </p>
           </div>
         </Collapsible>
 
         <hr class="bbs-rule" />
 
-        <!-- 索引维护:把当前聊天的叶子摘要补建/对账进向量库 -->
+        <!-- Bảo trì chỉ mục: dựng bù / đối soát các tóm tắt lá của cuộc trò chuyện hiện tại vào kho vector -->
         <div class="bbs-vec-recall" :class="{ 'is-disabled': !apiSettings.vector.enabled }">
           <div class="bbs-vec-head">
-            <span class="bbs-field-label">索引维护</span>
+            <span class="bbs-field-label">Bảo trì chỉ mục</span>
             <span
               v-if="vecBackend !== 'unknown'"
               class="bbs-vec-backend"
               :class="vecBackend === 'backend' ? 'is-backend' : 'is-local'"
             >
-              {{ vecBackend === 'backend' ? '柏宝库' : '前端' }}
+              {{ vecBackend === 'backend' ? 'Bách Bảo Khố' : 'Trình duyệt' }}
             </span>
           </div>
           <p class="bbs-field-hint">
-            正常情况下叶子摘要会随生成自动索引;若中途才开启向量记忆,可手动把当前聊天已有的摘要补建进向量库。
-            清空只删当前聊天自己的索引,不动「带数据建新对话」继承来的旧档快照。
+            Trong trường hợp bình thường tóm tắt lá sẽ tự động lập chỉ mục theo quá trình tạo; nếu giữa chừng mới bật trí nhớ vector, có thể dựng bù thủ công các bản tóm tắt đã có của cuộc trò chuyện hiện tại vào kho vector.
+            Xóa sạch chỉ xóa chỉ mục của riêng cuộc trò chuyện hiện tại, không động tới ảnh chụp nhanh bản lưu cũ được kế thừa từ "Tạo cuộc trò chuyện mới kèm dữ liệu".
           </p>
           <p v-if="vecBackend === 'local'" class="bbs-field-hint">
-            本地模式:索引存浏览器,仅当前聊天召回,不跨聊天 / 不跨设备。安装柏宝库后端后可恢复完整能力。
+            Chế độ cục bộ: chỉ mục lưu trong trình duyệt, chỉ truy xuất trong cuộc trò chuyện hiện tại, không xuyên trò chuyện / không xuyên thiết bị. Sau khi cài đặt backend Bách Bảo Khố có thể khôi phục toàn bộ khả năng.
           </p>
           <div class="bbs-vec-index-actions">
             <button
@@ -1478,7 +1478,7 @@ function exportPublicApiDocument() {
               :disabled="!apiSettings.vector.enabled || vecIndexing || vecClearing"
               @click="doRebuildIndex"
             >
-              {{ vecIndexing ? '索引中…' : '重建当前聊天向量索引' }}
+              {{ vecIndexing ? 'Đang lập chỉ mục…' : 'Dựng lại chỉ mục vector của trò chuyện hiện tại' }}
             </button>
             <button
               class="bbs-btn bbs-btn-sm bbs-btn-danger"
@@ -1488,7 +1488,7 @@ function exportPublicApiDocument() {
               @blur="vecClearConfirm = false"
             >
               <Icon name="trash" />
-              {{ vecClearing ? '清空中…' : vecClearConfirm ? '再点确认清空' : '清空当前聊天索引' }}
+              {{ vecClearing ? 'Đang xóa sạch…' : vecClearConfirm ? 'Nhấn lần nữa xác nhận xóa sạch' : 'Xóa sạch chỉ mục trò chuyện hiện tại' }}
             </button>
           </div>
           <p v-if="vecIndexMsg" class="bbs-field-hint">{{ vecIndexMsg }}</p>
@@ -1496,21 +1496,21 @@ function exportPublicApiDocument() {
 
         <hr class="bbs-rule" />
 
-        <!-- 上次召回详情:把上一次召回各阶段的中间结果可视化,便于调参/排障(reactive 自动刷新) -->
-        <Collapsible title="上次召回详情" :open="false">
+        <!-- Chi tiết lần truy xuất trước: trực quan hóa kết quả trung gian các giai đoạn của lần truy xuất trước, tiện tinh chỉnh tham số / gỡ lỗi (reactive tự động làm mới) -->
+        <Collapsible title="Chi tiết lần truy xuất trước" :open="false">
           <p v-if="!recallDebug.at" class="bbs-field-hint">
-            尚无召回记录。配好向量渠道后发一条消息触发召回,这里会显示重写 / 检索 / 重排 / 注入各阶段结果。
+            Chưa có bản ghi truy xuất. Sau khi cấu hình kênh vector và gửi một tin nhắn kích hoạt truy xuất, tại đây sẽ hiển thị kết quả các giai đoạn Viết lại / Tìm kiếm / Sắp xếp lại / Tiêm.
           </p>
           <div v-else class="bbs-dbg">
-            <!-- 状态横幅:左侧圆点按语气配色,右侧时间 -->
+            <!-- Biểu ngữ trạng thái: chấm tròn bên trái phối màu theo sắc thái, bên phải là thời gian -->
             <div class="bbs-dbg-banner" :class="`is-${recallStatusKind}`">
               <span class="bbs-dbg-dot" aria-hidden="true"></span>
               <span class="bbs-dbg-status-text">{{ recallDebug.status }}</span>
               <span class="bbs-dbg-time">{{ fmtRecallTime(recallDebug.at) }}</span>
             </div>
 
-            <!-- 四阶段各自可折叠,默认收起;标题带计数 -->
-            <Collapsible :title="`1 · 查询重写 · ${recallDebug.queries.length} Q`" :open="false">
+            <!-- Bốn giai đoạn tự thu gọn riêng, mặc định thu gọn; tiêu đề kèm bộ đếm -->
+            <Collapsible :title="`1 · Viết lại truy vấn · ${recallDebug.queries.length} Q`" :open="false">
               <p v-if="recallDebug.intent" class="bbs-dbg-intent">
                 <span class="bbs-dbg-tag">INTENT</span><span class="bbs-dbg-intent-text">{{ recallDebug.intent }}</span>
               </p>
@@ -1519,15 +1519,15 @@ function exportPublicApiDocument() {
                   <span class="bbs-dbg-qno">Q{{ i + 1 }}</span><span class="bbs-dbg-qtext">{{ q }}</span>
                 </li>
               </ul>
-              <p v-else class="bbs-dbg-empty">无</p>
+              <p v-else class="bbs-dbg-empty">Không có</p>
             </Collapsible>
 
-            <Collapsible :title="`2 · Embedding 检索 · ${recallDebug.embedding.length} 条`" :open="false">
+            <Collapsible :title="`2 · Tìm kiếm Embedding · ${recallDebug.embedding.length} mục`" :open="false">
               <ul v-if="recallDebug.embedding.length" class="bbs-dbg-cards">
                 <li v-for="(h, i) in recallDebug.embedding" :key="i" class="bbs-dbg-card">
                   <div class="bbs-dbg-card-top">
-                    <span class="bbs-dbg-src" :title="`来源 ${qLabel(h.queryIndex)}`">{{ qLabel(h.queryIndex) }}</span>
-                    <span class="bbs-dbg-from" :class="{ 'is-bundle': h.source === '旧档' }">{{ h.source }}</span>
+                    <span class="bbs-dbg-src" :title="`Nguồn ${qLabel(h.queryIndex)}`">{{ qLabel(h.queryIndex) }}</span>
+                    <span class="bbs-dbg-from" :class="{ 'is-bundle': h.source === 'Bản lưu cũ' }">{{ h.source }}</span>
                     <span v-if="h.storyTime" class="bbs-dbg-when">【{{ h.storyTime }}】</span>
                     <span class="bbs-dbg-num">{{ h.similarity.toFixed(3) }}</span>
                   </div>
@@ -1535,15 +1535,15 @@ function exportPublicApiDocument() {
                   <p class="bbs-dbg-prev">{{ h.preview }}</p>
                 </li>
               </ul>
-              <p v-else class="bbs-dbg-empty">无</p>
+              <p v-else class="bbs-dbg-empty">Không có</p>
             </Collapsible>
 
-            <Collapsible :title="`3 · Rerank 分档 · ${recallDebug.rerank.length} 条`" :open="false">
+            <Collapsible :title="`3 · Phân mức Rerank · ${recallDebug.rerank.length} mục`" :open="false">
               <ul v-if="recallDebug.rerank.length" class="bbs-dbg-cards">
                 <li v-for="(h, i) in recallDebug.rerank" :key="i" class="bbs-dbg-card" :class="{ 'is-dropped': h.tier === 'drop' }">
                   <div class="bbs-dbg-card-top">
                     <span class="bbs-dbg-tier" :class="`is-${h.tier}`">{{ TIER_LABEL[h.tier] }}</span>
-                    <span class="bbs-dbg-from" :class="{ 'is-bundle': h.source === '旧档' }">{{ h.source }}</span>
+                    <span class="bbs-dbg-from" :class="{ 'is-bundle': h.source === 'Bản lưu cũ' }">{{ h.source }}</span>
                     <span v-if="h.storyTime" class="bbs-dbg-when">【{{ h.storyTime }}】</span>
                     <span class="bbs-dbg-num">{{ h.rerankScore.toFixed(3) }}</span>
                   </div>
@@ -1551,26 +1551,26 @@ function exportPublicApiDocument() {
                   <p class="bbs-dbg-prev">{{ h.preview }}</p>
                 </li>
               </ul>
-              <p v-else class="bbs-dbg-empty">无(rerank 未执行或无候选)</p>
+              <p v-else class="bbs-dbg-empty">Không có (rerank chưa thực thi hoặc không có ứng viên)</p>
             </Collapsible>
 
-            <Collapsible title="4 · 最终注入" :open="false">
+            <Collapsible title="4 · Nội dung tiêm cuối cùng" :open="false">
               <pre v-if="recallDebug.injectedText" class="bbs-dbg-pre">{{ recallDebug.injectedText }}</pre>
-              <p v-else class="bbs-dbg-empty">本回合未注入。</p>
+              <p v-else class="bbs-dbg-empty">Lượt này chưa chèn.</p>
             </Collapsible>
           </div>
         </Collapsible>
       </Collapsible>
 
-      <!-- 带数据创建新对话 -->
-      <Collapsible title="带数据创建新对话" :open="false">
+      <!-- Tạo cuộc trò chuyện mới kèm dữ liệu -->
+      <Collapsible title="Tạo cuộc trò chuyện mới kèm dữ liệu" :open="false">
         <p class="bbs-field-hint">
-          把当前聊天的「最近全文窗口 + 合并历史摘要 + 当前状态(时间/地点、场景、物品、角色、计划、变量)」打包,创建一个新对话带过去。
-          新对话从一片「种子叶子」重放还原状态,旧剧情作为摘要随行;若开了向量记忆,旧聊天会被快照,
-          新对话可向量召回它的内容(逐次累加,分支也自动继承)。
+          Đóng gói "Cửa sổ toàn văn gần nhất + Tóm tắt lịch sử gộp + Trạng thái hiện tại (thời gian/địa điểm, khung cảnh, vật phẩm, nhân vật, kế hoạch, biến số)" của cuộc trò chuyện hiện tại, tạo một cuộc trò chuyện mới mang sang.
+          Cuộc trò chuyện mới phát lại khôi phục trạng thái từ một "lá hạt giống", cốt truyện cũ đi kèm dưới dạng tóm tắt; nếu có bật trí nhớ vector, cuộc trò chuyện cũ sẽ được chụp nhanh,
+          cuộc trò chuyện mới có thể truy xuất vector nội dung của nó (tích lũy qua từng lần, phân nhánh cũng tự động kế thừa).
         </p>
         <div v-if="carryPlan" class="bbs-field-hint">
-          将携带:AI {{ carryPlan.aiCount }} 条 / 实际消息 {{ carryPlan.carryCount }} 条;旧剧情摘要 {{ carryPlan.recapLen > 0 ? '有' : '无' }}。
+          Sẽ mang theo: {{ carryPlan.aiCount }} tin AI / {{ carryPlan.carryCount }} tin nhắn thực tế; tóm tắt cốt truyện cũ: {{ carryPlan.recapLen > 0 ? 'Có' : 'Không có' }}.
         </div>
         <button
           class="bbs-btn bbs-btn-sm bbs-btn-primary"
@@ -1578,23 +1578,23 @@ function exportPublicApiDocument() {
           :disabled="carrying || !carryPlan?.hasData"
           @click="carryConfirmOpen = true"
         >
-          {{ carrying ? '创建中…' : '带数据创建新对话' }}
+          {{ carrying ? 'Đang tạo…' : 'Tạo cuộc trò chuyện mới kèm dữ liệu' }}
         </button>
         <p v-if="carryMsg" class="bbs-field-hint">{{ carryMsg }}</p>
       </Collapsible>
 
-      <!-- 从 Horae 迁移 -->
-      <Collapsible title="从 Horae 迁移" :open="false">
+      <!-- Di chuyển dữ liệu từ Horae -->
+      <Collapsible title="Di chuyển dữ liệu từ Horae" :open="false">
         <p class="bbs-field-hint">
-          把当前聊天里旧版 Horae 的摘要、物品、计划迁移过来。需要迁移的聊天各点一次,不会动 Horae 原数据。
+          Di chuyển các bản tóm tắt, vật phẩm, kế hoạch của Horae bản cũ trong cuộc trò chuyện hiện tại sang đây. Mỗi cuộc trò chuyện cần di chuyển hãy nhấn một lần, không động chạm tới dữ liệu Horae gốc.
         </p>
         <div v-if="migratePlan" class="bbs-field-hint">
           <template v-if="migratePlan.hasData">
-            检测到:可建摘要 {{ migratePlan.leafFloors }} 层 / 旧总结 {{ migratePlan.summaryCount }} 条 /
-            物品 {{ migratePlan.itemCount }} / 计划悬念 {{ migratePlan.planCount }}。
-            <span v-if="migratePlan.willOverwrite">⚠️ 当前聊天已有本插件数据,迁移将覆盖。</span>
+            Phát hiện: có thể tạo tóm tắt {{ migratePlan.leafFloors }} tầng / {{ migratePlan.summaryCount }} bản đại tóm tắt cũ /
+            {{ migratePlan.itemCount }} vật phẩm / {{ migratePlan.planCount }} kế hoạch nghi vấn.
+            <span v-if="migratePlan.willOverwrite">⚠️ Cuộc trò chuyện hiện tại đã có dữ liệu của plugin này, việc di chuyển sẽ ghi đè.</span>
           </template>
-          <template v-else>未在当前聊天检测到 Horae 旧数据(请先进入含旧数据的聊天)。</template>
+          <template v-else>Không phát hiện thấy dữ liệu Horae cũ trong cuộc trò chuyện hiện tại (vui lòng vào cuộc trò chuyện có chứa dữ liệu cũ trước).</template>
         </div>
         <button
           class="bbs-btn bbs-btn-sm bbs-btn-primary"
@@ -1602,15 +1602,15 @@ function exportPublicApiDocument() {
           :disabled="migrating || !migratePlan?.hasData"
           @click="migrateConfirmOpen = true"
         >
-          {{ migrating ? '迁移中…' : '迁移当前聊天的 Horae 数据' }}
+          {{ migrating ? 'Đang di chuyển…' : 'Di chuyển dữ liệu Horae của cuộc trò chuyện hiện tại' }}
         </button>
         <p v-if="migrateMsg" class="bbs-field-hint">{{ migrateMsg }}</p>
       </Collapsible>
 
-      <!-- 获取数据 -->
-      <Collapsible title="获取数据" :open="false">
+      <!-- Lấy dữ liệu -->
+      <Collapsible title="Lấy dữ liệu" :open="false">
         <p class="bbs-field-hint bbs-data-intro">
-          宏可用于提示词、变量说明和支持 ST 宏的其他位置。完整接口、命令和返回结构可导出为插件作者文档。
+          Macro có thể dùng cho lời nhắc, giải thích biến số và các vị trí khác hỗ trợ macro ST. Giao diện đầy đủ, lệnh và cấu trúc trả về có thể xuất thành tài liệu dành cho tác giả plugin.
         </p>
 
         <div class="bbs-data-macros">
@@ -1625,8 +1625,8 @@ function exportPublicApiDocument() {
             <button
               class="bbs-icon-mini bbs-data-copy"
               type="button"
-              :title="`复制 ${macro.token}`"
-              :aria-label="`复制 ${macro.token}`"
+              :title="`Sao chép ${macro.token}`"
+              :aria-label="`Sao chép ${macro.token}`"
               @click="copyDataMacro(macro.token)"
             >
               <Icon name="copy" />
@@ -1636,64 +1636,64 @@ function exportPublicApiDocument() {
 
         <div class="bbs-data-export">
           <div class="bbs-data-export-text">
-            <span class="bbs-field-label">公共接口文档</span>
-            <p class="bbs-data-desc">下载 PUBLIC_API.md,包含 JavaScript API、斜杠命令、宏、返回结构与使用示例。</p>
+            <span class="bbs-field-label">Tài liệu giao diện công khai</span>
+            <p class="bbs-data-desc">Tải xuống PUBLIC_API.md, bao gồm JavaScript API, lệnh gạch chéo (slash commands), macro, cấu trúc trả về và ví dụ sử dụng.</p>
           </div>
           <button class="bbs-btn bbs-btn-primary" type="button" @click="exportPublicApiDocument">
             <Icon name="download" />
-            导出文档
+            Xuất tài liệu
           </button>
         </div>
       </Collapsible>
     </div>
 
-    <!-- 带数据创建新对话 / Horae 迁移 的确认弹窗 -->
+    <!-- Hộp thoại xác nhận của Tạo cuộc trò chuyện mới kèm dữ liệu / Di chuyển từ Horae -->
     <ConfirmDialog
       v-model:open="carryConfirmOpen"
-      title="带数据创建新对话"
-      confirm-text="创建并切入"
+      title="Tạo cuộc trò chuyện mới kèm dữ liệu"
+      confirm-text="Tạo và chuyển vào"
       @confirm="runCarryover"
     >
-      将基于当前聊天创建一个带数据的新对话并切入。继续吗?
+      Sẽ tạo một cuộc trò chuyện mới kèm dữ liệu dựa trên cuộc trò chuyện hiện tại và chuyển vào đó. Tiếp tục chứ?
     </ConfirmDialog>
     <ConfirmDialog
       v-model:open="migrateConfirmOpen"
-      title="从 Horae 迁移"
-      confirm-text="开始迁移"
+      title="Di chuyển dữ liệu từ Horae"
+      confirm-text="Bắt đầu di chuyển"
       @confirm="runMigrate"
     >
       {{ migrateConfirmText }}
     </ConfirmDialog>
 
-    <!-- ===== 渠道编辑弹窗 ===== -->
+    <!-- ===== Hộp thoại chỉnh sửa kênh ===== -->
     <ModalMask :open="!!editingChannel" @close="closeChannel">
-      <div v-if="editingChannel" class="bbs-modal" role="dialog" aria-modal="true" aria-label="编辑渠道">
+      <div v-if="editingChannel" class="bbs-modal" role="dialog" aria-modal="true" aria-label="Chỉnh sửa kênh">
         <header class="bbs-modal-head">
-          <span class="bbs-modal-title">编辑渠道</span>
-          <button class="bbs-icon-mini" type="button" title="关闭" @click="closeChannel"><Icon name="close" /></button>
+          <span class="bbs-modal-title">Chỉnh sửa kênh</span>
+          <button class="bbs-icon-mini" type="button" title="Đóng" @click="closeChannel"><Icon name="close" /></button>
         </header>
 
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">渠道名</span>
-          <input v-model="editingChannel.name" class="bbs-input" placeholder="渠道名" />
+          <span class="bbs-modal-label">Tên kênh</span>
+          <input v-model="editingChannel.name" class="bbs-input" placeholder="Tên kênh" />
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">API 地址</span>
-          <input v-model="editingChannel.url" class="bbs-input" placeholder="如 https://api.openai.com/v1" />
+          <span class="bbs-modal-label">Địa chỉ API</span>
+          <input v-model="editingChannel.url" class="bbs-input" placeholder="VD: https://api.openai.com/v1" />
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">API 密钥</span>
+          <span class="bbs-modal-label">Khóa bảo mật API</span>
           <div class="bbs-model-row">
             <input
               v-model="editingChannel.key"
               class="bbs-input"
               :type="showKey ? 'text' : 'password'"
-              placeholder="API 密钥"
+              placeholder="Khóa bảo mật API"
             />
             <button
               class="bbs-icon-mini"
               type="button"
-              :title="showKey ? '隐藏密钥' : '显示密钥'"
+              :title="showKey ? 'Ẩn khóa bảo mật' : 'Hiển thị khóa bảo mật'"
               :aria-pressed="showKey"
               @click="showKey = !showKey"
             >
@@ -1702,22 +1702,22 @@ function exportPublicApiDocument() {
           </div>
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">模型</span>
+          <span class="bbs-modal-label">Mô hình</span>
           <div class="bbs-model-row">
-            <!-- 可搜索 combobox:已拉取到模型列表时,聚焦弹出过滤菜单;没列表时就是普通输入框 -->
+            <!-- Combobox có thể tìm kiếm: khi đã kéo được danh sách mô hình, focus sẽ bật menu lọc; khi chưa có danh sách thì là ô nhập thông thường -->
             <div class="bbs-combo">
               <input
                 v-model="editingChannel.model"
                 class="bbs-input"
-                :placeholder="modelList.length ? '搜索或输入模型名…' : '模型名,如 gpt-4o-mini'"
+                :placeholder="modelList.length ? 'Tìm kiếm hoặc nhập tên mô hình…' : 'Tên mô hình, VD: gpt-4o-mini'"
                 @focus="openModelMenu"
                 @input="modelQuery = editingChannel.model; modelMenuOpen = true"
                 @blur="closeModelMenuSoon"
               />
-              <!-- 自绘下拉三角(纯装饰,pointer-events:none → 点击穿透到输入框照常聚焦展开);仅在有可选模型时显示 -->
+              <!-- Tam giác thả xuống tự vẽ (thuần trang trí, pointer-events:none → nhấn xuyên qua vào ô nhập vẫn focus mở rộng như thường); chỉ hiển thị khi có mô hình tùy chọn -->
               <span v-if="modelList.length" class="bbs-combo-caret" :class="{ 'is-open': modelMenuOpen }" aria-hidden="true" />
               <ul v-if="modelMenuOpen && modelList.length" class="bbs-combo-menu">
-                <li v-if="!filteredModels.length" class="bbs-combo-empty">无匹配模型</li>
+                <li v-if="!filteredModels.length" class="bbs-combo-empty">Không có mô hình khớp</li>
                 <li
                   v-for="m in filteredModels"
                   :key="m"
@@ -1732,7 +1732,7 @@ function exportPublicApiDocument() {
             <button
               class="bbs-icon-mini"
               type="button"
-              :title="loadingModels[editingChannel.id] ? '拉取中…' : '拉取模型'"
+              :title="loadingModels[editingChannel.id] ? 'Đang kéo danh sách…' : 'Kéo danh sách mô hình'"
               :disabled="loadingModels[editingChannel.id]"
               @click="pullModels(editingChannel)"
             >
@@ -1742,88 +1742,88 @@ function exportPublicApiDocument() {
         </label>
         <div class="bbs-channel-row">
           <label class="bbs-mini-field">
-            <span>温度</span>
+            <span>Nhiệt độ (Temperature)</span>
             <input v-model.number="editingChannel.temperature" class="bbs-input" type="number" step="0.1" min="0" max="2" />
           </label>
           <label class="bbs-mini-field">
-            <span>最大 token</span>
+            <span>Token tối đa</span>
             <input v-model.number="editingChannel.maxTokens" class="bbs-input" type="number" step="256" min="256" />
           </label>
           <label class="bbs-mini-field">
-            <span>超时(秒)</span>
+            <span>Chờ (giây)</span>
             <input v-model.number="editingChannel.timeoutSec" class="bbs-input" type="number" step="10" min="1" />
           </label>
-          <!-- 思考强度:自绘下拉(跟随主题;原生 select 的弹出层由系统渲染,主题管不到)。
-               auto 是显式选项,值为空串 = 不发送该参数 -->
+          <!-- Cường độ suy luận: hộp thả xuống tự vẽ (đi theo giao diện; lớp bật lên của select gốc do hệ thống kết xuất, giao diện không quản lý được).
+               auto là tùy chọn tường minh, giá trị là chuỗi rỗng = không gửi tham số này -->
           <div class="bbs-mini-field">
-            <span>思考强度</span>
+            <span>Cường độ suy luận</span>
             <BbsSelect
               v-model="editingChannel.reasoningEffort"
               :options="REASONING_EFFORT_OPTIONS"
-              aria-label="思考强度"
+              aria-label="Cường độ suy luận"
             />
           </div>
         </div>
-        <span class="bbs-field-hint">思考强度不知道的就选 auto，DS 系推荐 max</span>
+        <span class="bbs-field-hint">Cường độ suy luận nếu không rõ thì chọn auto, dòng DeepSeek khuyên dùng max</span>
         <label class="bbs-switch-row">
-          <span class="bbs-modal-label">流式传输</span>
+          <span class="bbs-modal-label">Truyền phát luồng (Stream)</span>
           <input v-model="editingChannel.stream" type="checkbox" class="bbs-checkbox" />
         </label>
         <label class="bbs-modal-field">
-          <span class="bbs-modal-label">排除参数</span>
+          <span class="bbs-modal-label">Tham số loại trừ</span>
           <input
             v-model="excludeParamsText"
             class="bbs-input"
             type="text"
-            placeholder="逗号分隔,如 temperature, max_tokens"
+            placeholder="Ngăn cách bằng dấu phẩy, VD: temperature, max_tokens"
           />
-          <span class="bbs-field-hint">这些参数会在发请求前从请求体里删除,用于规避不接受该参数的兼容端点报错。逗号分隔,留空则不排除。</span>
+          <span class="bbs-field-hint">Các tham số này sẽ bị xóa khỏi thân yêu cầu trước khi gửi đi, dùng để tránh lỗi ở các điểm cuối tương thích không chấp nhận tham số đó. Ngăn cách bằng dấu phẩy, để trống thì không loại trừ.</span>
         </label>
         <p v-if="testing[editingChannel.id]" class="bbs-channel-test">{{ testing[editingChannel.id] }}</p>
 
         <footer class="bbs-modal-foot">
-          <!-- 删除靠左、与右侧主操作拉开,破坏性动作不与「完成」相邻,降低误触。
-               删除:始终显示文字;测试:PC 显「测试渠道」,移动端只显「测试」(短版,省版面) -->
+          <!-- Nút Xóa dạt sang trái, tách khỏi thao tác chính bên phải, hành động phá hủy không nằm sát "Hoàn tất" để giảm chạm nhầm.
+               Xóa: luôn hiển thị chữ; Kiểm tra: trên PC hiện "Kiểm tra kênh", trên di động chỉ hiện "Kiểm tra" (bản ngắn, tiết kiệm diện tích) -->
           <button class="bbs-btn bbs-btn-danger" type="button" @click="askRemoveChannel">
-            <Icon name="trash" /> 删除
+            <Icon name="trash" /> Xóa
           </button>
           <span class="bbs-modal-foot-spacer"></span>
-          <button class="bbs-btn" type="button" title="测试渠道" @click="doTest(editingChannel)">
-            <Icon name="plug" /> <span class="bbs-btn-label-full">测试渠道</span><span class="bbs-btn-label-short">测试</span>
+          <button class="bbs-btn" type="button" title="Kiểm tra kênh" @click="doTest(editingChannel)">
+            <Icon name="plug" /> <span class="bbs-btn-label-full">Kiểm tra kênh</span><span class="bbs-btn-label-short">Kiểm tra</span>
           </button>
-          <button class="bbs-btn bbs-btn-primary" type="button" @click="confirmChannel">完成</button>
+          <button class="bbs-btn bbs-btn-primary" type="button" @click="confirmChannel">Hoàn tất</button>
         </footer>
 
-        <!-- 删除渠道二次确认:叠在渠道弹窗之上。置于 v-if="editingChannel" 块内,
-             渠道为 null 时整体不渲染——既合语义,也让 editingChannel.name 类型收窄。
-             ConfirmDialog 自身 teleport + top-layer,放这儿不影响其渲染层级。 -->
+        <!-- Xác nhận lần hai khi xóa kênh: chồng lên trên hộp thoại kênh. Đặt bên trong khối v-if="editingChannel",
+             khi kênh là null thì toàn bộ không kết xuất —— vừa hợp ngữ nghĩa, vừa giúp thu hẹp kiểu của editingChannel.name.
+             Bản thân ConfirmDialog dùng teleport + top-layer, đặt ở đây không ảnh hưởng tới phân tầng kết xuất của nó. -->
         <ConfirmDialog
           v-model:open="confirmDeleteOpen"
-          title="删除渠道"
-          confirm-text="删除"
+          title="Xóa kênh"
+          confirm-text="Xóa"
           confirm-icon="trash"
           tone="danger"
           top-layer
           @confirm="confirmRemoveChannel"
         >
-          确定删除渠道「{{ editingChannel.name || '未命名渠道' }}」吗?此操作不可撤销,已指派该渠道的任务会被清空。
+          Xác nhận xóa kênh "{{ editingChannel.name || 'Kênh chưa đặt tên' }}"? Thao tác này không thể hoàn tác, các tác vụ đã chỉ định kênh này sẽ được xóa trống.
         </ConfirmDialog>
       </div>
     </ModalMask>
 
-    <!-- ===== 提示词编辑弹窗 ===== -->
+    <!-- ===== Hộp thoại chỉnh sửa lời nhắc ===== -->
     <ModalMask :open="!!editingPrompt" @close="closePrompt">
-      <div v-if="editingPrompt" class="bbs-modal bbs-modal-wide" role="dialog" aria-modal="true" :aria-label="`编辑${editingPrompt.label}`">
+      <div v-if="editingPrompt" class="bbs-modal bbs-modal-wide" role="dialog" aria-modal="true" :aria-label="`Chỉnh sửa ${editingPrompt.label}`">
         <header class="bbs-modal-head">
-          <span class="bbs-modal-title">编辑{{ editingPrompt.label }}</span>
-          <button class="bbs-icon-mini" type="button" title="关闭" @click="closePrompt"><Icon name="close" /></button>
+          <span class="bbs-modal-title">Chỉnh sửa {{ editingPrompt.label }}</span>
+          <button class="bbs-icon-mini" type="button" title="Đóng" @click="closePrompt"><Icon name="close" /></button>
         </header>
 
         <p class="bbs-modal-label">{{ editingPrompt.hint }}</p>
 
-        <!-- 可用宏:点一下插入到光标处 -->
+        <!-- Các macro khả dụng: nhấn một cái để chèn vào vị trí con trỏ -->
         <div class="bbs-macro-bar">
-          <span class="bbs-macro-tip">点击插入宏:</span>
+          <span class="bbs-macro-tip">Nhấn để chèn macro:</span>
           <button
             v-for="mac in editingPrompt.macros"
             :key="mac.token"
@@ -1846,28 +1846,28 @@ function exportPublicApiDocument() {
 
         <footer class="bbs-modal-foot">
           <button class="bbs-btn bbs-btn-danger" type="button" @click="resetPrompt">
-            <Icon name="refresh" /> 恢复默认
+            <Icon name="refresh" /> Khôi phục mặc định
           </button>
           <span class="bbs-modal-foot-spacer"></span>
-          <button class="bbs-btn" type="button" @click="closePrompt">取消</button>
-          <button class="bbs-btn bbs-btn-primary" type="button" @click="savePrompt">完成</button>
+          <button class="bbs-btn" type="button" @click="closePrompt">Hủy</button>
+          <button class="bbs-btn bbs-btn-primary" type="button" @click="savePrompt">Hoàn tất</button>
         </footer>
       </div>
     </ModalMask>
 
-    <!-- ===== 排除角色弹窗:搜索 + 勾选列表 ===== -->
+    <!-- ===== Hộp thoại loại trừ nhân vật: tìm kiếm + danh sách tích chọn ===== -->
     <ModalMask :open="excludeOpen" @close="closeExclude">
-      <div class="bbs-modal" role="dialog" aria-modal="true" aria-label="编辑排除名单">
+      <div class="bbs-modal" role="dialog" aria-modal="true" aria-label="Chỉnh sửa danh sách loại trừ">
         <header class="bbs-modal-head">
-          <span class="bbs-modal-title">排除角色</span>
-          <button class="bbs-icon-mini" type="button" title="关闭" @click="closeExclude"><Icon name="close" /></button>
+          <span class="bbs-modal-title">Loại trừ nhân vật</span>
+          <button class="bbs-icon-mini" type="button" title="Đóng" @click="closeExclude"><Icon name="close" /></button>
         </header>
 
         <input
           v-model="excludeSearch"
           class="bbs-input"
           type="search"
-          placeholder="搜索角色名…"
+          placeholder="Tìm kiếm tên nhân vật…"
           spellcheck="false"
         />
 
@@ -1881,31 +1881,31 @@ function exportPublicApiDocument() {
             />
             <span class="bbs-exclude-row-name">{{ name }}</span>
           </label>
-          <p v-if="!charNames.length" class="bbs-field-hint">未读取到角色列表。请先在 ST 里加载角色卡。</p>
-          <p v-else-if="!filteredCharNames.length" class="bbs-field-hint">没有匹配「{{ excludeSearch }}」的角色。</p>
+          <p v-if="!charNames.length" class="bbs-field-hint">Chưa đọc được danh sách nhân vật. Vui lòng tải thẻ nhân vật trong ST trước.</p>
+          <p v-else-if="!filteredCharNames.length" class="bbs-field-hint">Không có nhân vật nào khớp với "{{ excludeSearch }}".</p>
         </div>
 
         <footer class="bbs-modal-foot">
-          <span class="bbs-exclude-count">共 {{ charNames.length }} 个角色 · 已排除 {{ apiSettings.excludedChars.length }}</span>
+          <span class="bbs-exclude-count">Tổng cộng {{ charNames.length }} nhân vật · Đã loại trừ {{ apiSettings.excludedChars.length }}</span>
           <span class="bbs-modal-foot-spacer"></span>
-          <button class="bbs-btn bbs-btn-primary" type="button" @click="closeExclude">完成</button>
+          <button class="bbs-btn bbs-btn-primary" type="button" @click="closeExclude">Hoàn tất</button>
         </footer>
       </div>
     </ModalMask>
 
-    <!-- ===== 排除世界书弹窗:搜索 + 勾选列表(复刻排除角色) ===== -->
+    <!-- ===== Hộp thoại loại trừ Sách Thế Giới: tìm kiếm + danh sách tích chọn (sao chép lại từ Loại trừ nhân vật) ===== -->
     <ModalMask :open="excludeWorldOpen" @close="closeExcludeWorld">
-      <div class="bbs-modal" role="dialog" aria-modal="true" aria-label="编辑排除世界书名单">
+      <div class="bbs-modal" role="dialog" aria-modal="true" aria-label="Chỉnh sửa danh sách loại trừ Sách Thế Giới">
         <header class="bbs-modal-head">
-          <span class="bbs-modal-title">整本排除世界书</span>
-          <button class="bbs-icon-mini" type="button" title="关闭" @click="closeExcludeWorld"><Icon name="close" /></button>
+          <span class="bbs-modal-title">Loại trừ nguyên cuốn Sách Thế Giới</span>
+          <button class="bbs-icon-mini" type="button" title="Đóng" @click="closeExcludeWorld"><Icon name="close" /></button>
         </header>
 
         <input
           v-model="excludeWorldSearch"
           class="bbs-input"
           type="search"
-          placeholder="搜索世界书名…"
+          placeholder="Tìm kiếm tên Sách Thế Giới…"
           spellcheck="false"
         />
 
@@ -1919,29 +1919,29 @@ function exportPublicApiDocument() {
             />
             <span class="bbs-exclude-row-name">{{ name }}</span>
           </label>
-          <p v-if="!worldNames.length" class="bbs-field-hint">未读取到世界书。请先在 ST 里加载 / 挂载世界书。</p>
-          <p v-else-if="!filteredWorldNames.length" class="bbs-field-hint">没有匹配「{{ excludeWorldSearch }}」的世界书。</p>
+          <p v-if="!worldNames.length" class="bbs-field-hint">Chưa đọc được Sách Thế Giới. Vui lòng tải / gắn Sách Thế Giới trong ST trước.</p>
+          <p v-else-if="!filteredWorldNames.length" class="bbs-field-hint">Không có cuốn Sách Thế Giới nào khớp với "{{ excludeWorldSearch }}".</p>
         </div>
 
         <footer class="bbs-modal-foot">
-          <span class="bbs-exclude-count">共 {{ worldNames.length }} 本 · 已排除 {{ apiSettings.excludedWorldNames.length }}</span>
+          <span class="bbs-exclude-count">Tổng cộng {{ worldNames.length }} cuốn · Đã loại trừ {{ apiSettings.excludedWorldNames.length }}</span>
           <span class="bbs-modal-foot-spacer"></span>
-          <button class="bbs-btn bbs-btn-primary" type="button" @click="closeExcludeWorld">完成</button>
+          <button class="bbs-btn bbs-btn-primary" type="button" @click="closeExcludeWorld">Hoàn tất</button>
         </footer>
       </div>
     </ModalMask>
 
-    <!-- ===== 更新确认弹窗 ===== -->
+    <!-- ===== Hộp thoại xác nhận cập nhật ===== -->
     <ConfirmDialog
       v-model:open="updateConfirmOpen"
-      title="发现新版本"
-      confirm-text="更新并刷新"
-      busy-text="更新中…"
+      title="Phát hiện phiên bản mới"
+      confirm-text="Cập nhật và làm mới"
+      busy-text="Đang cập nhật…"
       :busy="updateState.updating"
       @confirm="confirmUpdate"
     >
-      当前版本 v{{ updateState.current || '—' }},最新版本 v{{ updateState.latest }}。<br />
-      现在更新吗?更新完成后会自动刷新页面生效。
+      Phiên bản hiện tại v{{ updateState.current || '—' }}, phiên bản mới nhất v{{ updateState.latest }}.<br />
+      Cập nhật ngay bây giờ chứ? Sau khi cập nhật hoàn tất sẽ tự động làm mới trang để có hiệu lực.
     </ConfirmDialog>
   </section>
 </template>
@@ -1957,7 +1957,7 @@ function exportPublicApiDocument() {
   gap: 12px;
 }
 
-/* —— 标题行:左标题 + 右版本号(及更新按钮) —— */
+/* —— Dòng tiêu đề: tiêu đề bên trái + số phiên bản (và nút cập nhật) bên phải —— */
 .bbs-page-head {
   display: flex;
   align-items: baseline;
@@ -1969,7 +1969,7 @@ function exportPublicApiDocument() {
   align-items: center;
   gap: 8px;
 }
-/* 版本标签:实心强调底 + 白字(粉彩=粉底白字,各主题随 --bbs-accent 自适应) */
+/* Nhãn phiên bản: nền màu nhấn đặc + chữ trắng (Pastel = nền hồng chữ trắng, mỗi giao diện tự thích ứng theo --bbs-accent) */
 .bbs-ver {
   border: 0;
   padding: 7px 12px;
@@ -2012,14 +2012,14 @@ function exportPublicApiDocument() {
   font-weight: 600;
   color: var(--bbs-ink);
 }
-/* 字段右上角的数值(如透明度百分比) */
+/* Giá trị số ở góc trên bên phải trường (như phần trăm độ mờ) */
 .bbs-field-value {
   font-size: 13px;
   font-variant-numeric: tabular-nums;
   color: var(--bbs-accent);
 }
 
-/* 滑块:用主题色,跨浏览器统一外观 */
+/* Thanh trượt: dùng màu giao diện, thống nhất ngoại hình xuyên trình duyệt */
 .bbs-range {
   width: 100%;
   height: 4px;
@@ -2059,7 +2059,7 @@ function exportPublicApiDocument() {
   line-height: 1.6;
 }
 
-/* 获取数据:宏速查列表 + 文档导出 */
+/* Lấy dữ liệu: danh sách tra cứu nhanh macro + xuất tài liệu */
 .bbs-data-intro {
   margin-bottom: 10px;
 }
@@ -2123,7 +2123,7 @@ function exportPublicApiDocument() {
   background: var(--bbs-surface-2);
   border-radius: var(--bbs-radius);
 }
-/* 主题选项可能较多/标签较长:允许换行,窄屏下不溢出 */
+/* Tùy chọn giao diện có thể nhiều / nhãn khá dài: cho phép xuống dòng, dưới màn hình hẹp không bị tràn */
 .bbs-segmented-wrap {
   display: flex;
   flex-wrap: wrap;
@@ -2153,7 +2153,7 @@ function exportPublicApiDocument() {
   box-shadow: 0 1px 3px oklch(0 0 0 / 0.08);
 }
 
-/* 任务指派 */
+/* Chỉ định tác vụ */
 .bbs-assign {
   display: flex;
   flex-direction: column;
@@ -2165,9 +2165,8 @@ function exportPublicApiDocument() {
   justify-content: space-between;
   gap: 12px;
 }
-/* 指派下拉:占右半区(渠道名可能长,给足宽度再截断),小一号字与其它设置行一致。
-   带上父级选择器是为了压过 BbsSelect 根节点自带的 width:100%——两者同特异度时靠
-   样式表先后决定胜负,那取决于打包顺序,不可靠 */
+/* Hộp thả xuống chỉ định: chiếm nửa vùng bên phải (tên kênh có thể dài, cho đủ chiều rộng rồi mới cắt ngắn), cỡ chữ nhỏ hơn một nấc đồng nhất với các dòng cài đặt khác.
+   Kèm bộ chọn cấp cha là để đè qua width:100% có sẵn ở nút gốc BbsSelect —— khi hai bên cùng độ đặc hiệu sẽ phụ thuộc thứ tự bảng kiểu dáng, điều đó tùy thuộc thứ tự đóng gói, không đáng tin */
 .bbs-assign-row .bbs-assign-select {
   flex: 0 1 60%;
   min-width: 0;
@@ -2175,7 +2174,7 @@ function exportPublicApiDocument() {
 .bbs-assign-select :deep(.bbs-select-trigger) {
   font-size: 12px;
 }
-/* —— 模型可搜索 combobox —— */
+/* —— Combobox mô hình có thể tìm kiếm —— */
 .bbs-combo {
   position: relative;
   flex: 1;
@@ -2183,9 +2182,9 @@ function exportPublicApiDocument() {
 }
 .bbs-combo .bbs-input {
   width: 100%;
-  padding-right: 26px; /* 给右侧自绘三角让位,文字不压到箭头 */
+  padding-right: 26px; /* Nhường chỗ cho tam giác tự vẽ bên phải, chữ không đè lên mũi tên */
 }
-/* 自绘下拉三角:与原生 <select> 同款 SVG,贴右侧居中;展开时翻转。装饰元素不拦点击 */
+/* Tam giác thả xuống tự vẽ: SVG cùng kiểu với <select> gốc, bám sát bên phải căn giữa; khi mở rộng thì lật ngược. Phần tử trang trí không chặn thao tác nhấn */
 .bbs-combo-caret {
   position: absolute;
   top: 50%;
@@ -2203,7 +2202,7 @@ function exportPublicApiDocument() {
 .bbs-combo-caret.is-open {
   transform: translateY(-50%) rotate(180deg);
 }
-/* 过滤菜单:绝对定位贴在输入框下方,限高滚动,长列表不撑爆弹窗 */
+/* Menu lọc: định vị tuyệt đối bám ngay dưới ô nhập, giới hạn chiều cao có cuộn, danh sách dài không làm vỡ hộp thoại */
 .bbs-combo-menu {
   position: absolute;
   top: calc(100% + 4px);
@@ -2241,13 +2240,13 @@ function exportPublicApiDocument() {
   color: var(--bbs-ink-muted);
 }
 
-/* 小一号按钮:用于「添加渠道」等次级操作 */
+/* Nút nhỏ hơn một cỡ: dùng cho các thao tác thứ cấp như "Thêm kênh" */
 .bbs-btn-sm {
   padding: 6px 11px;
   font-size: 12px;
 }
 
-/* 悬浮球图标配置:预览方块 + 操作按钮 */
+/* Cấu hình biểu tượng quả cầu nổi: khối vuông xem trước + các nút thao tác */
 .bbs-orb-config {
   display: flex;
   align-items: center;
@@ -2273,7 +2272,7 @@ function exportPublicApiDocument() {
   height: 100%;
   object-fit: cover;
 }
-/* 预览随所选形状变化,让用户直观看到效果 */
+/* Khung xem trước thay đổi theo hình dáng đã chọn, giúp người dùng nhìn thấy trực quan hiệu ứng */
 .bbs-orb-preview.shape-bookmark {
   clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 78%, 0 100%);
   border-color: transparent;
@@ -2290,12 +2289,12 @@ function exportPublicApiDocument() {
   flex-wrap: wrap;
 }
 
-/* 测试按钮文字:默认(PC)显完整版,短版藏起;窄屏在媒体查询里互换 */
+/* Chữ nút kiểm tra: mặc định (PC) hiện bản đầy đủ, ẩn bản ngắn; màn hình hẹp hoán đổi trong media query */
 .bbs-btn-label-short {
   display: none;
 }
 
-/* 渠道:顶部操作条(标签 + 添加按钮) */
+/* Kênh: thanh thao tác đỉnh (nhãn + nút thêm) */
 .bbs-channel-bar {
   display: flex;
   align-items: center;
@@ -2304,7 +2303,7 @@ function exportPublicApiDocument() {
   margin-bottom: 12px;
 }
 
-/* 渠道:紧凑只读列表,每渠道一行,点行进弹窗编辑 */
+/* Kênh: danh sách chỉ đọc nhỏ gọn, mỗi kênh một dòng, nhấn vào dòng để vào hộp thoại chỉnh sửa */
 .bbs-channel-list {
   list-style: none;
   margin: 0;
@@ -2318,7 +2317,7 @@ function exportPublicApiDocument() {
   align-items: stretch;
   gap: 8px;
 }
-/* 行主体:整块可点,左名字右模型 */
+/* Thân dòng: nguyên khối nhấn được, trái là tên phải là mô hình */
 .bbs-channel-open {
   flex: 1;
   min-width: 0;
@@ -2340,7 +2339,7 @@ function exportPublicApiDocument() {
   border-color: var(--bbs-accent);
   background: var(--bbs-surface);
 }
-/* 渠道名:完整显示,允许换行,占据剩余空间 */
+/* Tên kênh: hiển thị đầy đủ, cho phép xuống dòng, chiếm không gian còn lại */
 .bbs-channel-item-name {
   flex: 1 1 auto;
   min-width: 0;
@@ -2348,7 +2347,7 @@ function exportPublicApiDocument() {
   font-weight: 600;
   word-break: break-word;
 }
-/* 模型名:次要信息,过长则截断,不挤占名字 */
+/* Tên mô hình: thông tin thứ cấp, quá dài thì cắt ngắn, không lấn chiếm tên kênh */
 .bbs-channel-item-model {
   flex: 0 1 auto;
   min-width: 0;
@@ -2359,11 +2358,11 @@ function exportPublicApiDocument() {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* 弹窗底部:spacer 把删除键推到最左,与右侧操作分隔 */
+/* Đáy hộp thoại: spacer đẩy nút Xóa về ngoài cùng bên trái, ngăn cách với các thao tác bên phải */
 .bbs-modal-foot-spacer {
   flex: 1 1 auto;
 }
-/* 危险操作按钮:描边低调,hover 才显红,避免误触 */
+/* Nút thao tác nguy hiểm: viền trầm lắng, hover mới hiện đỏ, tránh chạm nhầm */
 .bbs-btn-danger {
   color: var(--bbs-danger);
   border-color: var(--bbs-line-strong);
@@ -2425,7 +2424,7 @@ function exportPublicApiDocument() {
   word-break: break-all;
 }
 
-/* 摘要设置控件 */
+/* Điều khiển cài đặt tóm tắt */
 .bbs-switch-row,
 .bbs-num-row {
   display: flex;
@@ -2434,16 +2433,16 @@ function exportPublicApiDocument() {
   gap: 12px;
   padding: 8px 0;
 }
-/* 「启用向量记忆」是折叠区里独一行开关,不再额外加上 padding,贴合标题节奏 */
+/* "Bật trí nhớ vector" là dòng công tắc riêng lẻ trong vùng thu gọn, không cộng thêm padding trên nữa, bám sát nhịp điệu tiêu đề */
 .bbs-vec-enable {
   padding-top: 0;
 }
-/* 紧跟开关行的分割线收掉上边距:开关行自带 8px 下 padding 已够,避免整块显得空旷 */
+/* Đường phân cách ngay sau dòng công tắc thu bớt lề trên: dòng công tắc đã có sẵn 8px padding dưới là đủ, tránh làm cả khối trông trống trải */
 .bbs-vec-enable-rule {
   margin-top: 0;
 }
 .bbs-checkbox {
-  /* flex 行里长文本会把固定宽高的复选框挤扁 → 禁止收缩,保持标准方形 */
+  /* Trong dòng flex văn bản dài sẽ ép bẹp hộp kiểm có chiều rộng/cao cố định → cấm thu hẹp, giữ hình vuông tiêu chuẩn */
   flex: 0 0 auto;
   width: 18px;
   height: 18px;
@@ -2454,11 +2453,11 @@ function exportPublicApiDocument() {
   max-width: 110px;
   text-align: right;
 }
-/* 向量端点的超时/重试:两个短输入并排,label 在上、窄框在下,与上方模型行留出呼吸间距 */
+/* Thời gian chờ / thử lại của điểm cuối vector: hai ô nhập ngắn xếp cạnh nhau, label ở trên, khung hẹp ở dưới, chừa khoảng cách thoáng với dòng mô hình phía trên */
 .bbs-vec-io {
   display: grid;
-  /* 列宽贴合内容(而非 1fr 等分撑满),三个框紧凑靠左;auto-fit 保证空间不够时自动折行。
-     用 1fr 会把每个 item 拉满整行,item 内的 label 随之被 stretch 撑宽,看着间距很大。 */
+  /* Chiều rộng cột khớp sát nội dung (thay vì 1fr chia đều căng đầy), ba khung xếp gọn về bên trái; auto-fit đảm bảo tự động xuống dòng khi không đủ không gian.
+     Dùng 1fr sẽ kéo mỗi item đầy cả dòng, label bên trong item cũng bị stretch kéo rộng theo, nhìn khoảng cách rất lớn. */
   grid-template-columns: repeat(auto-fit, minmax(72px, max-content));
   gap: 14px;
   margin-top: 12px;
@@ -2472,12 +2471,12 @@ function exportPublicApiDocument() {
   width: 72px;
   text-align: left;
 }
-/* 破限开关紧跟在超时/token 那栏之后:多留一点上间距,与上一栏拉开(只命中此处,不动通用 switch-row) */
+/* Công tắc phá giới hạn theo sát ngay sau cột thời gian chờ/token: chừa thêm một chút khoảng cách trên, tách khỏi cột trước (chỉ trúng tại đây, không động tới switch-row chung) */
 .bbs-vec-io + .bbs-switch-row {
   margin-top: 6px;
 }
-/* 短选项下拉(如字数档位):贴合文字的窄宽,和右侧数字框对齐,不再撑满半行。
-   同上,带父级压过组件根的 width:100% */
+/* Hộp thả xuống tùy chọn ngắn (như Mức số chữ): chiều rộng hẹp vừa khít chữ, căn chỉnh với khung số bên phải, không căng đầy nửa dòng nữa.
+   Tương tự như trên, kèm cấp cha để đè qua width:100% ở gốc component */
 .bbs-num-row .bbs-select-narrow {
   width: auto;
   min-width: 65px;
@@ -2487,8 +2486,8 @@ function exportPublicApiDocument() {
   font-size: 12px;
 }
 
-/* —— 总开关主控卡 —— */
-/* 左缘一道金色书脊,呼应「书」的品牌;停用时整卡褪色、书脊转灰,状态一眼可辨 */
+/* —— Thẻ điều khiển chính công tắc tổng —— */
+/* Mép trái có một sống sách màu vàng, hưởng ứng thương hiệu "Thư" (Sách); khi tắt cả thẻ nhạt màu, sống sách chuyển sang xám, nhìn thoáng qua là nhận biết được trạng thái */
 .bbs-master {
   display: flex;
   align-items: center;
@@ -2528,7 +2527,7 @@ function exportPublicApiDocument() {
   color: var(--bbs-ink);
 }
 
-/* —— 通用滑动开关(总开关用,后续别处也可复用) —— */
+/* —— Công tắc trượt chung (dùng cho công tắc tổng, về sau nơi khác cũng có thể tái sử dụng) —— */
 .bbs-toggle {
   flex: 0 0 auto;
   position: relative;
@@ -2563,8 +2562,8 @@ function exportPublicApiDocument() {
   transform: translateX(20px);
 }
 
-/* —— 向量记忆:每个模型角色一组卡片(渠道 + 模型名两列) —— */
-/* 向量端点卡片(Embedding/Rerank/Query 各一块,扁平填地址/密钥/模型) */
+/* —— Trí nhớ vector: mỗi vai trò mô hình một nhóm thẻ (hai cột kênh + tên mô hình) —— */
+/* Thẻ điểm cuối vector (Embedding/Rerank/Query mỗi loại một khối, điền phẳng địa chỉ/khóa/mô hình) */
 .bbs-vec-ep {
   margin-top: 12px;
   padding: 12px 14px;
@@ -2576,7 +2575,7 @@ function exportPublicApiDocument() {
 .bbs-vec-ep.is-disabled {
   opacity: 0.5;
 }
-/* 召回参数/索引维护整组在关闭向量记忆时一并置灰 */
+/* Toàn bộ nhóm Tham số truy xuất / Bảo trì chỉ mục chuyển sang xám khi tắt trí nhớ vector */
 .bbs-vec-recall.is-disabled {
   opacity: 0.5;
 }
@@ -2587,7 +2586,7 @@ function exportPublicApiDocument() {
   gap: 8px;
   margin-bottom: 10px;
 }
-/* 端点卡片折叠头:整条标题栏可点;收起时去掉下间距,卡片只剩一行标题。 */
+/* Đầu thu gọn của thẻ điểm cuối: toàn bộ thanh tiêu đề có thể nhấn; khi thu gọn bỏ khoảng cách dưới, thẻ chỉ còn lại một dòng tiêu đề. */
 .bbs-vec-toggle {
   width: 100%;
   margin: 0;
@@ -2604,8 +2603,8 @@ function exportPublicApiDocument() {
   outline-offset: 4px;
   border-radius: var(--bbs-radius-sm);
 }
-/* 折叠头不自带下间距,改由 body 的 padding-top 统一供给,
-   这样三块标题到首行内容的距离一致(不受有无提示行影响),收起时随 grid 一并归零。 */
+/* Đầu thu gọn không tự kèm khoảng cách dưới, chuyển sang do padding-top của body cung cấp thống nhất,
+   như vậy khoảng cách từ tiêu đề ba khối tới dòng nội dung đầu tiên đồng nhất (không bị ảnh hưởng bởi việc có hay không có dòng gợi ý), khi thu gọn sẽ cùng grid về 0. */
 .bbs-vec-toggle.bbs-vec-head {
   margin-bottom: 0;
 }
@@ -2620,7 +2619,7 @@ function exportPublicApiDocument() {
 .bbs-vec-ep.is-collapsed .bbs-vec-chevron {
   transform: rotate(-90deg);
 }
-/* 展开动画:照搬 Collapsible 的 grid 0fr<->1fr,内容自适应高度,无需测量。 */
+/* Hoạt ảnh mở rộng: sao chép nguyên grid 0fr<->1fr của Collapsible, nội dung tự thích ứng chiều cao, không cần đo đạc. */
 .bbs-vec-ep-outer {
   display: grid;
   grid-template-rows: 1fr;
@@ -2629,9 +2628,9 @@ function exportPublicApiDocument() {
 .bbs-vec-ep.is-collapsed .bbs-vec-ep-outer {
   grid-template-rows: 0fr;
 }
-/* 展开态放开 overflow,否则会裁掉里面模型 combobox 绝对定位的下拉菜单(拉取模型后「点不开」);
-   折叠动画期间仍需 hidden 来平滑揭示——用离散过渡延迟到动画结束(0.28s)才切 visible,收起时立即变回 hidden。
-   allow-discrete 不支持的旧浏览器降级为立即切换:展开瞬间内容略溢出(小瑕疵),但下拉可用,不再点不开。 */
+/* Trạng thái mở rộng thả lỏng overflow, nếu không sẽ cắt mất menu thả xuống định vị tuyệt đối của combobox mô hình bên trong (sau khi kéo mô hình xong "nhấn không mở ra được");
+   trong suốt thời gian hoạt ảnh thu gọn vẫn cần hidden để hé mở mượt mà —— dùng chuyển tiếp rời rạc trễ tới khi hoạt ảnh kết thúc (0.28s) mới chuyển sang visible, khi thu gọn thì lập tức quay về hidden.
+   Trình duyệt cũ không hỗ trợ allow-discrete sẽ hạ cấp xuống chuyển đổi ngay lập tức: khoảnh khắc mở rộng nội dung hơi tràn nhẹ (khuyết điểm nhỏ), nhưng hộp thả xuống dùng được, không còn bị nhấn không mở ra. */
 .bbs-vec-ep-inner {
   min-height: 0;
   overflow: visible;
@@ -2642,7 +2641,7 @@ function exportPublicApiDocument() {
   overflow: hidden;
   transition-delay: 0s;
 }
-/* 向量后端类型标签:与摘要列表的「总结」标签同款(实心填充、白字),后端=强调色,本地降级=警告色 */
+/* Nhãn loại backend vector: cùng kiểu với nhãn "Đại tóm tắt" của danh sách tóm tắt (lấp đầy đặc ruột, chữ trắng), backend = màu nhấn, hạ cấp cục bộ = màu cảnh báo */
 .bbs-vec-backend {
   box-sizing: border-box;
   height: 22px;
@@ -2666,14 +2665,14 @@ function exportPublicApiDocument() {
   border: 1px solid var(--bbs-warning);
 }
 
-/* —— 上次召回详情(调试面板):状态横幅 + 步骤分区 + 分数条卡片 —— */
+/* —— Chi tiết lần truy xuất trước (bảng gỡ lỗi): biểu ngữ trạng thái + phân vùng bước + thẻ thanh điểm số —— */
 .bbs-dbg {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-/* 状态横幅:左色点 + 文案 + 时间 */
+/* Biểu ngữ trạng thái: chấm màu bên trái + văn bản + thời gian */
 .bbs-dbg-banner {
   display: flex;
   align-items: center;
@@ -2732,7 +2731,7 @@ function exportPublicApiDocument() {
   color: var(--bbs-ink-muted);
 }
 
-/* 索引维护:重建/清空按钮并排,窄屏自动换行 */
+/* Bảo trì chỉ mục: nút dựng lại / xóa sạch xếp cạnh nhau, trên màn hình hẹp tự động xuống dòng */
 .bbs-vec-index-actions {
   display: flex;
   flex-wrap: wrap;
@@ -2740,7 +2739,7 @@ function exportPublicApiDocument() {
   margin-bottom: 4px;
 }
 
-/* 重写:INTENT 高亮 + Q 列表 */
+/* Viết lại: tô sáng INTENT + danh sách Q */
 .bbs-dbg-intent {
   display: flex;
   gap: 7px;
@@ -2798,7 +2797,7 @@ function exportPublicApiDocument() {
   word-break: break-word;
 }
 
-/* 命中卡片列表:固定高度内滑动,长列表不把折叠区撑得很长。 */
+/* Danh sách thẻ kết quả trúng: cuộn trong chiều cao cố định, danh sách dài không làm vùng thu gọn bị kéo quá dài. */
 .bbs-dbg-cards {
   list-style: none;
   margin: 0;
@@ -2824,10 +2823,10 @@ function exportPublicApiDocument() {
   gap: 8px;
   margin-bottom: 6px;
 }
-/* 来源 Q 徽标 */
+/* Huy hiệu nguồn Q */
 .bbs-dbg-src {
   flex: 0 0 auto;
-  min-width: 38px; /* 与楼层号标签等宽,单数 Q 也不至于太窄 */
+  min-width: 38px; /* Rộng bằng nhãn số tầng, Q một chữ số cũng không đến nỗi quá hẹp */
   text-align: center;
   padding: 1px 7px;
   border-radius: var(--bbs-radius-pill);
@@ -2837,10 +2836,10 @@ function exportPublicApiDocument() {
   font-size: 11px;
   font-weight: 700;
 }
-/* 来源标记:本聊天楼层号(中性)/ 旧档(描边提示色) */
+/* Đánh dấu nguồn: số tầng cuộc trò chuyện này (trung tính) / Bản lưu cũ (màu nhắc nhở có viền) */
 .bbs-dbg-from {
   flex: 0 0 auto;
-  min-width: 38px; /* 楼层号个位数(#5)也不至于太窄,与 Q 标签视觉等宽 */
+  min-width: 38px; /* Số tầng một chữ số (#5) cũng không đến nỗi quá hẹp, rộng ngang bằng về mặt thị giác với nhãn Q */
   text-align: center;
   padding: 1px 7px;
   border-radius: var(--bbs-radius-pill);
@@ -2874,7 +2873,7 @@ function exportPublicApiDocument() {
   color: var(--bbs-ink);
   font-variant-numeric: tabular-nums;
 }
-/* 分数条:细轨 + 填充;默认强调色,rerank 各档分色 */
+/* Thanh điểm số: rãnh mảnh + lấp đầy; mặc định màu nhấn, các mức rerank chia màu riêng */
 .bbs-dbg-bar {
   height: 4px;
   border-radius: var(--bbs-radius-pill);
@@ -2901,7 +2900,7 @@ function exportPublicApiDocument() {
   color: var(--bbs-ink-muted);
   word-break: break-word;
 }
-/* 分档徽标:全文(强调实底)/摘要(中性)/丢弃(描边褪色) */
+/* Huy hiệu phân mức: Toàn văn (nền đặc màu nhấn) / Tóm tắt (trung tính) / Loại bỏ (viền nhạt màu) */
 .bbs-dbg-tier {
   flex: 0 0 auto;
   min-width: 32px;
@@ -2925,7 +2924,7 @@ function exportPublicApiDocument() {
   background: transparent;
   border: 1px solid var(--bbs-line);
 }
-/* 注入文本框:等宽、限高滚动 */
+/* Khung văn bản tiêm: phông đơn cách, giới hạn chiều cao có cuộn */
 .bbs-dbg-pre {
   margin: 0;
   padding: 10px 12px;
@@ -2942,7 +2941,7 @@ function exportPublicApiDocument() {
   color: var(--bbs-ink);
 }
 
-/* —— 自定义提示词列表 —— */
+/* —— Danh sách lời nhắc tùy chỉnh —— */
 .bbs-prompt-list {
   list-style: none;
   margin: 0;
@@ -2951,7 +2950,7 @@ function exportPublicApiDocument() {
   flex-direction: column;
   gap: 8px;
 }
-/* 整行可点进弹窗编辑;布局沿用渠道列表的观感(描边、hover 显强调色) */
+/* Cả dòng có thể nhấn để vào hộp thoại chỉnh sửa; bố cục tiếp tục dùng cảm giác nhìn của danh sách kênh (viền, hover hiện màu nhấn) */
 .bbs-prompt-open {
   width: 100%;
   display: flex;
@@ -2977,7 +2976,7 @@ function exportPublicApiDocument() {
   font-size: 13px;
   font-weight: 600;
 }
-/* 状态药丸:默认 muted,已自定义转金强调 */
+/* Viên nang trạng thái: mặc định muted, đã tùy chỉnh chuyển sang màu vàng nhấn */
 .bbs-prompt-state {
   flex: 0 0 auto;
   font-size: 11px;
@@ -3002,11 +3001,11 @@ function exportPublicApiDocument() {
   color: var(--bbs-accent);
 }
 
-/* —— 提示词弹窗:更宽 + 大文本框 —— */
+/* —— Hộp thoại lời nhắc: rộng hơn + khung văn bản lớn —— */
 .bbs-modal-wide {
   max-width: 680px;
 }
-/* 宏标签条:可横向裹行,每个宏点击插入 */
+/* Thanh nhãn macro: có thể xuống dòng theo chiều ngang, nhấn mỗi macro sẽ chèn vào */
 .bbs-macro-bar {
   display: flex;
   flex-wrap: wrap;
@@ -3046,7 +3045,7 @@ function exportPublicApiDocument() {
   tab-size: 2;
 }
 
-/* —— 自定义清洗标签:输入框 + 添加按钮一行 —— */
+/* —— Thẻ làm sạch tùy chỉnh: ô nhập + nút thêm trên một dòng —— */
 .bbs-striptag-bar {
   display: flex;
   gap: 8px;
@@ -3061,7 +3060,7 @@ function exportPublicApiDocument() {
   flex: none;
 }
 
-/* —— 排除角色:已排除名字以药丸形式平铺,点 × 移出 —— */
+/* —— Loại trừ nhân vật: các tên đã loại trừ trải phẳng dạng viên nang, nhấn × để đưa ra ngoài —— */
 .bbs-exclude-chips {
   list-style: none;
   margin: 10px 0 0;
@@ -3104,7 +3103,7 @@ function exportPublicApiDocument() {
   background: oklch(0 0 0 / 0.08);
 }
 
-/* 弹窗内角色勾选列表:固定高度内滚动,长名单不撑爆弹窗 */
+/* Danh sách tích chọn nhân vật trong hộp thoại: cuộn trong chiều cao cố định, danh sách dài không làm vỡ hộp thoại */
 .bbs-exclude-list {
   max-height: 46vh;
   overflow-y: auto;
@@ -3137,9 +3136,9 @@ function exportPublicApiDocument() {
   color: var(--bbs-ink-muted);
 }
 
-/* ============ 移动端:折叠区内部正文整体收一号,与窄屏标题节奏统一 ============ */
+/* ============ Di động: nội dung bên trong vùng thu gọn tổng thể thu nhỏ một cỡ, thống nhất nhịp điệu với tiêu đề màn hình hẹp ============ */
 @media (max-width: 640px) {
-  /* 渠道参数四连:窄屏一行四个每个只剩几十 px,落成 2×2 */
+  /* Bốn tham số kênh liên tiếp: trên màn hình hẹp một dòng bốn ô mỗi ô chỉ còn vài chục px, chuyển thành 2×2 */
   .bbs-channel-row {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -3157,7 +3156,7 @@ function exportPublicApiDocument() {
   .bbs-seg {
     font-size: 12px;
   }
-  /* 渠道弹窗底部:测试按钮窄屏只显短版「测试」,PC 显完整「测试渠道」 */
+  /* Đáy hộp thoại kênh: nút kiểm tra trên màn hình hẹp chỉ hiện bản ngắn "Kiểm tra", trên PC hiện đầy đủ "Kiểm tra kênh" */
   .bbs-btn-label-full {
     display: none;
   }

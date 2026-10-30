@@ -1,32 +1,32 @@
 import { openBook } from '@/state/ui';
 
 const BTN_ID = 'bbs-qr-button';
-const BAR_CLASS = 'bbs-qr-bar'; // 仅当 #qr--bar 不存在时,我们自建的条加这个标记类,便于回收
+const BAR_CLASS = 'bbs-qr-bar'; // Chỉ khi #qr--bar không tồn tại, thanh do chúng ta tự tạo mới thêm lớp đánh dấu này để tiện thu hồi
 
 /**
- * 往聊天框上方注入一个「柏宝书」按钮,外观与 ST 原生快速回复按钮**完全一致**。
+ * Tiêm một nút "Bách Bảo Thư" vào phía trên khung trò chuyện, ngoại hình **hoàn toàn đồng nhất** với nút trả lời nhanh gốc của ST.
  *
- * 做法照搬相邻插件 JS-Slash-Runner 的范式(src/panel/script/use_button_destination_element.ts
- * 与 Script.vue):按钮就是一个 `<div class="qr--button menu_button interactable">文字</div>`,
- * 决定外观的是 quick-reply 扩展定义的 `.qr--button` 类——挂上它即与原生按钮同款,无需图标、
- * 不写自己的样式(自己画/只蹭 menu_button 都会四不像,实测过)。
+ * Cách làm mô phỏng theo mô hình của plugin lân cận JS-Slash-Runner (src/panel/script/use_button_destination_element.ts
+ * và Script.vue): nút chỉ là một `<div class="qr--button menu_button interactable">Văn bản</div>`,
+ * thứ quyết định ngoại hình là lớp `.qr--button` do tiện ích mở rộng quick-reply định nghĩa —— gắn nó vào là cùng kiểu dáng với nút gốc, không cần biểu tượng,
+ * không viết kiểu dáng riêng (tự vẽ / chỉ ké menu_button đều trông lạc quẻ, đã thử nghiệm thực tế).
  *
- * 挂载结构对齐原生:#qr--bar(已存在则复用,否则自建一个 .flex-container.flexGap5 条)
- *   └ .qr--buttons(容器)
- *       └ .qr--button(我们的按钮)
+ * Cấu trúc gắn kết căn chỉnh theo bản gốc: #qr--bar (nếu đã tồn tại thì tái sử dụng, nếu không thì tự tạo một thanh .flex-container.flexGap5)
+ *   └ .qr--buttons (vùng chứa)
+ *       └ .qr--button (nút của chúng ta)
  *
- * 受设置开关控制:开 → 确保已注入;关 → 移除。轮询等聊天框出现(SPA 懒加载)。
+ * Chịu sự điều khiển của công tắc cài đặt: Bật → đảm bảo đã tiêm; Tắt → gỡ bỏ. Polling đợi khung trò chuyện xuất hiện (SPA tải lười).
  *
- * 注意:.qr--button 的样式全靠祖先选择器 `#qr--bar > .qr--buttons .qr--button` 生效,
- * 按钮**必须**落在该结构内才有原生外观。而 ST 的快速回复会在切聊天/改设置时重建 #qr--bar,
- * 把我们的按钮一并冲掉——故用 MutationObserver 盯住 #send_form,被冲掉就补回(同 JS-Slash-Runner)。
+ * Lưu ý: Kiểu dáng của .qr--button hoàn toàn dựa vào bộ chọn tổ tiên `#qr--bar > .qr--buttons .qr--button` để có hiệu lực,
+ * nút **bắt buộc** phải nằm trong cấu trúc đó mới có ngoại hình gốc. Mà trả lời nhanh của ST sẽ dựng lại #qr--bar khi chuyển trò chuyện / đổi cài đặt,
+ * cuốn trôi luôn nút của chúng ta —— do đó dùng MutationObserver theo dõi sát #send_form, bị cuốn trôi thì bù lại (giống JS-Slash-Runner).
  */
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let observer: MutationObserver | null = null;
 
-/** 取(或建)#qr--bar:优先复用 ST 原生那条,没有才自建一条同款。返回挂按钮用的 .qr--buttons 容器。 */
+/** Lấy (hoặc tạo) #qr--bar: ưu tiên tái sử dụng thanh gốc của ST, không có mới tự tạo một thanh cùng kiểu. Trả về vùng chứa .qr--buttons dùng để gắn nút. */
 function ensureButtonHolder(sendForm: HTMLElement): HTMLElement {
-  // id 唯一约束,用属性筛选而非 #qr--bar 选择器(同 JS-Slash-Runner 的做法)
+  // Ràng buộc id duy nhất, dùng lọc thuộc tính thay vì bộ chọn #qr--bar (cùng cách làm với JS-Slash-Runner)
   let bar = Array.from(sendForm.querySelectorAll('div')).find(d => d.id === 'qr--bar') as HTMLElement | undefined;
   if (!bar) {
     bar = document.createElement('div');
@@ -34,7 +34,7 @@ function ensureButtonHolder(sendForm: HTMLElement): HTMLElement {
     bar.className = `${BAR_CLASS} flex-container flexGap5`;
     sendForm.prepend(bar);
   }
-  // 复用条内已有的 .qr--buttons,没有就建一个(原生未组合模式时可能没有)
+  // Tái sử dụng .qr--buttons đã có trong thanh, không có thì tạo mới (ở chế độ chưa kết hợp gốc có thể không có)
   let holder = bar.querySelector('.qr--buttons') as HTMLElement | null;
   if (!holder) {
     holder = document.createElement('div');
@@ -49,8 +49,8 @@ function buildButton(): HTMLElement {
   btn.id = BTN_ID;
   btn.className = 'qr--button menu_button interactable';
   btn.setAttribute('tabindex', '0');
-  btn.title = '打开柏宝书';
-  btn.textContent = '柏宝书';
+  btn.title = 'Mở Bách Bảo Thư';
+  btn.textContent = 'Bách Bảo Thư';
   btn.addEventListener('click', e => {
     e.preventDefault();
     e.stopPropagation();
@@ -66,7 +66,7 @@ function buildButton(): HTMLElement {
   return btn;
 }
 
-/** 真正执行插入:成功或已存在返回 true,聊天框未就绪返回 false(由轮询重试)。 */
+/** Thực sự thực thi chèn: thành công hoặc đã tồn tại trả về true, khung trò chuyện chưa sẵn sàng trả về false (do polling thử lại). */
 function tryInject(): boolean {
   const sendForm = document.getElementById('send_form');
   if (!sendForm) return false;
@@ -79,12 +79,12 @@ function tryInject(): boolean {
 
 function removeButton(): void {
   document.getElementById(BTN_ID)?.remove();
-  // 若是我们自建的空 #qr--bar(原生没有 QR),按钮撤了就一并回收,别留空条
+  // Nếu là #qr--bar rỗng do chúng ta tự tạo (bản gốc không có QR), khi rút nút đi thì thu hồi luôn, đừng để lại thanh trống
   const bar = document.querySelector(`#qr--bar.${BAR_CLASS}`) as HTMLElement | null;
   if (bar && bar.querySelector('.qr--buttons')?.children.length === 0) bar.remove();
 }
 
-/** 盯住 #send_form:ST 重建 #qr--bar 把我们的按钮冲掉时,补回(幂等,tryInject 自带存在检查)。 */
+/** Theo dõi sát #send_form: khi ST dựng lại #qr--bar cuốn trôi nút của chúng ta, bù lại (idempotent, tryInject tự kèm kiểm tra tồn tại). */
 function startObserver(): void {
   if (observer) return;
   const sendForm = document.getElementById('send_form');
@@ -100,7 +100,7 @@ function stopObserver(): void {
   observer = null;
 }
 
-/** 按开关同步快速回复按钮的有无。开关变化时调用即可(幂等)。 */
+/** Đồng bộ sự tồn tại của nút trả lời nhanh theo công tắc. Gọi khi công tắc thay đổi là được (idempotent). */
 export function syncQuickReplyButton(enabled: boolean): void {
   if (pollTimer) {
     clearInterval(pollTimer);
@@ -115,7 +115,7 @@ export function syncQuickReplyButton(enabled: boolean): void {
     startObserver();
     return;
   }
-  // 聊天框懒加载:轮询等它出现,封顶 ~20s(40 次)后放弃,绝不常驻空转。
+  // Khung trò chuyện tải lười: polling đợi nó xuất hiện, giới hạn ~20s (40 lần) rồi từ bỏ, tuyệt đối không chạy không tải thường trực.
   let attempts = 0;
   pollTimer = setInterval(() => {
     if (tryInject() || ++attempts > 40) {
