@@ -18,8 +18,8 @@ import { PLUGIN_VERSION } from '@/version';
  */
 const CURRENT_VERSION = PLUGIN_VERSION;
 
-/** Manifest từ xa: GitHub raw (kèm dấu thời gian để vượt qua bộ nhớ đệm). homePage trỏ tới baibai-git/ST-BaiBai-Book. */
-const REMOTE_MANIFEST_URL = 'https://raw.githubusercontent.com/baibai-git/ST-BaiBai-Book/main/manifest.json';
+/** Manifest từ xa: GitHub raw (kèm dấu thời gian để vượt qua bộ nhớ đệm). homePage trỏ tới abcxyzeric/bach-bao-thu-memory. */
+const REMOTE_MANIFEST_URL = 'https://raw.githubusercontent.com/abcxyzeric/bach-bao-thu-memory/main/manifest.json';
 
 /** Trạng thái phản ứng (reactive) hướng ra ngoài: điều khiển chấm thông báo ở tab cài đặt và khu vực phiên bản ở trang cài đặt. */
 export const updateState = reactive<{
@@ -111,7 +111,7 @@ function extensionFolderName(): string {
   } catch {
     /* Phân tích thất bại thì lùi về mặc định */
   }
-  return 'ST-BaiBai-Book';
+  return 'bach-bao-thu-memory';
 }
 
 /** Thăm dò loại cài đặt của tiện ích mở rộng này (global/local/system), quyết định tham số global của API cập nhật. Không lấy được thì coi như local. */

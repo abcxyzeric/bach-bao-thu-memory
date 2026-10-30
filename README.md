@@ -55,7 +55,7 @@ Sau khi bật trí nhớ vector, Bách Bảo Thư sẽ xây dựng cốt truyệ
 Điền địa chỉ kho lưu trữ này vào phần "Tiện ích mở rộng → Cài đặt tiện ích mở rộng" (Extensions → Install extension) của SillyTavern là được:
 
 ```
-https://github.com/baibai-git/ST-BaiBai-Book
+https://github.com/abcxyzeric/bach-bao-thu-memory
 ```
 
 Sau khi cài đặt, hãy vào trang "Cài đặt" của Bách Bảo Thư, bật công tắc tổng "Bách Bảo Thư · Bộ máy trí nhớ", cấu hình tóm tắt và trí nhớ vector theo nhu cầu là có thể bắt đầu sử dụng. Cài đặt sẽ được lưu trên máy chủ cùng với SillyTavern, tự động đồng bộ đa thiết bị và qua mạng nội bộ (LAN).
